@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smartwatch ZL02 - Ficha de Producto</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide-react@latest/dist/lucide-react.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        .icon-gradient {
+            background: linear-gradient(135deg, #4f46e5, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .card-hover {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- Header Section with Logo -->
+        <header class="text-center mb-8">
+            <!-- Your Logo Here -->
+          <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTezYf-lt4Ef5epkYN-eR9VNaDGJf0U3yEv8Q&s" 
+                 alt="Logo de la Empresa" 
+                 class="mx-auto mb-6 h-16 w-auto">
+                
+            
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">Reloj Inteligente <span class="text-indigo-600">Smartwatch ZL02</span></h1>
+            <p class="mt-2 text-lg text-gray-600">Tu compañero de salud y conectividad</p>
+        </header>
+
+        <!-- Main Content Grid -->
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- Left Column: Image and Key Features -->
+            <div class="lg:col-span-1 space-y-8">
+                <!-- Product Image -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <img src="https://placehold.co/400x400/e0e7ff/4f46e5?text=Smartwatch+ZL02" alt="Imagen del Reloj Inteligente ZL02" class="w-full h-auto rounded-xl object-cover">
+                </div>
+
+                <!-- What's in the Box -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h3 class="text-xl font-bold mb-4 text-gray-900">Contenido del Paquete</h3>
+                    <ul class="space-y-3 text-gray-700">
+                        <li class="flex items-center">
+                            <i data-lucide="watch" class="w-5 h-5 mr-3 text-indigo-500"></i>
+                            1 x Reloj Inteligente ZL02
+                        </li>
+                        <li class="flex items-center">
+                            <i data-lucide="magnet" class="w-5 h-5 mr-3 text-indigo-500"></i>
+                            1 x Cable de carga magnético
+                        </li>
+                        <li class="flex items-center">
+                            <i data-lucide="book-open" class="w-5 h-5 mr-3 text-indigo-500"></i>
+                            1 x Manual de usuario
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Right Column: Details and Features -->
+            <div class="lg:col-span-2 space-y-8">
+                
+                <!-- Main Features Section -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900">Características Principales</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Feature: Display -->
+                        <div class="flex items-start">
+                            <i data-lucide="tv-2" class="w-8 h-8 mr-4 text-purple-500 flex-shrink-0"></i>
+                            <div>
+                                <h4 class="font-semibold text-lg">Pantalla HD Táctil</h4>
+                                <p class="text-gray-600">Pantalla a color de 1.28" con vidrio 2.5D para una imagen vívida y hermosa. Táctil completa y redonda.</p>
+                            </div>
+                        </div>
+                        <!-- Feature: Dials -->
+                        <div class="flex items-start">
+                            <i data-lucide="image" class="w-8 h-8 mr-4 text-purple-500 flex-shrink-0"></i>
+                            <div>
+                                <h4 class="font-semibold text-lg">Diales Personalizables</h4>
+                                <p class="text-gray-600">Elige entre múltiples diales o personaliza el tuyo con tus propias imágenes a través de la APP.</p>
+                            </div>
+                        </div>
+                        <!-- Feature: Health Monitor -->
+                        <div class="flex items-start">
+                            <i data-lucide="heart-pulse" class="w-8 h-8 mr-4 text-purple-500 flex-shrink-0"></i>
+                            <div>
+                                <h4 class="font-semibold text-lg">Monitor de Salud</h4>
+                                <p class="text-gray-600">Monitorea frecuencia cardíaca, presión arterial, oxígeno en sangre y calidad del sueño.</p>
+                            </div>
+                        </div>
+                        <!-- Feature: Battery -->
+                        <div class="flex items-start">
+                            <i data-lucide="battery-charging" class="w-8 h-8 mr-4 text-purple-500 flex-shrink-0"></i>
+                            <div>
+                                <h4 class="font-semibold text-lg">Batería Duradera</h4>
+                                <p class="text-gray-600">Hasta 7 días de uso y más de 20 días en espera. Carga completa en solo 2 horas.</p>
+                            </div>
+                        </div>
+                         <!-- Feature: Waterproof -->
+                        <div class="flex items-start">
+                            <i data-lucide="shield" class="w-8 h-8 mr-4 text-purple-500 flex-shrink-0"></i>
+                            <div>
+                                <h4 class="font-semibold text-lg">Resistencia al Agua IP67</h4>
+                                <p class="text-gray-600">Resistente a salpicaduras y uso diario. (No apto para natación o agua caliente).</p>
+                            </div>
+                        </div>
+                        <!-- Feature: Notifications -->
+                        <div class="flex items-start">
+                            <i data-lucide="message-square" class="w-8 h-8 mr-4 text-purple-500 flex-shrink-0"></i>
+                            <div>
+                                <h4 class="font-semibold text-lg">Notificaciones Inteligentes</h4>
+                                <p class="text-gray-600">Recibe alertas de llamadas, SMS y de tus apps favoritas como WhatsApp, Facebook, Instagram y más.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sports Modes -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h3 class="text-xl font-bold mb-4 text-gray-900">Modos Deportivos</h3>
+                    <div class="flex flex-wrap gap-4 justify-center">
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="footprints" class="w-4 h-4 mr-2"></i>Caminar</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="bike" class="w-4 h-4 mr-2"></i>Ciclismo</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="activity" class="w-4 h-4 mr-2"></i>Correr</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="swords" class="w-4 h-4 mr-2"></i>Bádminton</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="move-vertical" class="w-4 h-4 mr-2"></i>Saltar Cuerda</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="basketball" class="w-4 h-4 mr-2"></i>Baloncesto</span>
+                        <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full flex items-center"><i data-lucide="soccer-ball" class="w-4 h-4 mr-2"></i>Fútbol</span>
+                    </div>
+                </div>
+
+                <!-- Technical Specifications -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h3 class="text-2xl font-bold mb-6 text-gray-900">⚙️ Especificaciones Técnicas</h3>
+                    <ul class="space-y-4">
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">Modelo</span>
+                            <span class="text-gray-800">ZL02</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">CPU</span>
+                            <span class="text-gray-800">DA14683</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">Bluetooth</span>
+                            <span class="text-gray-800">Versión 4.0</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">Pantalla</span>
+                            <span class="text-gray-800">1.28" HD (240x240)</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">Batería</span>
+                            <span class="text-gray-800">220 mAh Polímero de Litio</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">Compatibilidad</span>
+                            <span class="text-gray-800">Android 5.0+ / iOS 9.0+</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">APP</span>
+                            <span class="text-gray-800">JYouPro</span>
+                        </li>
+                        <li class="flex justify-between border-b pb-2">
+                            <span class="font-semibold text-gray-600">Material</span>
+                            <span class="text-gray-800">Caja: Plástico PC / Banda: Silicona</span>
+                        </li>
+                         <li class="flex justify-between pb-2">
+                            <span class="font-semibold text-gray-600">Peso</span>
+                            <span class="text-gray-800">35 gr</span>
+                        </li>
+                    </ul>
+                </div>
+
+            </div>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="text-center mt-12">
+            <p class="text-gray-500">Información visualizada para una mejor comprensión.</p>
+        </footer>
+
+    </div>
+    
+    <!-- Script to initialize Lucide icons -->
+    <script>
+        lucide.createIcons();
+    </script>
+
+</body>
+</html>
