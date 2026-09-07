@@ -1,23 +1,51 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTenant } from '@/contexts/TenantContext'
-import { Save, ExternalLink, RefreshCw } from 'lucide-react'
+import { Save, ExternalLink, RefreshCw, Loader2, AlertCircle, Check } from 'lucide-react'
 import Link from 'next/link'
 
 export default function SettingsPage() {
-  const { tenant, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, setExchangeRate } = useTenant()
+  const { tenant, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
   const [rate, setRate] = useState(exchangeRate.toString())
   const [phone, setPhone] = useState(tenant?.phone_whatsapp ?? '')
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  function handleSave(e: React.FormEvent) {
+  // Sincronizar inputs cuando cargue el tenant
+  useEffect(() => {
+    if (tenant?.phone_whatsapp) {
+      setPhone(tenant.phone_whatsapp)
+    }
+  }, [tenant?.phone_whatsapp])
+
+  useEffect(() => {
+    setRate(exchangeRate.toString())
+  }, [exchangeRate])
+
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault()
+    setSaving(true)
+    setErrorMessage(null)
+
     const r = parseFloat(rate)
+    const payload: { phone_whatsapp?: string; currency_rate_bcv?: number } = {
+      phone_whatsapp: phone.trim(),
+    }
+
     if (!isNaN(r) && r > 0) {
-      setExchangeRate(r)
+      payload.currency_rate_bcv = r
+    }
+
+    const res = await updateTenantSettings(payload)
+
+    setSaving(false)
+    if (res.success) {
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      setTimeout(() => setSaved(false), 3000)
+    } else {
+      setErrorMessage(res.error || 'No se pudo guardar la configuración.')
     }
   }
 
@@ -119,16 +147,35 @@ export default function SettingsPage() {
             )}
           </div>
 
+          {errorMessage && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
             {saved ? (
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">✓ Cambios guardados correctamente</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <Check className="w-4 h-4" /> Cambios guardados correctamente
+              </span>
             ) : <span />}
             <button
               type="submit"
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition active:scale-95 shadow-md shadow-blue-500/20"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold transition active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
             >
-              <Save className="w-4 h-4" />
-              Guardar Configuración
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Guardando…</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Guardar Configuración</span>
+                </>
+              )}
             </button>
           </div>
         </form>

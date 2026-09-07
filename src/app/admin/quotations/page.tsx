@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Quotation, Product, Customer } from '@/types/database'
-import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send } from 'lucide-react'
+import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle } from 'lucide-react'
 
 export default function QuotationsPage() {
   const router = useRouter()
@@ -23,19 +23,24 @@ export default function QuotationsPage() {
   const [validDays, setValidDays] = useState(15)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
 
   const loadQuotations = useCallback(async () => {
     if (!tenant) return
     setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('quotations')
-      .select('*')
-      .eq('tenant_id', tenant.id)
-      .order('created_at', { ascending: false })
-
-    setQuotations((data ?? []) as Quotation[])
-    setLoading(false)
+    try {
+      const res = await fetch(`/api/admin/quotations?tenant_id=${tenant.id}`)
+      const data = await res.json()
+      if (res.ok && data.quotations) {
+        setQuotations(data.quotations as Quotation[])
+      } else {
+        setQuotations([])
+      }
+    } catch {
+      setQuotations([])
+    } finally {
+      setLoading(false)
+    }
   }, [tenant])
 
   useEffect(() => {
@@ -46,6 +51,7 @@ export default function QuotationsPage() {
   async function openCreateModal() {
     if (!tenant) return
     setIsCreating(true)
+    setModalError(null)
     const supabase = createClient()
     const [{ data: prodData }, { data: custData }] = await Promise.all([
       supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
@@ -69,9 +75,9 @@ export default function QuotationsPage() {
   const quoteTotalVes = quoteTotalUsd * exchangeRate
 
   async function handleSaveQuotation() {
-    if (!tenant || !profile || cart.length === 0) return
+    if (!tenant || cart.length === 0) return
     setSaving(true)
-    const supabase = createClient()
+    setModalError(null)
 
     const validUntilDate = new Date()
     validUntilDate.setDate(validUntilDate.getDate() + validDays)
@@ -85,28 +91,40 @@ export default function QuotationsPage() {
       subtotal_usd: parseFloat((i.product.base_price_usd * i.quantity).toFixed(4)),
     }))
 
-    const { error } = await supabase.from('quotations').insert({
-      tenant_id: tenant.id,
-      customer_id: selectedCustomer?.id ?? null,
-      status: 'draft',
-      items,
-      subtotal_usd: parseFloat(quoteTotalUsd.toFixed(4)),
-      total_usd: parseFloat(quoteTotalUsd.toFixed(4)),
-      total_ves: parseFloat(quoteTotalVes.toFixed(2)),
-      exchange_rate: exchangeRate,
-      valid_until: validUntilDate.toISOString().split('T')[0],
-      notes: notes.trim() || null,
-      created_by: profile.id,
-    })
+    try {
+      const res = await fetch('/api/admin/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          customer_id: selectedCustomer?.id ?? null,
+          items,
+          subtotal_usd: parseFloat(quoteTotalUsd.toFixed(4)),
+          total_usd: parseFloat(quoteTotalUsd.toFixed(4)),
+          total_ves: parseFloat(quoteTotalVes.toFixed(2)),
+          exchange_rate: exchangeRate,
+          valid_until: validUntilDate.toISOString().split('T')[0],
+          notes: notes.trim() || null,
+          created_by: profile?.id ?? null,
+        }),
+      })
 
-    if (!error) {
+      const data = await res.json()
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Error al guardar el presupuesto.')
+      }
+
       setIsCreating(false)
       setCart([])
       setSelectedCustomer(null)
       setNotes('')
       loadQuotations()
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : 'Error inesperado al guardar.')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   function shareViaWhatsApp(q: Quotation) {
@@ -243,6 +261,13 @@ export default function QuotationsPage() {
                 ✕
               </button>
             </div>
+
+            {modalError && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{modalError}</span>
+              </div>
+            )}
 
             {/* Selector de Cliente y Validez */}
             <div className="grid grid-cols-2 gap-3 text-xs">

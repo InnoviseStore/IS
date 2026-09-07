@@ -13,6 +13,7 @@ interface TenantContextValue {
   setExchangeRate: (rate: number) => void
   syncBcvRate: () => Promise<{ rate?: number; fechaValor?: string; error?: string }>
   switchTenant: (newTenant: Tenant) => void
+  updateTenantSettings: (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string }) => Promise<{ success: boolean; error?: string }>
   isLoading: boolean
 }
 
@@ -25,6 +26,7 @@ const TenantContext = createContext<TenantContextValue>({
   setExchangeRate: () => {},
   syncBcvRate: async () => ({}),
   switchTenant: () => {},
+  updateTenantSettings: async () => ({ success: false }),
   isLoading: true,
 })
 
@@ -36,16 +38,39 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [isSyncingBcv, setIsSyncingBcv] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  const setExchangeRate = useCallback(async (rate: number) => {
-    setExchangeRateState(rate)
-    const supabase = createClient()
-    if (tenant) {
-      await supabase
-        .from('tenants')
-        .update({ currency_rate_bcv: rate })
-        .eq('id', tenant.id)
+  const updateTenantSettings = useCallback(async (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string }) => {
+    if (!tenant) return { success: false, error: 'No hay tienda activa' }
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          ...params,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        return { success: false, error: data.error || 'Error al guardar configuración' }
+      }
+      if (data.tenant) {
+        setTenant(data.tenant)
+        if (data.tenant.currency_rate_bcv) {
+          setExchangeRateState(Number(data.tenant.currency_rate_bcv))
+        }
+      }
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: (e as Error).message }
     }
   }, [tenant])
+
+  const setExchangeRate = useCallback(async (rate: number) => {
+    setExchangeRateState(rate)
+    if (tenant) {
+      updateTenantSettings({ currency_rate_bcv: rate })
+    }
+  }, [tenant, updateTenantSettings])
 
   const syncBcvRate = useCallback(async () => {
     setIsSyncingBcv(true)
@@ -134,6 +159,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setExchangeRate,
         syncBcvRate,
         switchTenant,
+        updateTenantSettings,
         isLoading,
       }}
     >

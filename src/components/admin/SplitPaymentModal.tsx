@@ -137,67 +137,46 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
     })
 
     try {
-      // Insert order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          tenant_id: tenant.id,
-          customer_id: selectedCustomer?.id ?? null,
-          status: isCredit ? 'credit' : 'completed',
-          payment_condition: isCredit ? 'credit_7d' : 'immediate',
-          exchange_rate_at_sale: exchangeRate,
-          subtotal_usd: totalUsd,
-          igtf_total: parseFloat(igtfTotal.toFixed(4)),
-          total_usd: parseFloat(grandTotalUsd.toFixed(4)),
-          total_ves: parseFloat(grandTotalVes.toFixed(2)),
-          payment_breakdown: paymentBreakdown,
-          created_by: profile.id,
-        })
-        .select()
-        .single()
-
-      if (orderError) throw orderError
-
-      // Insert order items
-      const items = cartItems.map((item) => ({
-        order_id: order.id,
-        product_id: item.product_id,
+      const payload = {
         tenant_id: tenant.id,
-        product_name: item.name,
-        product_sku: item.sku ?? null,
-        unit_price_usd: item.unit_price_usd,
-        quantity: item.quantity,
-        subtotal_usd: parseFloat((item.unit_price_usd * item.quantity).toFixed(4)),
-      }))
-
-      const { error: itemsError } = await supabase.from('order_items').insert(items)
-      if (itemsError) throw itemsError
-
-      // Decrement stock
-      for (const item of cartItems) {
-        await supabase.rpc('decrement_stock', {
-          p_product_id: item.product_id,
-          p_quantity: item.quantity,
-        })
-        await supabase.from('inventory_logs').insert({
-          tenant_id: tenant.id,
+        customer_id: selectedCustomer?.id ?? null,
+        status: isCredit ? 'credit' : 'completed',
+        payment_condition: isCredit ? 'credit_7d' : 'immediate',
+        exchange_rate_at_sale: exchangeRate,
+        subtotal_usd: totalUsd,
+        igtf_total: parseFloat(igtfTotal.toFixed(4)),
+        total_usd: parseFloat(grandTotalUsd.toFixed(4)),
+        total_ves: parseFloat(grandTotalVes.toFixed(2)),
+        payment_breakdown: paymentBreakdown,
+        created_by: profile.id,
+        items: cartItems.map((item) => ({
           product_id: item.product_id,
-          change_type: 'sale',
-          quantity: -item.quantity,
-          reference_id: order.id,
-          created_by: profile.id,
-        })
+          product_name: item.name,
+          product_sku: item.sku ?? null,
+          unit_price_usd: item.unit_price_usd,
+          quantity: item.quantity,
+        })),
+        isCredit,
+        customer: selectedCustomer
+          ? {
+              id: selectedCustomer.id,
+              current_debt_usd: selectedCustomer.current_debt_usd,
+            }
+          : null,
       }
 
-      // Update credit balance if credit sale
-      if (isCredit && selectedCustomer) {
-        await supabase
-          .from('customers')
-          .update({ current_debt_usd: selectedCustomer.current_debt_usd + grandTotalUsd })
-          .eq('id', selectedCustomer.id)
+      const res = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al registrar la venta')
       }
 
-      setSuccess(order.order_number)
+      setSuccess(data.order?.order_number || 'IS-OK')
     } catch (e: unknown) {
       setError((e as Error).message ?? 'Error al guardar la orden')
     }
