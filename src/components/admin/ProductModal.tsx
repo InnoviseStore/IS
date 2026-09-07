@@ -29,8 +29,8 @@ async function compressImage(file: File): Promise<string> {
       const img = new Image()
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const MAX_WIDTH = 1200
-        const MAX_HEIGHT = 1200
+        const MAX_WIDTH = 900
+        const MAX_HEIGHT = 900
         let width = img.width
         let height = img.height
 
@@ -54,7 +54,7 @@ async function compressImage(file: File): Promise<string> {
           return
         }
         ctx.drawImage(img, 0, 0, width, height)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.78)
         resolve(dataUrl)
       }
       img.onerror = () => resolve(e.target?.result as string)
@@ -171,26 +171,19 @@ export function ProductModal({ product, onClose, onSaved }: Props) {
     }
 
     try {
-      const supabase = createClient()
-      let { error: dbError } = isEditing
-        ? await supabase.from('products').update(payload).eq('id', product!.id)
-        : await supabase.from('products').insert(payload)
+      const response = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          id: isEditing ? product!.id : undefined,
+        }),
+      })
 
-      // Fallback si la columna 'images' aún no está creada en PostgreSQL
-      if (dbError && dbError.message && (dbError.message.includes('images') || dbError.message.includes('column'))) {
-        const { images: _, ...fallbackPayload } = payload
-        const res = isEditing
-          ? await supabase.from('products').update(fallbackPayload).eq('id', product!.id)
-          : await supabase.from('products').insert(fallbackPayload)
-        dbError = res.error
-      }
+      const result = await response.json()
 
-      if (dbError) {
-        if (dbError.message.includes('row-level security') || dbError.code === '42501') {
-          setError('Error de permisos en Supabase (RLS). Por favor ejecuta la migración 07_products_superadmin_images.sql en Supabase SQL Editor.')
-        } else {
-          setError(`Error al guardar producto: ${dbError.message}`)
-        }
+      if (!response.ok || result.error) {
+        setError(result.error || 'Error al guardar el producto.')
         setLoading(false)
         return
       }
