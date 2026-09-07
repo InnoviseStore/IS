@@ -115,7 +115,7 @@ function ProductCard({
       </Link>
 
       {/* Body */}
-      <div className="flex flex-col flex-1 p-4 gap-2.5">
+      <div className="flex flex-col flex-1 p-3.5 sm:p-4 gap-2">
         <div>
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
             {detectCategory(product.name)}
@@ -137,8 +137,8 @@ function ProductCard({
         )}
 
         {/* Pricing */}
-        <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800">
-          <p className="text-blue-600 dark:text-blue-400 font-extrabold text-xl leading-none tracking-tight">
+        <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800">
+          <p className="text-blue-600 dark:text-blue-400 font-extrabold text-lg sm:text-xl leading-none tracking-tight">
             ${formatUsd(product.unit_price_usd)}
             <span className="text-slate-500 dark:text-slate-400 font-normal text-xs ml-1">USD</span>
           </p>
@@ -152,7 +152,7 @@ function ProductCard({
           {outOfStock ? (
             <button
               disabled
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-semibold cursor-not-allowed"
+              className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-semibold cursor-not-allowed"
             >
               Agotado
             </button>
@@ -161,7 +161,7 @@ function ProductCard({
             <div className="flex items-center justify-between rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1 shadow-xs">
               <button
                 onClick={onDecrease}
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition active:scale-90"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition active:scale-90"
                 aria-label="Disminuir cantidad"
               >
                 <Minus className="h-3.5 w-3.5" />
@@ -175,7 +175,7 @@ function ProductCard({
                   product.stock_quantity != null &&
                   cartItem.quantity >= product.stock_quantity
                 }
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-40 transition active:scale-90"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-40 transition active:scale-90"
                 aria-label="Aumentar cantidad"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@ function ProductCard({
             /* Add button */
             <button
               onClick={handleAdd}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all duration-200 shadow-sm active:scale-95 cursor-pointer ${
+              className={`w-full min-h-[42px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-200 shadow-sm active:scale-95 cursor-pointer ${
                 justAdded
                   ? 'bg-emerald-600 text-white shadow-emerald-500/20'
                   : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-500/20'

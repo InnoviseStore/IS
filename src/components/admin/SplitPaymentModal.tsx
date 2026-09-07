@@ -336,41 +336,70 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                   const rowAmount = parseFloat(row.amount) || 0
                   const rowIgtf = isIgtfAgent && isUsd ? rowAmount * IGTF_RATE : 0
                   return (
-                    <div key={row.id} className="space-y-1">
-                      <div className="flex gap-2 items-center">
+                    <div key={row.id} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                      <div className="flex items-center gap-2">
                         <select
                           value={row.method}
                           onChange={(e) => updateRow(row.id, 'method', e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
+                          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
                         >
                           {Object.entries(METHOD_LABELS).map(([k, v]) => (
                             <option key={k} value={k} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{v}</option>
                           ))}
                         </select>
-                        <div className="w-32 relative">
+
+                        {/* Monto en pantallas grandes (>= sm) */}
+                        <div className="hidden sm:block w-36 relative">
                           <input
                             type="number" min="0" step="0.01"
                             placeholder={isVes ? 'Monto Bs.' : 'Monto USD'}
                             value={row.amount}
                             onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
                           />
                         </div>
+
+                        {/* Referencia en pantallas grandes (>= sm) */}
                         <input
-                          type="text" placeholder="Referencia"
+                          type="text" placeholder="Referencia (opcional)"
                           value={row.reference}
                           onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                          className="hidden sm:block flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                         />
+
                         <button onClick={() => removeRow(row.id)} disabled={payments.length === 1}
-                          className="p-2 rounded-xl text-slate-400 hover:text-rose-500 disabled:opacity-30 transition">
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-500 disabled:opacity-30 transition cursor-pointer flex-shrink-0"
+                          title="Eliminar método"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
+
+                      {/* Fila inferior exclusiva para móvil (< sm): Monto y Referencia */}
+                      <div className="flex sm:hidden items-center gap-2">
+                        <div className="flex-1 relative">
+                          <input
+                            type="number" min="0" step="0.01"
+                            placeholder={isVes ? 'Monto en Bs.' : 'Monto en USD'}
+                            value={row.amount}
+                            onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <input
+                            type="text" placeholder="Nro. Referencia"
+                            value={row.reference}
+                            onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                          />
+                        </div>
+                      </div>
+
                       {/* IGTF per-row indicator */}
                       {isIgtfAgent && isUsd && rowAmount > 0 && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold pl-2">
-                          + IGTF 3%: <span className="font-extrabold">${rowIgtf.toFixed(2)}</span>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold pl-1">
+                          + IGTF 3%: <span className="font-extrabold">${rowIgtf.toFixed(2)} USD</span>
                         </p>
                       )}
                     </div>
