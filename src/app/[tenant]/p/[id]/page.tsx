@@ -32,16 +32,37 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   const tenant = tenantRaw as unknown as Tenant
 
-  // 2. Get target product
-  const { data: productRaw, error: productError } = await supabase
+  // 2. Get target product by SKU (clean URL) or ID (UUID fallback)
+  let productRaw = null
+  const cleanIdOrSku = decodeURIComponent(productId).trim()
+
+  // Try finding by SKU first
+  const { data: bySku } = await supabase
     .from('products')
     .select('*')
-    .eq('id', productId)
     .eq('tenant_id', tenant.id)
+    .eq('sku', cleanIdOrSku)
     .eq('is_active', true)
-    .single()
+    .maybeSingle()
 
-  if (productError || !productRaw) {
+  if (bySku) {
+    productRaw = bySku
+  } else {
+    // Fallback: check by UUID if valid
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanIdOrSku)
+    if (isUuid) {
+      const { data: byId } = await supabase
+        .from('products')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .eq('id', cleanIdOrSku)
+        .eq('is_active', true)
+        .maybeSingle()
+      productRaw = byId
+    }
+  }
+
+  if (!productRaw) {
     notFound()
   }
 

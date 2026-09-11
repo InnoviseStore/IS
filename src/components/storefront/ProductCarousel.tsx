@@ -72,13 +72,15 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
       >
         {inStockProducts.map((p) => {
           const priceVes = p.unit_price_usd * exchangeRate
+          const productSlug = encodeURIComponent(p.sku || p.id)
+          const productHref = `/${tenantSlug}/p/${productSlug}`
           return (
             <div
               key={p.id}
               className="w-64 sm:w-72 flex-shrink-0 snap-start rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/80 shadow-md hover:shadow-xl hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-300 overflow-hidden flex flex-col group"
             >
               {/* Imagen vinculada a la página de producto */}
-              <Link href={`/${tenantSlug}/p/${p.id}`} className="relative aspect-square bg-slate-100 dark:bg-slate-800 overflow-hidden block">
+              <Link href={productHref} prefetch={true} className="relative aspect-square bg-slate-100 dark:bg-slate-800 overflow-hidden block">
                 {p.image_url ? (
                   <Image
                     src={p.image_url}
@@ -101,7 +103,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
               {/* Contenido */}
               <div className="p-4 flex flex-col flex-1 justify-between gap-3">
                 <div>
-                  <Link href={`/${tenantSlug}/p/${p.id}`}>
+                  <Link href={productHref} prefetch={true}>
                     <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                       {p.name}
                     </h3>

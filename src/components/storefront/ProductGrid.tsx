@@ -83,10 +83,13 @@ function ProductCard({
     setTimeout(() => setJustAdded(false), 1200);
   }
 
+  const productSlug = encodeURIComponent(product.sku || product.id)
+  const productHref = `/${tenantSlug}/p/${productSlug}`
+
   return (
     <div className="group relative flex flex-col rounded-3xl bg-white dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-md shadow-slate-200/30 dark:shadow-black/40 hover:shadow-2xl hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-300 overflow-hidden">
       {/* Image with zoom on hover and Link to detailed page */}
-      <Link href={`/${tenantSlug}/p/${product.id}`} className="relative aspect-square rounded-t-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 block cursor-pointer">
+      <Link href={productHref} prefetch={true} className="relative aspect-square rounded-t-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 block cursor-pointer">
         {product.image_url ? (
           <Image
             src={product.image_url}
@@ -120,7 +123,7 @@ function ProductCard({
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
             {detectCategory(product.name)}
           </span>
-          <Link href={`/${tenantSlug}/p/${product.id}`}>
+          <Link href={productHref} prefetch={true}>
             <h3 className="font-bold text-sm text-slate-900 dark:text-white leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-0.5">
               {product.name}
             </h3>
