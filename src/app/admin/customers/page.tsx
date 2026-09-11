@@ -4,13 +4,16 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Customer } from '@/types/database'
-import { Search, Users, MessageCircle } from 'lucide-react'
+import { Search, Users, MessageCircle, Plus, Pencil } from 'lucide-react'
+import { CustomerModal } from '@/components/admin/CustomerModal'
 
 export default function CustomersPage() {
   const { tenant } = useTenant()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
 
   const load = useCallback(async () => {
     if (!tenant) return
@@ -34,6 +37,16 @@ export default function CustomersPage() {
       (c.id_number ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
+  function openCreate() {
+    setEditingCustomer(null)
+    setModalOpen(true)
+  }
+
+  function openEdit(c: Customer) {
+    setEditingCustomer(c)
+    setModalOpen(true)
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -41,6 +54,13 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Clientes</h1>
           <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">{customers.length} clientes registrados</p>
         </div>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold transition-all duration-200 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Registrar Cliente</span>
+        </button>
       </div>
 
       <div className="relative">
@@ -73,7 +93,7 @@ export default function CustomersPage() {
                   <th className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Límite Crédito</th>
                   <th className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Deuda Actual</th>
                   <th className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Disponible</th>
-                  <th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Cobranza</th>
+                  <th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -91,7 +111,14 @@ export default function CustomersPage() {
                           ${available.toFixed(2)}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-right">
+                      <td className="px-4 py-3.5 text-right flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEdit(c)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                          title="Editar cliente"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
                         {c.current_debt_usd > 0 && c.phone ? (
                           <button
                             onClick={() => {
@@ -117,6 +144,20 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
+
+      {modalOpen && tenant && (
+        <CustomerModal
+          tenantId={tenant.id}
+          customer={editingCustomer}
+          onClose={() => {
+            setModalOpen(false)
+            setEditingCustomer(null)
+          }}
+          onSaved={() => {
+            load()
+          }}
+        />
+      )}
     </div>
   )
 }

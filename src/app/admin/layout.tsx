@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
@@ -69,9 +70,21 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       {/* Logo & Close Button */}
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20">
-            <Store className="w-5 h-5 text-white" />
-          </div>
+          {tenant?.logo_url ? (
+            <div className="relative w-9 h-9 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex-shrink-0 flex items-center justify-center p-1">
+              <Image
+                src={tenant.logo_url}
+                alt={tenant.name || 'Logo'}
+                width={36}
+                height={36}
+                className="object-contain"
+              />
+            </div>
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 flex-shrink-0">
+              <Store className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
             <p className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight">
               {tenant?.name ?? 'Innovise Store'}

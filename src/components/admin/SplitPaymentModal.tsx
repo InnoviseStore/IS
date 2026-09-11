@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
-import { X, Plus, Trash2, Loader2, CheckCircle, Info } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus } from 'lucide-react'
+import { CustomerModal } from '@/components/admin/CustomerModal'
 
 interface PaymentRow {
   id: string
@@ -47,6 +48,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [isCredit, setIsCredit] = useState(false)
+  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false)
   const [payments, setPayments] = useState<PaymentRow[]>([
     { id: '1', method: 'zelle', amount: '', reference: '' }
   ])
@@ -269,27 +271,41 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
             </div>
 
             {customerType === 'registered' && (
-              <div className="relative">
-                <input
-                  type="text" placeholder="Buscar cliente por nombre o cédula…"
-                  value={customerSearch}
-                  onChange={(e) => { setCustomerSearch(e.target.value); setSelectedCustomer(null) }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                />
-                {customerResults.length > 0 && !selectedCustomer && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-                    {customerResults.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => { setSelectedCustomer(c); setCustomerSearch(c.full_name); setCustomerResults([]) }}
-                        className="w-full px-4 py-3 text-left text-sm hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
-                      >
-                        <p className="font-bold text-slate-900 dark:text-white">{c.full_name}</p>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{c.phone} | Crédito disp.: ${(c.credit_limit_usd - c.current_debt_usd).toFixed(2)}</p>
-                      </button>
-                    ))}
+              <div className="space-y-2">
+                <div className="relative flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text" placeholder="Buscar cliente por nombre o cédula…"
+                      value={customerSearch}
+                      onChange={(e) => { setCustomerSearch(e.target.value); setSelectedCustomer(null) }}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+                    />
+                    {customerResults.length > 0 && !selectedCustomer && (
+                      <div className="absolute top-full mt-1 left-0 right-0 z-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-60 overflow-y-auto">
+                        {customerResults.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => { setSelectedCustomer(c); setCustomerSearch(c.full_name); setCustomerResults([]) }}
+                            className="w-full px-4 py-3 text-left text-sm hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
+                          >
+                            <p className="font-bold text-slate-900 dark:text-white">{c.full_name}</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{c.phone || 'Sin tlf'} | Crédito disp.: ${(c.credit_limit_usd - c.current_debt_usd).toFixed(2)}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCustomerModal(true)}
+                    className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-200 dark:border-blue-900/60 transition shrink-0"
+                    title="Registrar nuevo cliente en el acto"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Nuevo</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -518,6 +534,18 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
           </div>
         </div>
       </div>
+
+      {showNewCustomerModal && tenant && (
+        <CustomerModal
+          tenantId={tenant.id}
+          onClose={() => setShowNewCustomerModal(false)}
+          onSaved={(newCust) => {
+            setSelectedCustomer(newCust)
+            setCustomerSearch(newCust.full_name)
+            setCustomerResults([])
+          }}
+        />
+      )}
     </div>
   )
 }
