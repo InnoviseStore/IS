@@ -27,6 +27,11 @@
     Cache-Control = "no-store"
 
 [[redirects]]
+  from = "/_next/static/*"
+  to = "/static/:splat"
+  status = 200
+
+[[redirects]]
   from = "/admin"
   to = "/admin"
   status = 200
