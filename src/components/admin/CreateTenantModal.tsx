@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   X,
   Loader2,
@@ -75,8 +76,13 @@ export function CreateTenantModal({ isOpen, onClose, onSuccess }: Props) {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
 
-  if (!isOpen) return null
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!isOpen || !mounted) return null
 
   function handleNameChange(val: string) {
     setName(val)
@@ -184,11 +190,11 @@ export function CreateTenantModal({ isOpen, onClose, onSuccess }: Props) {
     }
   }
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
       <div
-        style={{ width: '100%', maxWidth: '780px', maxHeight: '92vh' }}
+        style={{ width: '100%', maxWidth: '780px', maxHeight: '88vh' }}
         className="relative z-10 flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden my-auto"
       >
         {/* Header */}
@@ -209,14 +215,14 @@ export function CreateTenantModal({ isOpen, onClose, onSuccess }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-100 dark:border-slate-800 px-6 bg-slate-50/50 dark:bg-slate-800/40 text-xs font-bold">
+        <div className="flex border-b border-slate-100 dark:border-slate-800 px-6 bg-slate-50/50 dark:bg-slate-800/40 text-xs font-bold flex-shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('info')}
@@ -748,4 +754,6 @@ export function CreateTenantModal({ isOpen, onClose, onSuccess }: Props) {
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }
