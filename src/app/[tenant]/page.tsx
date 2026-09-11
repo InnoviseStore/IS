@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createPublicClient } from '@supabase/supabase-js'
+import { fetchLiveBcvRate } from '@/lib/bcv'
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -8,7 +9,7 @@ import ProductGrid, { type Product } from '@/components/storefront/ProductGrid'
 import { ProductCarousel } from '@/components/storefront/ProductCarousel'
 import CartDrawer from '@/components/storefront/CartDrawer'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
-import { ShieldCheck, MessageCircle, Sparkles } from 'lucide-react'
+import { MessageCircle, Sparkles } from 'lucide-react'
 
 export const revalidate = 1800 // 30 minutes ISR
 
@@ -23,8 +24,8 @@ export async function generateStaticParams() {
   }
 
   try {
-    const supabase = createPublicClient(url, key)
-    const { data: tenants } = await supabase
+    const publicClient = createPublicClient(url, key)
+    const { data: tenants } = await publicClient
       .from('tenants')
       .select('slug')
 
@@ -32,7 +33,9 @@ export async function generateStaticParams() {
       return [{ tenant: 'innovise' }]
     }
 
-    return ((tenants as unknown as { slug: string }[]) ?? []).map((t) => ({ tenant: t.slug }))
+    return tenants.map((t) => ({
+      tenant: t.slug,
+    }))
   } catch {
     return [{ tenant: 'innovise' }]
   }
@@ -41,6 +44,7 @@ export async function generateStaticParams() {
 async function getStorefrontData(slug: string) {
   const supabase = await createClient()
 
+  // Fetch tenant info
   const { data: tenantRaw, error: tenantError } = await supabase
     .from('tenants')
     .select('*')
@@ -73,12 +77,62 @@ async function getStorefrontData(slug: string) {
   }))
 
   const settings = (tenant.settings || {}) as Record<string, unknown>
-  const fechaValor = (settings.bcv_fecha_valor as string) || null
+  let fechaValor = (settings.bcv_fecha_valor as string) || null
+  let exchangeRate = Number(tenant.currency_rate_bcv) || 91.5
+  const lastSync = (settings.bcv_last_sync as string) || null
+
+  const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000
+  const isToday = lastSync && new Date(lastSync).toDateString() === new Date().toDateString()
+  const isOutdated = !lastSync || !isToday || new Date(lastSync).getTime() < thirtyMinutesAgo
+
+  if (isOutdated) {
+    try {
+      const bcvData = await fetchLiveBcvRate()
+      exchangeRate = bcvData.rate
+      fechaValor = bcvData.fechaValor
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (supabaseUrl && serviceRoleKey) {
+        const adminClient = createPublicClient(supabaseUrl, serviceRoleKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        })
+        await adminClient
+          .from('tenants')
+          .update({
+            currency_rate_bcv: bcvData.rate,
+            settings: {
+              ...settings,
+              bcv_fecha_valor: bcvData.fechaValor,
+              bcv_last_sync: bcvData.timestamp,
+              bcv_source: bcvData.source,
+            },
+          })
+          .eq('id', tenant.id)
+      }
+    } catch (e) {
+      console.warn('Storefront SSR auto-sync error:', (e as Error).message)
+    }
+  }
+
+  if (!fechaValor) {
+    try {
+      const today = new Intl.DateTimeFormat('es-VE', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(new Date())
+      fechaValor = today.charAt(0).toUpperCase() + today.slice(1)
+    } catch {
+      fechaValor = null
+    }
+  }
 
   return {
     tenant,
     products,
-    exchangeRate: Number(tenant.currency_rate_bcv) || 91.5,
+    exchangeRate,
     rateDate: tenant.created_at,
     fechaValor,
   }
@@ -105,6 +159,7 @@ export default async function StorefrontPage({ params }: PageProps) {
         exchangeRate={exchangeRate}
         rateDate={rateDate}
         fechaValor={fechaValor}
+        tenantSlug={tenant.slug}
       />
 
       {/* Hero / Store Banner with Logo and Official Badges */}
@@ -132,21 +187,14 @@ export default async function StorefrontPage({ params }: PageProps) {
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300">
                   Tasa Oficial BCV
                 </span>
-                <Link
-                  href="/admin"
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition"
-                >
-                  <ShieldCheck className="w-3 h-3 text-blue-500" />
-                  Portal Admin & POS
-                </Link>
               </div>
 
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
                 {tenant.name}
               </h1>
 
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
-                Catálogo digital en tiempo real con precios referenciales en dólares (USD) convertidos a bolívares (VES) a la tasa oficial del Banco Central de Venezuela.
+              <p className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
+                Tienda Virtual - Conectando Vidas / Creando Futuro 🚀
               </p>
             </div>
           </div>

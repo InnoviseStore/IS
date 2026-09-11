@@ -83,7 +83,8 @@ function fetchFromBcvWebsite(): Promise<BcvRateResult> {
               data.match(/Fecha\s*Valor:[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/i)
 
             const rawDate = dateMatch ? dateMatch[1].replace(/\s+/g, ' ').trim() : ''
-            const fechaValor = rawDate || new Date().toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+            const fallbackDate = new Date().toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+            const fechaValor = (rawDate || fallbackDate).charAt(0).toUpperCase() + (rawDate || fallbackDate).slice(1)
 
             resolve({
               rate,
@@ -122,18 +123,18 @@ async function fetchFromBcvMirror(): Promise<BcvRateResult> {
 
   const json = await res.json()
   const rate = Number(json.promedio)
-  const fechaActualizacion = json.fechaActualizacion
-    ? new Date(json.fechaActualizacion).toLocaleDateString('es-VE', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : ''
+  const dateObj = json.fechaActualizacion ? new Date(json.fechaActualizacion) : new Date()
+  const formattedDate = dateObj.toLocaleDateString('es-VE', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const fechaActualizacion = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1)
 
   return {
     rate,
-    fechaValor: fechaActualizacion || 'Oficial BCV',
+    fechaValor: fechaActualizacion,
     source: 'Mirror Oficial BCV (dolarapi.com)',
     timestamp: new Date().toISOString(),
   }

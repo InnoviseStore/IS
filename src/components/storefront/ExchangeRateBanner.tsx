@@ -1,24 +1,78 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { TrendingUp, ExternalLink } from 'lucide-react';
 
 interface ExchangeRateBannerProps {
   exchangeRate: number;
-  rateDate: string | null;
+  rateDate?: string | null;
   fechaValor?: string | null;
+  tenantSlug?: string;
+}
+
+function formatDisplayDate(rawDate?: string | null): string {
+  if (rawDate && rawDate.trim().length > 0 && rawDate !== 'Oficial' && rawDate !== 'Oficial BCV') {
+    const clean = rawDate.replace(/\s+/g, ' ').trim();
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+
+  // Fallback to today's date in Venezuelan Spanish
+  try {
+    const today = new Intl.DateTimeFormat('es-VE', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date());
+    return today.charAt(0).toUpperCase() + today.slice(1);
+  } catch {
+    return 'Hoy';
+  }
 }
 
 export default function ExchangeRateBanner({
-  exchangeRate,
+  exchangeRate: initialRate,
   rateDate,
-  fechaValor,
+  fechaValor: initialFechaValor,
+  tenantSlug = 'innovise',
 }: ExchangeRateBannerProps) {
-  const formatted = exchangeRate.toLocaleString('es-VE', {
+  const [currentRate, setCurrentRate] = useState(initialRate);
+  const [currentFechaValor, setCurrentFechaValor] = useState(initialFechaValor);
+
+  // Background sync on client mount to ensure real-time rate & date matching today
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncRate() {
+      try {
+        const res = await fetch(`/api/exchange-rate?tenant=${encodeURIComponent(tenantSlug)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted) {
+          if (typeof data.rate === 'number' && data.rate > 0) {
+            setCurrentRate(data.rate);
+          }
+          if (data.fechaValor) {
+            setCurrentFechaValor(data.fechaValor);
+          }
+        }
+      } catch (err) {
+        console.warn('Background exchange rate sync error:', err);
+      }
+    }
+
+    syncRate();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
+
+  const formatted = currentRate.toLocaleString('es-VE', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  const displayDate = fechaValor || rateDate || 'Oficial';
+  const displayDate = formatDisplayDate(currentFechaValor || rateDate);
 
   return (
     <div className="mb-6 flex items-center justify-center px-2 sm:px-4">

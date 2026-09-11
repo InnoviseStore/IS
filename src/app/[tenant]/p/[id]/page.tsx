@@ -90,6 +90,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
         exchangeRate={exchangeRate}
         rateDate={tenant.created_at}
         fechaValor={fechaValor}
+        tenantSlug={tenant.slug}
       />
 
       {/* Main product view */}

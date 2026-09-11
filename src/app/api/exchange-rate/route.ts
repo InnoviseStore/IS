@@ -1,6 +1,30 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { fetchLiveBcvRate } from '@/lib/bcv'
 import { NextRequest, NextResponse } from 'next/server'
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceRoleKey) return null
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
+
+function getTodayFormatted(): string {
+  try {
+    const today = new Intl.DateTimeFormat('es-VE', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date())
+    return today.charAt(0).toUpperCase() + today.slice(1)
+  } catch {
+    return 'Hoy'
+  }
+}
 
 /**
  * GET /api/exchange-rate?tenant=innovise&sync=true
@@ -31,9 +55,10 @@ export async function GET(request: NextRequest) {
   let source = (settings.bcv_source as string) || 'https://www.bcv.org.ve/'
 
   // Check if we should auto-sync with BCV
-  // If forced, or if no fecha_valor exists, or if last sync is older than 30 minutes
+  // If forced, or if last sync is not from today, or older than 30 minutes
   const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000
-  const isOutdated = !lastSync || new Date(lastSync).getTime() < thirtyMinutesAgo
+  const isToday = lastSync && new Date(lastSync).toDateString() === new Date().toDateString()
+  const isOutdated = !lastSync || !isToday || new Date(lastSync).getTime() < thirtyMinutesAgo
 
   if (forceSync || isOutdated) {
     try {
@@ -50,7 +75,10 @@ export async function GET(request: NextRequest) {
         bcv_source: source,
       }
 
-      await supabase
+      const adminClient = getAdminClient()
+      const dbClient = adminClient || supabase
+
+      await dbClient
         .from('tenants')
         .update({
           currency_rate_bcv: rate,
@@ -60,6 +88,10 @@ export async function GET(request: NextRequest) {
     } catch (bcvError) {
       console.warn('Auto-sync BCV error (using stored fallback):', (bcvError as Error).message)
     }
+  }
+
+  if (!fechaValor) {
+    fechaValor = getTodayFormatted()
   }
 
   return NextResponse.json({
@@ -119,7 +151,10 @@ export async function POST(request: NextRequest) {
         bcv_source: bcvData.source,
       }
 
-      await supabase
+      const adminClient = getAdminClient()
+      const dbClient = adminClient || supabase
+
+      await dbClient
         .from('tenants')
         .update({
           currency_rate_bcv: bcvData.rate,
