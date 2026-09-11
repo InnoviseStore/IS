@@ -48,24 +48,41 @@ export default function SuperAdminMasterPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const supabase = createClient()
-
-    const [{ data: tenantsData }, { data: profilesData }] = await Promise.all([
-      supabase.from('tenants').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('*'),
-    ])
-
-    const fetchedTenants = (tenantsData ?? []) as Tenant[]
-    setTenants(fetchedTenants)
-    setProfiles((profilesData ?? []) as Profile[])
-
-    if (activeTenant) {
-      const updated = fetchedTenants.find((t) => t.id === activeTenant.id)
-      if (updated) switchTenant(updated)
+    try {
+      // 1. Intentar cargar desde la API del servidor (usa Service Role y no se bloquea por RLS)
+      const res = await fetch('/api/admin/master')
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.tenants)) {
+          setTenants(data.tenants)
+        }
+        if (Array.isArray(data.profiles)) {
+          setProfiles(data.profiles)
+        }
+      } else {
+        // Fallback a cliente Supabase si la ruta falla
+        const supabase = createClient()
+        const [{ data: tenantsData }, { data: profilesData }] = await Promise.all([
+          supabase.from('tenants').select('*').order('created_at', { ascending: false }),
+          supabase.from('profiles').select('*'),
+        ])
+        if (tenantsData) setTenants(tenantsData as Tenant[])
+        if (profilesData) setProfiles(profilesData as Profile[])
+      }
+    } catch (err) {
+      console.error('Error al cargar datos master:', err)
+      // Fallback de emergencia
+      try {
+        const supabase = createClient()
+        const { data: tenantsData } = await supabase.from('tenants').select('*').order('created_at', { ascending: false })
+        if (tenantsData) setTenants(tenantsData as Tenant[])
+      } catch (fallbackErr) {
+        console.error('Error en fallback de tenants:', fallbackErr)
+      }
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
-  }, [activeTenant, switchTenant])
+  }, [])
 
   useEffect(() => {
     loadData()
