@@ -65,6 +65,10 @@ export async function POST(req: Request) {
     const {
       tenant_id,
       customer_id,
+      customer_name,
+      customer_phone,
+      customer_email,
+      customer_id_number,
       items,
       subtotal_usd,
       total_usd,
@@ -93,6 +97,10 @@ export async function POST(req: Request) {
     const quotePayload = {
       tenant_id,
       customer_id: customer_id || null,
+      customer_name: (customer_name && String(customer_name).trim()) || 'Cliente General',
+      customer_phone: (customer_phone && String(customer_phone).trim()) || null,
+      customer_email: (customer_email && String(customer_email).trim()) || null,
+      customer_id_number: (customer_id_number && String(customer_id_number).trim()) || null,
       quotation_number: quotationNumber,
       status: 'draft',
       items,
@@ -154,5 +162,53 @@ export async function POST(req: Request) {
     const message = err instanceof Error ? err.message : 'Error al guardar el presupuesto.'
     console.error('Error in /api/admin/quotations:', message)
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// DELETE: Eliminar cotización
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    const tenantId = searchParams.get('tenant_id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'id es requerido' }, { status: 400 })
+    }
+
+    const supabase = getAdminClient()
+
+    // 1. Intentar borrar en tabla 'quotations'
+    await supabase.from('quotations').delete().eq('id', id)
+
+    // 2. Si estaba en settings, actualizar settings
+    if (tenantId) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('settings')
+        .eq('id', tenantId)
+        .single()
+
+      const currentSettings = ((tenantData?.settings || {}) as Record<string, unknown>)
+      if (Array.isArray(currentSettings.quotations)) {
+        const updatedList = currentSettings.quotations.filter((q: any) => q.id !== id)
+        await supabase
+          .from('tenants')
+          .update({
+            settings: {
+              ...currentSettings,
+              quotations: updatedList,
+            },
+          })
+          .eq('id', tenantId)
+      }
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error al eliminar cotización' },
+      { status: 500 }
+    )
   }
 }

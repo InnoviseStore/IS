@@ -6,6 +6,7 @@ export type PaymentMethodType =
   | 'cash_ves'
   | 'transfer_ves'
   | 'debit_ves'
+  | 'credit_7d'
 
 export interface PaymentMethod {
   method: PaymentMethodType
@@ -251,6 +252,10 @@ export interface Quotation {
   id: string
   tenant_id: string
   customer_id: string | null
+  customer_name?: string | null
+  customer_phone?: string | null
+  customer_email?: string | null
+  customer_id_number?: string | null
   quotation_number: string
   status: 'draft' | 'sent' | 'approved' | 'expired' | 'converted'
   items: QuotationItem[]

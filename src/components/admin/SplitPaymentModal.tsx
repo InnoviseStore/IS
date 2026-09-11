@@ -20,7 +20,10 @@ const METHOD_LABELS: Record<PaymentMethodType, string> = {
   cash_ves: '💴 Efectivo VES',
   transfer_ves: '🏛️ Transferencia (VES)',
   debit_ves: '💳 Punto / Débito (VES)',
+  credit_7d: '⏳ Crédito (7 días)',
 }
+
+const SELECTABLE_METHODS: PaymentMethodType[] = ['zelle', 'pago_movil', 'cash_usd', 'cash_ves', 'transfer_ves', 'debit_ves']
 
 // Métodos que se ingresan en VES
 const VES_METHODS: PaymentMethodType[] = ['pago_movil', 'cash_ves', 'transfer_ves', 'debit_ves']
@@ -110,10 +113,16 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-VE')
   const availableCredit = selectedCustomer
-    ? selectedCustomer.credit_limit_usd - selectedCustomer.current_debt_usd
+    ? Number(selectedCustomer.credit_limit_usd) - Number(selectedCustomer.current_debt_usd)
     : 0
 
-  const canConfirm = Math.abs(remainingUsd) < 0.01 && (!isCredit || (selectedCustomer && availableCredit >= grandTotalUsd))
+  const creditAmountUsd = isCredit ? Math.max(0, parseFloat((grandTotalUsd - paidUsd).toFixed(4))) : 0
+  const exceedsLimit = isCredit && selectedCustomer && creditAmountUsd > (availableCredit + 0.01)
+  const paidExceedsTotal = paidUsd > (grandTotalUsd + 0.01)
+
+  const canConfirm = isCredit
+    ? (selectedCustomer !== null && !exceedsLimit && !paidExceedsTotal && creditAmountUsd > 0)
+    : Math.abs(remainingUsd) < 0.01
 
   async function handleConfirm() {
     if (!tenant || !profile) return
@@ -122,7 +131,8 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
 
     const supabase = createClient()
 
-    const paymentBreakdown = payments.map((row) => {
+    const validPayments = payments.filter((row) => (parseFloat(row.amount) || 0) > 0)
+    const paymentBreakdown = validPayments.map((row) => {
       const amount = parseFloat(row.amount) || 0
       const isVes = VES_METHODS.includes(row.method)
       const isUsd = USD_METHODS.includes(row.method)
@@ -135,6 +145,16 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
         igtf_amount: rowIgtf || undefined,
       }
     })
+
+    if (isCredit && creditAmountUsd > 0) {
+      paymentBreakdown.push({
+        method: 'credit_7d' as const,
+        amount_usd: parseFloat(creditAmountUsd.toFixed(4)),
+        amount_ves: parseFloat((creditAmountUsd * exchangeRate).toFixed(2)),
+        reference: `Crédito a 7 días (Vence: ${dueDate})`,
+        igtf_amount: undefined,
+      })
+    }
 
     try {
       const payload = {
@@ -149,6 +169,8 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
         total_ves: parseFloat(grandTotalVes.toFixed(2)),
         payment_breakdown: paymentBreakdown,
         created_by: profile.id,
+        credit_amount_usd: isCredit ? creditAmountUsd : 0,
+        due_date: isCredit ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
         items: cartItems.map((item) => ({
           product_id: item.product_id,
           product_name: item.name,
@@ -287,7 +309,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                   <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 px-4 py-3 text-xs space-y-1.5 font-medium">
                     <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Límite de crédito:</span><span className="font-bold text-slate-800 dark:text-slate-200">${selectedCustomer.credit_limit_usd.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Deuda actual:</span><span className="font-bold text-amber-700 dark:text-amber-400">${selectedCustomer.current_debt_usd.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Disponible:</span><span className={`font-extrabold ${availableCredit >= grandTotalUsd ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>${availableCredit.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Disponible:</span><span className={`font-extrabold ${availableCredit >= creditAmountUsd ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>${availableCredit.toFixed(2)}</span></div>
                     <div className="flex justify-between pt-1 border-t border-amber-200 dark:border-amber-900/60"><span className="text-slate-600 dark:text-slate-400">Fecha de vencimiento:</span><span className="font-bold text-slate-800 dark:text-slate-200">{dueDate}</span></div>
                   </div>
                 )}
@@ -295,103 +317,116 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
             )}
           </div>
 
-          {/* SECTION 2: Payment Methods */}
-          {!isCredit && (
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-3">2. Métodos de Pago</h3>
-
-              {/* IGTF Notice */}
-              {isIgtfAgent && (
-                <div className="mb-3 flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300 font-medium">
-                  <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                  <span>Este comercio es <strong>Agente IGTF</strong>. Se aplicará automáticamente el <strong>3% de IGTF</strong> sobre los montos pagados en divisas (Zelle y Efectivo USD).</span>
-                </div>
+          {/* SECTION 2: Payment Methods (Or Initial Downpayment when Credit) */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                {isCredit ? '2. Abono Inicial / Pago Parcial (Opcional)' : '2. Métodos de Pago'}
+              </h3>
+              {isCredit && (
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md">
+                  Venta Financiada (FINA)
+                </span>
               )}
+            </div>
 
-              <div className="space-y-2.5">
-                {payments.map((row) => {
-                  const isVes = VES_METHODS.includes(row.method)
-                  const isUsd = USD_METHODS.includes(row.method)
-                  const rowAmount = parseFloat(row.amount) || 0
-                  const rowIgtf = isIgtfAgent && isUsd ? rowAmount * IGTF_RATE : 0
-                  return (
-                    <div key={row.id} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={row.method}
-                          onChange={(e) => updateRow(row.id, 'method', e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
-                        >
-                          {Object.entries(METHOD_LABELS).map(([k, v]) => (
-                            <option key={k} value={k} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{v}</option>
-                          ))}
-                        </select>
+            {isCredit && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                Si el cliente pagará el 100% a crédito, no es necesario registrar métodos de pago hoy. Si entrega un anticipo o abono inicial, ingrésalo aquí.
+              </p>
+            )}
 
-                        {/* Monto en pantallas grandes (>= sm) */}
-                        <div className="hidden sm:block w-36 relative">
-                          <input
-                            type="number" min="0" step="0.01"
-                            placeholder={isVes ? 'Monto Bs.' : 'Monto USD'}
-                            value={row.amount}
-                            onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
-                          />
-                        </div>
+            {/* IGTF Notice */}
+            {isIgtfAgent && (
+              <div className="mb-3 flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300 font-medium">
+                <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>Este comercio es <strong>Agente IGTF</strong>. Se aplicará automáticamente el <strong>3% de IGTF</strong> sobre los montos pagados en divisas (Zelle y Efectivo USD).</span>
+              </div>
+            )}
 
-                        {/* Referencia en pantallas grandes (>= sm) */}
+            <div className="space-y-2.5">
+              {payments.map((row) => {
+                const isVes = VES_METHODS.includes(row.method)
+                const isUsd = USD_METHODS.includes(row.method)
+                const rowAmount = parseFloat(row.amount) || 0
+                const rowIgtf = isIgtfAgent && isUsd ? rowAmount * IGTF_RATE : 0
+                return (
+                  <div key={row.id} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={row.method}
+                        onChange={(e) => updateRow(row.id, 'method', e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
+                      >
+                        {SELECTABLE_METHODS.map((k) => (
+                          <option key={k} value={k} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{METHOD_LABELS[k]}</option>
+                        ))}
+                      </select>
+
+                      {/* Monto en pantallas grandes (>= sm) */}
+                      <div className="hidden sm:block w-36 relative">
                         <input
-                          type="text" placeholder="Referencia (opcional)"
+                          type="number" min="0" step="0.01"
+                          placeholder={isVes ? 'Monto Bs.' : 'Monto USD'}
+                          value={row.amount}
+                          onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                        />
+                      </div>
+
+                      {/* Referencia en pantallas grandes (>= sm) */}
+                      <input
+                        type="text" placeholder="Referencia (opcional)"
+                        value={row.reference}
+                        onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
+                        className="hidden sm:block flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                      />
+
+                      <button onClick={() => removeRow(row.id)} disabled={!isCredit && payments.length === 1}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-500 disabled:opacity-30 transition cursor-pointer flex-shrink-0"
+                        title="Eliminar método"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Fila inferior exclusiva para móvil (< sm): Monto y Referencia */}
+                    <div className="flex sm:hidden items-center gap-2">
+                      <div className="flex-1 relative">
+                        <input
+                          type="number" min="0" step="0.01"
+                          placeholder={isVes ? 'Monto en Bs.' : 'Monto en USD'}
+                          value={row.amount}
+                          onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          type="text" placeholder="Nro. Referencia"
                           value={row.reference}
                           onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
-                          className="hidden sm:block flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                         />
-
-                        <button onClick={() => removeRow(row.id)} disabled={payments.length === 1}
-                          className="p-2 rounded-xl text-slate-400 hover:text-rose-500 disabled:opacity-30 transition cursor-pointer flex-shrink-0"
-                          title="Eliminar método"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
-
-                      {/* Fila inferior exclusiva para móvil (< sm): Monto y Referencia */}
-                      <div className="flex sm:hidden items-center gap-2">
-                        <div className="flex-1 relative">
-                          <input
-                            type="number" min="0" step="0.01"
-                            placeholder={isVes ? 'Monto en Bs.' : 'Monto en USD'}
-                            value={row.amount}
-                            onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <input
-                            type="text" placeholder="Nro. Referencia"
-                            value={row.reference}
-                            onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      {/* IGTF per-row indicator */}
-                      {isIgtfAgent && isUsd && rowAmount > 0 && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold pl-1">
-                          + IGTF 3%: <span className="font-extrabold">${rowIgtf.toFixed(2)} USD</span>
-                        </p>
-                      )}
                     </div>
-                  )
-                })}
-              </div>
-              <button onClick={addPaymentRow}
-                className="mt-2.5 flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
-                <Plus className="w-3.5 h-3.5" />
-                Agregar método de pago
-              </button>
+
+                    {/* IGTF per-row indicator */}
+                    {isIgtfAgent && isUsd && rowAmount > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold pl-1">
+                        + IGTF 3%: <span className="font-extrabold">${rowIgtf.toFixed(2)} USD</span>
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-          )}
+            <button onClick={addPaymentRow}
+              className="mt-2.5 flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              <Plus className="w-3.5 h-3.5" />
+              {isCredit ? 'Agregar abono inicial' : 'Agregar método de pago'}
+            </button>
+          </div>
 
           {/* SECTION 3: Balance */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-4 space-y-2 font-medium">
@@ -419,7 +454,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
             </div>
 
             {/* Payment status */}
-            {!isCredit && (
+            {!isCredit ? (
               <>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Total cubierto:</span>
@@ -430,6 +465,30 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                   <span>{Math.abs(remainingUsd) < 0.01 ? '✓ Cubierto' : `$${remainingUsd.toFixed(2)} USD`}</span>
                 </div>
               </>
+            ) : (
+              <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-700 pt-2">
+                {paidUsd > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600 dark:text-slate-400">Abono inicial recibido hoy:</span>
+                    <span className="font-extrabold text-emerald-600 dark:text-emerald-400">${paidUsd.toFixed(2)} USD</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-amber-700 dark:text-amber-400 font-bold">Monto financiado a crédito (7d):</span>
+                  <span className="font-extrabold text-amber-700 dark:text-amber-400">${creditAmountUsd.toFixed(2)} USD</span>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <span>Crédito restante tras la venta:</span>
+                  <span className={`font-bold ${availableCredit >= creditAmountUsd ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    ${(availableCredit - creditAmountUsd).toFixed(2)} USD
+                  </span>
+                </div>
+                {exceedsLimit && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-bold mt-1 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-900">
+                    ⚠️ El monto a crédito (${creditAmountUsd.toFixed(2)}) excede el límite disponible del cliente (${availableCredit.toFixed(2)}).
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -446,7 +505,15 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
             </button>
             <button onClick={handleConfirm} disabled={!canConfirm || loading}
               className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-500/20 active:scale-[0.98]">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" />Registrando…</> : `Confirmar — $${grandTotalUsd.toFixed(2)}`}
+              {loading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Registrando…</>
+              ) : isCredit ? (
+                paidUsd > 0
+                  ? `Confirmar: Abono $${paidUsd.toFixed(2)} + Crédito $${creditAmountUsd.toFixed(2)}`
+                  : `Confirmar Venta a Crédito ($${creditAmountUsd.toFixed(2)})`
+              ) : (
+                `Confirmar — $${grandTotalUsd.toFixed(2)}`
+              )}
             </button>
           </div>
         </div>

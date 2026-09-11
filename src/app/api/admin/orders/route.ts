@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       total_usd: Number(total_usd) || 0,
       total_ves: Number(total_ves) || 0,
       payment_breakdown: payment_breakdown || [],
+      due_date: payment_condition === 'credit_7d' ? new Date(Date.now() + 7 * 86400000).toISOString() : null,
       created_by: created_by || null,
     }
 
@@ -111,12 +112,20 @@ export async function POST(req: Request) {
     }
 
     // 4. Actualizar deuda de cliente si fue venta a crédito
-    if (isCredit && customer_id && customer) {
+    if (isCredit && customer_id) {
       try {
+        const debtToAdd = Number(body.credit_amount_usd ?? total_usd) || 0
+        const { data: custData } = await supabase
+          .from('customers')
+          .select('current_debt_usd')
+          .eq('id', customer_id)
+          .single()
+
+        const currentDebt = Number(custData?.current_debt_usd) || 0
         await supabase
           .from('customers')
           .update({
-            current_debt_usd: (Number(customer.current_debt_usd) || 0) + Number(total_usd),
+            current_debt_usd: currentDebt + debtToAdd,
           })
           .eq('id', customer_id)
       } catch (e) {
@@ -131,6 +140,111 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al procesar la venta.'
     console.error('Error in /api/admin/orders:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// DELETE: Anular y eliminar orden con clave de seguridad de administrador
+export async function DELETE(req: Request) {
+  try {
+    const body = await req.json()
+    const { order_id, admin_key } = body
+
+    if (!order_id) {
+      return NextResponse.json({ error: 'ID de la orden es requerido' }, { status: 400 })
+    }
+
+    // Validación estricta de clave de seguridad admin
+    if (admin_key !== '997603710921') {
+      return NextResponse.json({ error: 'Clave de seguridad de administrador incorrecta.' }, { status: 403 })
+    }
+
+    const supabase = getAdminClient()
+
+    // 1. Obtener la orden con sus items asociados
+    const { data: order, error: fetchErr } = await supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .eq('id', order_id)
+      .single()
+
+    if (fetchErr || !order) {
+      return NextResponse.json({ error: 'No se encontró la orden solicitada.' }, { status: 404 })
+    }
+
+    // 2. Restaurar stock de cada producto involucrado
+    if (Array.isArray(order.order_items)) {
+      for (const item of order.order_items) {
+        if (item.product_id) {
+          const { data: prod } = await supabase
+            .from('products')
+            .select('stock')
+            .eq('id', item.product_id)
+            .single()
+
+          if (prod) {
+            const restoredStock = (prod.stock || 0) + (item.quantity || 0)
+            await supabase
+              .from('products')
+              .update({ stock: restoredStock })
+              .eq('id', item.product_id)
+
+            await supabase.from('inventory_logs').insert({
+              tenant_id: order.tenant_id,
+              product_id: item.product_id,
+              change_type: 'adjustment',
+              quantity: item.quantity,
+              previous_stock: prod.stock,
+              new_stock: restoredStock,
+              reference_id: order.id,
+              notes: `Anulación de orden ${order.order_number} por administrador`,
+            })
+          }
+        }
+      }
+    }
+
+    // 3. Revertir deuda del cliente si la orden tuvo crédito
+    if (order.customer_id) {
+      const creditRow = Array.isArray(order.payment_breakdown)
+        ? order.payment_breakdown.find((p: any) => p.method === 'credit_7d')
+        : null
+      const debtToDeduct = creditRow
+        ? Number(creditRow.amount_usd)
+        : (order.payment_condition === 'credit_7d' ? Number(order.total_usd) : 0)
+
+      if (debtToDeduct > 0) {
+        const { data: cust } = await supabase
+          .from('customers')
+          .select('current_debt_usd')
+          .eq('id', order.customer_id)
+          .single()
+
+        if (cust) {
+          const newDebt = Math.max(0, (Number(cust.current_debt_usd) || 0) - debtToDeduct)
+          await supabase
+            .from('customers')
+            .update({ current_debt_usd: newDebt })
+            .eq('id', order.customer_id)
+        }
+      }
+    }
+
+    // 4. Eliminar order_items y luego orders
+    await supabase.from('order_items').delete().eq('order_id', order_id)
+    const { error: delErr } = await supabase.from('orders').delete().eq('id', order_id)
+
+    if (delErr) {
+      throw new Error(delErr.message)
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Venta ${order.order_number} eliminada correctamente. El inventario y la deuda fueron restablecidos.`,
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al eliminar la orden.'
+    console.error('Error in DELETE /api/admin/orders:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

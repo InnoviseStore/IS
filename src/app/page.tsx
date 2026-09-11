@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 export default function LandingPage() {
-  const whatsappDevUrl = `https://wa.me/584120000000?text=${encodeURIComponent(
+  const whatsappDevUrl = `https://wa.me/584262485369?text=${encodeURIComponent(
     'Hola! Vengo de la página principal de Innovise Store / IS System. Me gustaría consultar presupuesto y detalles para implementar esta plataforma de comercio electrónico y POS para mi negocio.'
   )}`
 
@@ -317,15 +317,15 @@ export default function LandingPage() {
                 className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 transition active:scale-95"
               >
                 <MessageCircle className="w-5 h-5" />
-                <span>Escribir por WhatsApp</span>
+                <span>WhatsApp: 0426-2485369</span>
               </a>
 
               <a
-                href="mailto:yiovannerpc@gmail.com?subject=Consulta%20Plataforma%20IS%20System"
+                href="mailto:innovisestore@gmail.com?subject=Consulta%20Plataforma%20IS%20System"
                 className="px-6 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-sm flex items-center justify-center gap-2 backdrop-blur-xs transition active:scale-95"
               >
                 <Mail className="w-4 h-4" />
-                <span>yiovannerpc@gmail.com</span>
+                <span>innovisestore@gmail.com</span>
               </a>
             </div>
           </div>

@@ -19,6 +19,9 @@ export default function QuotationsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [customCustomerName, setCustomCustomerName] = useState('')
+  const [customCustomerPhone, setCustomCustomerPhone] = useState('')
+  const [customCustomerIdNumber, setCustomCustomerIdNumber] = useState('')
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([])
   const [validDays, setValidDays] = useState(15)
   const [notes, setNotes] = useState('')
@@ -91,6 +94,11 @@ export default function QuotationsPage() {
       subtotal_usd: parseFloat((i.product.base_price_usd * i.quantity).toFixed(4)),
     }))
 
+    const customerName = selectedCustomer?.full_name || customCustomerName.trim() || 'Cliente General'
+    const customerPhone = selectedCustomer?.phone || customCustomerPhone.trim() || null
+    const customerIdNumber = selectedCustomer?.id_number || customCustomerIdNumber.trim() || null
+    const customerEmail = selectedCustomer?.email || null
+
     try {
       const res = await fetch('/api/admin/quotations', {
         method: 'POST',
@@ -98,6 +106,10 @@ export default function QuotationsPage() {
         body: JSON.stringify({
           tenant_id: tenant.id,
           customer_id: selectedCustomer?.id ?? null,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          customer_email: customerEmail,
+          customer_id_number: customerIdNumber,
           items,
           subtotal_usd: parseFloat(quoteTotalUsd.toFixed(4)),
           total_usd: parseFloat(quoteTotalUsd.toFixed(4)),
@@ -118,12 +130,26 @@ export default function QuotationsPage() {
       setIsCreating(false)
       setCart([])
       setSelectedCustomer(null)
+      setCustomCustomerName('')
+      setCustomCustomerPhone('')
+      setCustomCustomerIdNumber('')
       setNotes('')
       loadQuotations()
     } catch (err: unknown) {
       setModalError(err instanceof Error ? err.message : 'Error inesperado al guardar.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDeleteQuotation(id: string) {
+    if (!tenant) return
+    if (!confirm('¿Deseas eliminar este presupuesto?')) return
+    try {
+      await fetch(`/api/admin/quotations?id=${id}&tenant_id=${tenant.id}`, { method: 'DELETE' })
+      loadQuotations()
+    } catch (e) {
+      console.error('Error al eliminar presupuesto:', e)
     }
   }
 
@@ -193,6 +219,7 @@ export default function QuotationsPage() {
               <thead className="bg-slate-50/75 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold">
                 <tr>
                   <th className="py-2.5 px-4">N° Cotización</th>
+                  <th className="py-2.5 px-4">Cliente</th>
                   <th className="py-2.5 px-4">Vence</th>
                   <th className="py-2.5 px-4">Artículos</th>
                   <th className="py-2.5 px-4 text-right">Total USD</th>
@@ -207,9 +234,17 @@ export default function QuotationsPage() {
                     <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-slate-100">
                       {q.quotation_number}
                     </td>
-                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {q.valid_until}
+                    <td className="py-3 px-4 text-slate-800 dark:text-slate-200 font-semibold">
+                      {q.customer_name || 'Cliente General'}
+                      {q.customer_id_number && (
+                        <span className="block text-[10px] text-slate-400 font-normal">CI/RIF: {q.customer_id_number}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {q.valid_until}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
                       {q.items.length} productos ({q.items.reduce((s, i) => s + i.quantity, 0)} uds)
@@ -239,6 +274,13 @@ export default function QuotationsPage() {
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition"
                         >
                           Ir al POS <ArrowRight className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteQuotation(q.id)}
+                          className="p-1 rounded-md text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                          title="Eliminar cotización"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>
@@ -270,15 +312,15 @@ export default function QuotationsPage() {
             )}
 
             {/* Selector de Cliente y Validez */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-slate-500 font-semibold mb-1">Cliente Corporativo</label>
+                <label className="block text-slate-500 font-semibold mb-1">Cliente Registrado (Opcional)</label>
                 <select
                   value={selectedCustomer?.id ?? ''}
                   onChange={(e) => setSelectedCustomer(customers.find((c) => c.id === e.target.value) ?? null)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
                 >
-                  <option value="">Consumidor / Empresa Genérica</option>
+                  <option value="">Cliente Ocasional / Empresa</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>{c.full_name} ({c.id_number ?? 'S/R'})</option>
                   ))}
@@ -298,6 +340,55 @@ export default function QuotationsPage() {
                 </select>
               </div>
             </div>
+
+            {/* Datos del Cliente no registrado */}
+            {!selectedCustomer ? (
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Nombre / Empresa</label>
+                  <input
+                    type="text"
+                    value={customCustomerName}
+                    onChange={(e) => setCustomCustomerName(e.target.value)}
+                    placeholder="ej. Inversiones Caracas C.A."
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Cédula / RIF</label>
+                  <input
+                    type="text"
+                    value={customCustomerIdNumber}
+                    onChange={(e) => setCustomCustomerIdNumber(e.target.value)}
+                    placeholder="ej. J-12345678-9"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Teléfono</label>
+                  <input
+                    type="text"
+                    value={customCustomerPhone}
+                    onChange={(e) => setCustomCustomerPhone(e.target.value)}
+                    placeholder="ej. 0414-1234567"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 text-xs">
+                <span className="font-semibold text-blue-800 dark:text-blue-300">
+                  Cliente: <strong>{selectedCustomer.full_name}</strong> (CI/RIF: {selectedCustomer.id_number || 'S/R'}) · Tlf: {selectedCustomer.phone || 'S/T'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomer(null)}
+                  className="text-blue-600 hover:text-blue-800 text-[11px] font-bold"
+                >
+                  Cambiar
+                </button>
+              </div>
+            )}
 
             {/* Añadir Productos */}
             <div>
