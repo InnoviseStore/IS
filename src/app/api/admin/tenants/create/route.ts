@@ -61,9 +61,9 @@ export async function POST(req: Request) {
         slug: cleanSlug,
         phone_whatsapp: cleanPhone,
         currency_rate_bcv: 91.50,
-        is_active: true,
-        plan: plan || 'pro',
         settings: {
+          is_active: true,
+          plan: plan || 'pro',
           currency_display: 'USD',
           show_ves_price: true,
           description: slogan || `Catálogo oficial de ${name.trim()}`,

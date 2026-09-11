@@ -97,7 +97,14 @@ export default function SuperAdminMasterPage() {
     })
     if (res.ok) {
       setTenants((prev) =>
-        prev.map((t) => (t.id === tenantId ? { ...t, is_active: next } : t))
+        prev.map((t) => {
+          if (t.id !== tenantId) return t
+          const prevSettings = (t.settings || {}) as Record<string, unknown>
+          return {
+            ...t,
+            settings: { ...prevSettings, is_active: next },
+          }
+        })
       )
     }
   }
@@ -171,7 +178,10 @@ export default function SuperAdminMasterPage() {
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Comercios Registrados</p>
           <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{tenants.length}</p>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            {tenants.filter((t) => t.is_active !== false).length} tiendas activas
+            {tenants.filter((t) => {
+              const s = (t.settings || {}) as Record<string, unknown>
+              return s.is_active !== false && (t as unknown as { is_active?: boolean }).is_active !== false
+            }).length} tiendas activas
           </p>
         </div>
 
@@ -253,13 +263,15 @@ export default function SuperAdminMasterPage() {
                 {filteredTenants.map((t) => {
                   const tenantUsers = profiles.filter((p) => p.tenant_id === t.id)
                   const owner = tenantUsers.find((p) => p.role === 'owner') || tenantUsers[0]
-                  const isActive = t.is_active !== false
+                  const tenantSettings = (t.settings || {}) as Record<string, unknown>
+                  const isActive = tenantSettings.is_active !== false && (t as unknown as { is_active?: boolean }).is_active !== false
+                  const tenantPlan = (tenantSettings.plan as string) || (t as unknown as { plan?: string }).plan || 'pro'
 
                   return (
                     <tr key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900 dark:text-white text-sm">{t.name}</div>
-                        <div className="text-[10px] text-slate-400">Plan: {t.plan ?? 'pro'}</div>
+                        <div className="text-[10px] text-slate-400">Plan: {tenantPlan}</div>
                       </td>
                       <td className="py-3 px-4">
                         <a

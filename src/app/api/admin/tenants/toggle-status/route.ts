@@ -13,12 +13,27 @@ export async function PATCH(req: Request) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-    const { error } = await supabase
+    // Obtener settings actuales para actualizar is_active sin sobreescribir otros datos
+    const { data: currentTenant, error: fetchErr } = await supabase
       .from('tenants')
-      .update({ is_active: isActive })
+      .select('settings')
+      .eq('id', tenantId)
+      .single()
+
+    if (fetchErr) throw fetchErr
+
+    const currentSettings = (currentTenant?.settings || {}) as Record<string, unknown>
+    const updatedSettings = {
+      ...currentSettings,
+      is_active: isActive,
+    }
+
+    const { error: updateErr } = await supabase
+      .from('tenants')
+      .update({ settings: updatedSettings })
       .eq('id', tenantId)
 
-    if (error) throw error
+    if (updateErr) throw updateErr
 
     return NextResponse.json({ success: true, is_active: isActive })
   } catch (err) {
