@@ -32,14 +32,20 @@ export default async function StorefrontLayout({
   const isOldDefault = !rawDesc || rawDesc.toLowerCase().includes('tecnolog') || rawDesc.toLowerCase().includes('en caracas')
   const description = isOldDefault ? 'Tienda Oficial' : rawDesc
 
+  const themeObj = (settings.theme || {}) as Record<string, string>
   const store: StoreData = {
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
     logo_url: (settings.logo_url as string) || (tenant as unknown as { logo_url?: string }).logo_url || '/logo.png',
+    isotype_url: (settings.isotype_url as string) || null,
+    imagotype_url: (settings.imagotype_url as string) || null,
     phone_whatsapp: tenant.phone_whatsapp,
     instagram_handle: (settings.instagram_handle as string) || 'innovise.ve',
     description,
+    slogan: (settings.slogan as string) || null,
+    primary_color: themeObj.primaryColor || null,
+    accent_color: themeObj.accentColor || null,
   }
 
   const exchangeRate = Number(tenant.currency_rate_bcv) || 91.5

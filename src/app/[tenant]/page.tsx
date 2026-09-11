@@ -151,6 +151,7 @@ export default async function StorefrontPage({ params }: PageProps) {
   }
 
   const { tenant, products, exchangeRate, rateDate, fechaValor } = data
+  const settings = (tenant.settings || {}) as Record<string, unknown>
 
   return (
     <main className="min-h-[calc(100vh-16rem)]">
@@ -166,10 +167,10 @@ export default async function StorefrontPage({ params }: PageProps) {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2 animate-page-enter">
         <div className="rounded-3xl bg-gradient-to-br from-blue-600/10 via-indigo-600/5 to-white/40 dark:to-slate-900/40 p-6 sm:p-8 border border-blue-200/60 dark:border-blue-900/30 backdrop-blur-md shadow-sm">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
-            {/* Logo de la tienda */}
+            {/* Logo de la tienda: Prioriza Imagotipo si existe */}
             <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-md flex-shrink-0 flex items-center justify-center p-2">
               <Image
-                src={tenant.logo_url || '/logo.png'}
+                src={(settings.imagotype_url as string) || tenant.logo_url || '/logo.png'}
                 alt={tenant.name}
                 width={112}
                 height={112}
@@ -195,7 +196,7 @@ export default async function StorefrontPage({ params }: PageProps) {
               </h1>
 
               <p className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
-                Tienda Virtual - Conectando Vidas / Creando Futuro 🚀
+                {(settings.slogan as string) || (settings.description as string) || 'Tienda Virtual - Conectando Vidas / Creando Futuro 🚀'}
               </p>
             </div>
           </div>

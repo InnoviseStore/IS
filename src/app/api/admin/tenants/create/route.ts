@@ -3,7 +3,24 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: Request) {
   try {
-    const { name, slug, phone_whatsapp, adminEmail, adminPassword, plan } = await req.json()
+    const {
+      name,
+      slug,
+      phone_whatsapp,
+      adminEmail,
+      adminPassword,
+      plan,
+      rubro,
+      logo_url,
+      isotype_url,
+      imagotype_url,
+      slogan,
+      instagram_handle,
+      theme,
+      suggested_categories,
+      createSampleProducts,
+      sampleProducts,
+    } = await req.json()
 
     if (!name || !slug || !adminEmail || !adminPassword) {
       return NextResponse.json(
@@ -32,20 +49,32 @@ export async function POST(req: Request) {
       )
     }
 
-    // 2. Insert new tenant
+    const cleanPhone = phone_whatsapp ? phone_whatsapp.replace(/[^0-9]/g, '') : null
+    const cleanInstagram = instagram_handle ? instagram_handle.replace(/^@/, '').trim() : null
+    const finalLogoUrl = imagotype_url || logo_url || isotype_url || '/logo.png'
+
+    // 2. Insert new tenant with complete branding and settings
     const { data: newTenant, error: tenantErr } = await supabase
       .from('tenants')
       .insert({
         name: name.trim(),
         slug: cleanSlug,
-        phone_whatsapp: phone_whatsapp ? phone_whatsapp.replace(/[^0-9]/g, '') : null,
+        phone_whatsapp: cleanPhone,
         currency_rate_bcv: 91.50,
         is_active: true,
         plan: plan || 'pro',
         settings: {
           currency_display: 'USD',
           show_ves_price: true,
-          description: `Catálogo oficial de ${name.trim()}`,
+          description: slogan || `Catálogo oficial de ${name.trim()}`,
+          slogan: slogan || `Catálogo oficial de ${name.trim()}`,
+          rubro: rubro || 'general',
+          logo_url: finalLogoUrl,
+          isotype_url: isotype_url || null,
+          imagotype_url: imagotype_url || null,
+          instagram_handle: cleanInstagram,
+          theme: theme || { primaryColor: '#2563eb', accentColor: '#4f46e5' },
+          suggested_categories: Array.isArray(suggested_categories) ? suggested_categories : [],
         },
       })
       .select()
@@ -83,6 +112,25 @@ export async function POST(req: Request) {
 
     if (profileErr) {
       throw new Error(profileErr.message)
+    }
+
+    // 5. Optional starter products for immediate catalog readiness
+    if (createSampleProducts && Array.isArray(sampleProducts) && sampleProducts.length > 0) {
+      try {
+        const starterRows = sampleProducts.map((sp: { name: string; sku: string; description: string; base_price_usd: number; cost_usd: number; stock?: number }) => ({
+          tenant_id: newTenant.id,
+          name: sp.name,
+          sku: sp.sku,
+          description: sp.description,
+          base_price_usd: sp.base_price_usd,
+          cost_usd: sp.cost_usd,
+          stock: sp.stock || 10,
+          is_active: true,
+        }))
+        await supabase.from('products').insert(starterRows)
+      } catch (prodErr) {
+        console.warn('Could not insert sample products:', prodErr)
+      }
     }
 
     return NextResponse.json({

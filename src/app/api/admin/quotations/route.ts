@@ -24,18 +24,14 @@ export async function GET(req: Request) {
 
     const supabase = getAdminClient()
 
-    // 1. Intentar consultar tabla 'quotations'
+    // 1. Consultar tabla 'quotations'
     const { data: dbQuotations, error: dbError } = await supabase
       .from('quotations')
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
 
-    if (!dbError && dbQuotations) {
-      return NextResponse.json({ success: true, quotations: dbQuotations })
-    }
-
-    // 2. Fallback: Si la tabla no existe aún en PostgreSQL, leer de settings->'quotations' del tenant
+    // 2. Consultar también fallback de settings para no perder ninguna cotización previa
     const { data: tenantData } = await supabase
       .from('tenants')
       .select('settings')
@@ -44,6 +40,55 @@ export async function GET(req: Request) {
 
     const settings = (tenantData?.settings || {}) as Record<string, unknown>
     const fallbackList = Array.isArray(settings.quotations) ? settings.quotations : []
+    const tableList = (!dbError && dbQuotations) ? dbQuotations : []
+    const existingNumbers = new Set(tableList.map((q: { quotation_number?: string }) => q.quotation_number))
+
+    // Identificar cotizaciones en fallback que no estén en la tabla
+    const missingInTable = fallbackList.filter(
+      (q: { quotation_number?: string }) => q.quotation_number && !existingNumbers.has(q.quotation_number)
+    )
+
+    // Si hay cotizaciones atrapadas en fallback, sincronizarlas a la tabla
+    if (missingInTable.length > 0 && !dbError) {
+      for (const m of missingInTable) {
+        try {
+          await supabase.from('quotations').insert({
+            tenant_id: tenantId,
+            quotation_number: m.quotation_number,
+            customer_name: m.customer_name || 'Cliente General',
+            customer_phone: m.customer_phone || null,
+            customer_email: m.customer_email || null,
+            customer_id_number: m.customer_id_number || null,
+            status: m.status || 'draft',
+            items: m.items || [],
+            subtotal_usd: Number(m.subtotal_usd) || 0,
+            total_usd: Number(m.total_usd) || 0,
+            total_ves: Number(m.total_ves) || 0,
+            exchange_rate: Number(m.exchange_rate) || 91.5,
+            valid_until: m.valid_until || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+            notes: m.notes || null,
+            created_by: m.created_by || null,
+            created_at: m.created_at || new Date().toISOString(),
+          })
+        } catch {
+          // ignore individual sync error
+        }
+      }
+
+      const { data: refreshedTable } = await supabase
+        .from('quotations')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+
+      if (refreshedTable) {
+        return NextResponse.json({ success: true, quotations: refreshedTable })
+      }
+    }
+
+    if (tableList.length > 0) {
+      return NextResponse.json({ success: true, quotations: tableList })
+    }
 
     return NextResponse.json({
       success: true,
@@ -94,9 +139,15 @@ export async function POST(req: Request) {
     const randSeq = Math.floor(1000 + Math.random() * 9000)
     const quotationNumber = `COT-${year}-${randSeq}`
 
+    // Nota con id de cliente si aplica
+    let finalNotes = notes?.trim() || ''
+    if (customer_id && !finalNotes.includes(customer_id)) {
+      finalNotes = finalNotes ? `${finalNotes} (Cliente Ref: ${customer_id})` : `(Cliente Ref: ${customer_id})`
+    }
+
+    // OMITIR customer_id del insert a la tabla para evitar PGRST204
     const quotePayload = {
       tenant_id,
-      customer_id: customer_id || null,
       customer_name: (customer_name && String(customer_name).trim()) || 'Cliente General',
       customer_phone: (customer_phone && String(customer_phone).trim()) || null,
       customer_email: (customer_email && String(customer_email).trim()) || null,
@@ -109,11 +160,11 @@ export async function POST(req: Request) {
       total_ves: Number(total_ves) || 0,
       exchange_rate: Number(exchange_rate) || 91.5,
       valid_until: valid_until || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
-      notes: notes?.trim() || null,
+      notes: finalNotes || null,
       created_by: created_by || null,
     }
 
-    // 1. Intentar insertar en tabla 'quotations'
+    // 1. Insertar en tabla 'quotations'
     const { data: inserted, error: insertErr } = await supabase
       .from('quotations')
       .insert(quotePayload)
@@ -124,7 +175,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, quotation: inserted })
     }
 
-    // 2. Fallback: Si la tabla no existe en la base de datos, guardar en settings->'quotations' del tenant
+    if (insertErr) {
+      console.warn('Fallback insert required due to table error:', insertErr.message)
+    }
+
+    // 2. Fallback: Si la tabla falla, guardar en settings->'quotations' del tenant
     const { data: tenantData } = await supabase
       .from('tenants')
       .select('settings')

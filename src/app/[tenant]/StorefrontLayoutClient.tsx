@@ -11,9 +11,14 @@ export interface StoreData {
   name: string
   slug: string
   logo_url: string | null
+  isotype_url?: string | null
+  imagotype_url?: string | null
   phone_whatsapp: string | null
   instagram_handle: string | null
   description: string | null
+  slogan?: string | null
+  primary_color?: string | null
+  accent_color?: string | null
 }
 
 interface Props {
@@ -44,16 +49,18 @@ function StorefrontHeader({ store }: { store: StoreData }) {
     })
   }
 
+  const headerLogo = store.isotype_url || store.logo_url || '/logo.png'
+
   return (
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/85 dark:bg-slate-900/85 border-b border-slate-200/80 dark:border-slate-800/80 shadow-xs transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo / store name */}
           <Link href={`/${store.slug}`} className="flex items-center gap-3 group">
-            {(store.logo_url || '/logo.png') ? (
+            {headerLogo ? (
               <div className="relative h-9 w-9 rounded-xl overflow-hidden ring-2 ring-blue-100 dark:ring-blue-900/60 group-hover:ring-blue-400 transition-all">
                 <Image
-                  src={store.logo_url || '/logo.png'}
+                  src={headerLogo}
                   alt={store.name}
                   fill
                   unoptimized
@@ -141,10 +148,10 @@ function StorefrontShell({
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
               {/* Branding */}
               <div className="flex items-center gap-3">
-                {(store.logo_url || '/logo.png') ? (
+                {(store.imagotype_url || store.logo_url || '/logo.png') ? (
                   <div className="relative h-10 w-10 rounded-xl overflow-hidden">
                     <Image
-                      src={store.logo_url || '/logo.png'}
+                      src={store.imagotype_url || store.logo_url || '/logo.png'}
                       alt={store.name}
                       fill
                       unoptimized
