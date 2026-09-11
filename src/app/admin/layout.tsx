@@ -73,10 +73,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           {tenant?.logo_url ? (
             <div className="relative w-9 h-9 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex-shrink-0 flex items-center justify-center p-1">
               <Image
-                src={tenant.logo_url}
+                src={tenant.logo_url || '/logo.png'}
                 alt={tenant.name || 'Logo'}
                 width={36}
                 height={36}
+                unoptimized
                 className="object-contain"
               />
             </div>

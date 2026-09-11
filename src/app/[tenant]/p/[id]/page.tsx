@@ -85,7 +85,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
     .select('*')
     .eq('tenant_id', tenant.id)
     .eq('is_active', true)
-    .neq('id', productId)
+    .neq('id', dbProduct.id)
     .limit(4)
 
   const relatedProducts: Product[] = ((relatedRaw as unknown as DBProduct[]) ?? []).map((p) => ({

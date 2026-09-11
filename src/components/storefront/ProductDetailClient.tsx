@@ -71,22 +71,25 @@ export function ProductDetailClient({
   const outOfStock = product.stock_quantity === 0
   const maxStock = product.stock_quantity ?? 99
 
-  // Consolidar fotos del producto y de las variantes
+  // Consolidar fotos del producto y de las variantes de forma segura
   const baseImages = (product.images && product.images.length > 0)
     ? product.images
     : (product.image_url ? [product.image_url] : [])
 
-  // Añadir fotos de colores que no estén en la lista base
-  const allImages = [...baseImages]
-  colors.forEach((c) => {
-    if (c.image_url && !allImages.includes(c.image_url)) {
-      allImages.push(c.image_url)
-    }
-  })
+  const [additionalImages, setAdditionalImages] = useState<string[]>([])
 
-  const imagesList = allImages.length > 0 ? allImages : []
+  const rawImages = [
+    ...baseImages,
+    ...colors.map((c) => c.image_url),
+    ...additionalImages,
+  ]
+
+  const imagesList = Array.from(
+    new Set(rawImages.filter((img): img is string => typeof img === 'string' && img.trim().length > 0))
+  )
+
   const [activeImageIndex, setActiveImageIndex] = useState(0)
-  const currentImage = imagesList[activeImageIndex] || product.image_url
+  const currentImage = imagesList[activeImageIndex] || (product.image_url && product.image_url.trim().length > 0 ? product.image_url : null)
 
   function scrollThumbnails(direction: 'left' | 'right') {
     if (!thumbnailsRef.current) return
@@ -96,13 +99,13 @@ export function ProductDetailClient({
 
   function handleSelectColor(color: ColorVariant) {
     setSelectedColor(color.name)
-    if (color.image_url) {
+    if (color.image_url && typeof color.image_url === 'string' && color.image_url.trim().length > 0) {
       const idx = imagesList.indexOf(color.image_url)
       if (idx !== -1) {
         setActiveImageIndex(idx)
       } else {
-        imagesList.push(color.image_url)
-        setActiveImageIndex(imagesList.length - 1)
+        setAdditionalImages((prev) => [...prev, color.image_url!])
+        setActiveImageIndex(imagesList.length)
       }
     }
   }
@@ -118,9 +121,13 @@ export function ProductDetailClient({
   }
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(hover: none)').matches) {
+      return
+    }
     const { left, top, width, height } = e.currentTarget.getBoundingClientRect()
-    const x = ((e.clientX - left) / width) * 100
-    const y = ((e.clientY - top) / height) * 100
+    if (!width || !height) return
+    const x = Math.max(0, Math.min(100, ((e.clientX - left) / width) * 100))
+    const y = Math.max(0, Math.min(100, ((e.clientY - top) / height) * 100))
     setZoomCoords({ x, y })
   }
 
@@ -190,6 +197,7 @@ export function ProductDetailClient({
                   alt={product.name}
                   fill
                   priority
+                  unoptimized
                   className="zoom-image object-contain p-4 transition-transform duration-200"
                   style={
                     zoomCoords
@@ -235,8 +243,8 @@ export function ProductDetailClient({
                 </>
               )}
 
-              {/* Badge de Zoom */}
-              <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-[11px] font-semibold text-slate-600 dark:text-slate-300 backdrop-blur-xs pointer-events-none shadow-xs">
+              {/* Badge de Zoom (solo visible en PC donde hay cursor) */}
+              <div className="hidden sm:flex absolute bottom-3 right-3 items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-[11px] font-semibold text-slate-600 dark:text-slate-300 backdrop-blur-xs pointer-events-none shadow-xs">
                 <ZoomIn className="w-3.5 h-3.5" />
                 Pasa el cursor para zoom
               </div>
@@ -488,6 +496,7 @@ export function ProductDetailClient({
                         src={rel.image_url}
                         alt={rel.name}
                         fill
+                        unoptimized
                         className="object-cover group-hover:scale-105 transition-transform duration-300"
                         sizes="(max-width: 640px) 50vw, 25vw"
                       />

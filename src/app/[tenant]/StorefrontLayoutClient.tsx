@@ -50,12 +50,14 @@ function StorefrontHeader({ store }: { store: StoreData }) {
         <div className="flex items-center justify-between h-16">
           {/* Logo / store name */}
           <Link href={`/${store.slug}`} className="flex items-center gap-3 group">
-            {store.logo_url ? (
+            {(store.logo_url || '/logo.png') ? (
               <div className="relative h-9 w-9 rounded-xl overflow-hidden ring-2 ring-blue-100 dark:ring-blue-900/60 group-hover:ring-blue-400 transition-all">
                 <Image
-                  src={store.logo_url}
+                  src={store.logo_url || '/logo.png'}
                   alt={store.name}
                   fill
+                  unoptimized
+                  priority
                   className="object-contain"
                   sizes="36px"
                 />
@@ -139,12 +141,13 @@ function StorefrontShell({
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
               {/* Branding */}
               <div className="flex items-center gap-3">
-                {store.logo_url ? (
+                {(store.logo_url || '/logo.png') ? (
                   <div className="relative h-10 w-10 rounded-xl overflow-hidden">
                     <Image
-                      src={store.logo_url}
+                      src={store.logo_url || '/logo.png'}
                       alt={store.name}
                       fill
+                      unoptimized
                       className="object-contain"
                       sizes="40px"
                     />

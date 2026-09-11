@@ -36,7 +36,7 @@ export default async function StorefrontLayout({
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
-    logo_url: (settings.logo_url as string) || null,
+    logo_url: (settings.logo_url as string) || (tenant as unknown as { logo_url?: string }).logo_url || '/logo.png',
     phone_whatsapp: tenant.phone_whatsapp,
     instagram_handle: (settings.instagram_handle as string) || 'innovise.ve',
     description,

@@ -174,6 +174,7 @@ export default async function StorefrontPage({ params }: PageProps) {
                 width={112}
                 height={112}
                 className="object-contain"
+                unoptimized
                 priority
               />
             </div>
