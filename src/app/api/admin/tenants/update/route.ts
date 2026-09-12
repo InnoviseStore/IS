@@ -14,6 +14,7 @@ export async function POST(req: Request) {
       instagram_handle,
       theme,
       rubro,
+      plan,
     } = await req.json()
 
     if (!tenant_id) {
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
       logo_url: finalLogoUrl,
       ...(instagram_handle !== undefined ? { instagram_handle: cleanInstagram || null } : {}),
       ...(theme ? { theme } : {}),
+      ...(plan ? { plan } : {}),
     }
 
     // 2. Actualizar tenant en la base de datos

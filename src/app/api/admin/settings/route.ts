@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 function getAdminClient() {
@@ -15,7 +15,7 @@ function getAdminClient() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { tenant_id, phone_whatsapp, currency_rate_bcv, name } = body
+    const { tenant_id, phone_whatsapp, currency_rate_bcv, name, plan } = body
 
     if (!tenant_id) {
       return NextResponse.json(
@@ -42,6 +42,19 @@ export async function POST(req: Request) {
 
     if (name !== undefined && typeof name === 'string' && name.trim()) {
       updateData.name = name.trim()
+    }
+
+    if (plan !== undefined) {
+      const { data: currentTenant } = await supabase
+        .from('tenants')
+        .select('settings')
+        .eq('id', tenant_id)
+        .single()
+      const prevSettings = (currentTenant?.settings || {}) as Record<string, unknown>
+      updateData.settings = {
+        ...prevSettings,
+        plan,
+      }
     }
 
     if (Object.keys(updateData).length === 0) {

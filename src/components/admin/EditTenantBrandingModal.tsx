@@ -57,6 +57,7 @@ export function EditTenantBrandingModal({ isOpen, onClose, tenant, onSuccess }: 
   const [accentColor, setAccentColor] = useState('#4f46e5')
   const [phone, setPhone] = useState('')
   const [instagram, setInstagram] = useState('')
+  const [plan, setPlan] = useState<'basic' | 'pro' | 'enterprise'>('pro')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +81,7 @@ export function EditTenantBrandingModal({ isOpen, onClose, tenant, onSuccess }: 
       setAccentColor(theme.accentColor || '#4f46e5')
       setPhone(tenant.phone_whatsapp || '')
       setInstagram((settings.instagram_handle as string) || '')
+      setPlan(((settings.plan as any) || (tenant as any).plan || 'pro') as any)
       setError(null)
       setSavedSuccess(false)
     }
@@ -122,6 +124,7 @@ export function EditTenantBrandingModal({ isOpen, onClose, tenant, onSuccess }: 
           slogan: slogan.trim() || null,
           instagram_handle: instagram.trim() || null,
           rubro: rubroId,
+          plan,
           theme: {
             primaryColor,
             accentColor,
@@ -596,6 +599,25 @@ export function EditTenantBrandingModal({ isOpen, onClose, tenant, onSuccess }: 
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Plan SaaS de la Tienda */}
+                <div className="pt-2">
+                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-indigo-500" /> Plan SaaS de la Tienda
+                  </label>
+                  <select
+                    value={plan}
+                    onChange={(e) => setPlan(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500 transition cursor-pointer text-xs sm:text-sm font-semibold"
+                  >
+                    <option value="basic">🟢 Plan Básico (Emprendedor)</option>
+                    <option value="pro">🔵 Plan Pro (Profesional - Recomendado)</option>
+                    <option value="enterprise">🟣 Plan Enterprise (Corporativo / Cadenas)</option>
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Cambia los módulos activos y el nivel de beneficios de esta tienda.
+                  </p>
                 </div>
               </div>
             )}

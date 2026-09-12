@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useTenant } from '@/contexts/TenantContext'
-import { Save, ExternalLink, RefreshCw, Loader2, AlertCircle, Check } from 'lucide-react'
+import { Save, ExternalLink, RefreshCw, Loader2, AlertCircle, Check, Tag, Sparkles } from 'lucide-react'
+import { getPlanLabel } from '@/lib/formatters'
 import Link from 'next/link'
 
 export default function SettingsPage() {
   const { tenant, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
   const [rate, setRate] = useState(exchangeRate.toString())
   const [phone, setPhone] = useState(tenant?.phone_whatsapp ?? '')
+  const [plan, setPlan] = useState<'basic' | 'pro' | 'enterprise'>('pro')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -18,7 +20,10 @@ export default function SettingsPage() {
     if (tenant?.phone_whatsapp) {
       setPhone(tenant.phone_whatsapp)
     }
-  }, [tenant?.phone_whatsapp])
+    const tenantSettings = (tenant?.settings || {}) as Record<string, unknown>
+    const currentPlan = (tenantSettings.plan as any) || (tenant as any)?.plan || 'pro'
+    setPlan(currentPlan)
+  }, [tenant])
 
   useEffect(() => {
     setRate(exchangeRate.toString())
@@ -30,8 +35,9 @@ export default function SettingsPage() {
     setErrorMessage(null)
 
     const r = parseFloat(rate)
-    const payload: { phone_whatsapp?: string; currency_rate_bcv?: number } = {
+    const payload: { phone_whatsapp?: string; currency_rate_bcv?: number; plan?: string } = {
       phone_whatsapp: phone.trim(),
+      plan,
     }
 
     if (!isNaN(r) && r > 0) {
@@ -145,6 +151,105 @@ export default function SettingsPage() {
                 Fecha Valor oficial registrada: <strong className="text-slate-800 dark:text-slate-200">{bcvFechaValor}</strong>
               </p>
             )}
+          </div>
+
+          {/* Plan de la Tienda */}
+          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800/80">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-indigo-500" /> Plan SaaS de la Tienda
+              </label>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+                Plan Activo: {getPlanLabel(plan)}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              Selecciona el plan que se adapte al volumen de tu negocio. Puedes cambiarlo en cualquier momento:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Básico */}
+              <button
+                type="button"
+                onClick={() => setPlan('basic')}
+                className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer relative flex flex-col justify-between ${
+                  plan === 'basic'
+                    ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30 shadow-xs ring-1 ring-emerald-500'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white/70 dark:bg-slate-800/40'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">🟢 Básico</span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">$15/m</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                    1 Sucursal POS, WhatsApp checkout, 150 productos.
+                  </p>
+                </div>
+                {plan === 'basic' && (
+                  <span className="mt-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5">
+                    <Check className="w-3 h-3" /> Seleccionado
+                  </span>
+                )}
+              </button>
+
+              {/* Pro */}
+              <button
+                type="button"
+                onClick={() => setPlan('pro')}
+                className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer relative flex flex-col justify-between overflow-hidden ${
+                  plan === 'pro'
+                    ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 shadow-xs ring-1 ring-blue-500'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white/70 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="absolute top-0 right-0 bg-blue-600 text-white text-[8px] font-black uppercase px-1.5 py-0.5 rounded-bl">
+                  Popular
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">🔵 Pro</span>
+                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">$35/m</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                    BCV en vivo, Pagos Divididos, Créditos 7d, IA Edith.
+                  </p>
+                </div>
+                {plan === 'pro' && (
+                  <span className="mt-2 text-[10px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
+                    <Check className="w-3 h-3" /> Seleccionado
+                  </span>
+                )}
+              </button>
+
+              {/* Enterprise */}
+              <button
+                type="button"
+                onClick={() => setPlan('enterprise')}
+                className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer relative flex flex-col justify-between ${
+                  plan === 'enterprise'
+                    ? 'border-purple-500 bg-purple-50/60 dark:bg-purple-950/30 shadow-xs ring-1 ring-purple-500'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white/70 dark:bg-slate-800/40'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">🟣 Enterprise</span>
+                    <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">$79/m</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                    Multi-cajas, Dominio Propio, API, Soporte 24/7.
+                  </p>
+                </div>
+                {plan === 'enterprise' && (
+                  <span className="mt-2 text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-0.5">
+                    <Check className="w-3 h-3" /> Seleccionado
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           {errorMessage && (

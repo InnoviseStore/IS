@@ -20,7 +20,9 @@ import {
   KeyRound,
   Loader2,
   ArrowRight,
-  Palette
+  Palette,
+  Tag,
+  Check
 } from 'lucide-react'
 import { formatDate, formatDateTime, getPlanLabel } from '@/lib/formatters'
 
@@ -46,6 +48,64 @@ export default function SuperAdminMasterPage() {
   const [newPasswordInput, setNewPasswordInput] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccess, setResetSuccess] = useState(false)
+
+  // Plan change modal state
+  const [selectedTenantForPlan, setSelectedTenantForPlan] = useState<Tenant | null>(null)
+  const [selectedPlanValue, setSelectedPlanValue] = useState<'basic' | 'pro' | 'enterprise'>('pro')
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planSuccess, setPlanSuccess] = useState(false)
+
+  async function handleSavePlan(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedTenantForPlan) return
+    setPlanLoading(true)
+
+    try {
+      const res = await fetch('/api/admin/tenants/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: selectedTenantForPlan.id,
+          plan: selectedPlanValue,
+        }),
+      })
+
+      if (res.ok) {
+        setPlanSuccess(true)
+        setTenants((prev) =>
+          prev.map((t) => {
+            if (t.id !== selectedTenantForPlan.id) return t
+            const prevSettings = (t.settings || {}) as Record<string, unknown>
+            return {
+              ...t,
+              settings: { ...prevSettings, plan: selectedPlanValue },
+            }
+          })
+        )
+        if (activeTenant?.id === selectedTenantForPlan.id) {
+          switchTenant({
+            ...selectedTenantForPlan,
+            settings: {
+              ...((selectedTenantForPlan.settings || {}) as Record<string, unknown>),
+              plan: selectedPlanValue,
+            },
+          })
+        }
+        setTimeout(() => {
+          setPlanSuccess(false)
+          setSelectedTenantForPlan(null)
+          loadData()
+        }, 1200)
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Error al actualizar el plan')
+      }
+    } catch (err) {
+      alert('Error de conexión al actualizar el plan')
+    } finally {
+      setPlanLoading(false)
+    }
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -273,9 +333,21 @@ export default function SuperAdminMasterPage() {
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900 dark:text-white text-sm">{t.name}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTenantForPlan(t)
+                              setSelectedPlanValue(((tenantSettings.plan as any) || (t as any).plan || 'pro'))
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/70 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                            title="Click para cambiar el plan SaaS de esta tienda"
+                          >
+                            <Tag className="w-2.5 h-2.5" />
                             {getPlanLabel(tenantPlan)}
-                          </span>
+                            <span className="text-[9px] text-blue-500 dark:text-blue-400 font-semibold underline ml-0.5">
+                              Cambiar
+                            </span>
+                          </button>
                           <span className="text-[10px] text-slate-400">
                             · {formatDate(t.created_at)}
                           </span>
@@ -332,6 +404,19 @@ export default function SuperAdminMasterPage() {
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-2">
+                          {/* Cambiar Plan SaaS */}
+                          <button
+                            onClick={() => {
+                              setSelectedTenantForPlan(t)
+                              setSelectedPlanValue(((tenantSettings.plan as any) || (t as any).plan || 'pro'))
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
+                            title="Cambiar plan de suscripción de esta tienda"
+                          >
+                            <Tag className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            Plan
+                          </button>
+
                           {/* Editar Marca, Logos & Colores */}
                           <button
                             onClick={() => {
@@ -436,6 +521,176 @@ export default function SuperAdminMasterPage() {
                     {resetLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     Guardar
                   </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal para Cambiar Plan SaaS (Portal) */}
+      {selectedTenantForPlan && mounted && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => !planLoading && setSelectedTenantForPlan(null)} />
+          <div 
+            style={{ width: '100%', maxWidth: '560px' }}
+            className="relative z-10 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl p-6 transition-all text-xs font-medium space-y-4 my-auto"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shadow-xs">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    Cambiar Plan SaaS
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    Tienda: <strong className="text-slate-800 dark:text-slate-200">{selectedTenantForPlan.name}</strong> ({selectedTenantForPlan.slug})
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => !planLoading && setSelectedTenantForPlan(null)} 
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {planSuccess ? (
+              <div className="text-center py-6 space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto animate-bounce" />
+                <p className="font-extrabold text-base text-slate-900 dark:text-white">¡Plan actualizado con éxito!</p>
+                <p className="text-xs text-slate-500">
+                  La tienda <strong className="text-slate-700 dark:text-slate-300">{selectedTenantForPlan.name}</strong> ahora cuenta con el {getPlanLabel(selectedPlanValue)}.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSavePlan} className="space-y-4">
+                <p className="text-slate-600 dark:text-slate-300 text-xs">
+                  Selecciona el nuevo nivel de plan. Los límites, módulos y funciones se actualizarán al instante:
+                </p>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {/* Básico */}
+                  <label
+                    onClick={() => setSelectedPlanValue('basic')}
+                    className={`flex items-start gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition ${
+                      selectedPlanValue === 'basic'
+                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="planChoice"
+                      value="basic"
+                      checked={selectedPlanValue === 'basic'}
+                      onChange={() => setSelectedPlanValue('basic')}
+                      className="mt-1 text-emerald-600 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                          🟢 Plan Básico <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">Emprendedor</span>
+                        </span>
+                        <span className="font-black text-xs text-slate-800 dark:text-slate-200">$15 / mes</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        1 Sucursal POS · Catálogo WhatsApp · Hasta 150 productos · Soporte Estándar.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Pro */}
+                  <label
+                    onClick={() => setSelectedPlanValue('pro')}
+                    className={`flex items-start gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition relative overflow-hidden ${
+                      selectedPlanValue === 'pro'
+                        ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 bg-blue-600 text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-bl-lg">
+                      Recomendado
+                    </div>
+                    <input
+                      type="radio"
+                      name="planChoice"
+                      value="pro"
+                      checked={selectedPlanValue === 'pro'}
+                      onChange={() => setSelectedPlanValue('pro')}
+                      className="mt-1 text-blue-600 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                          🔵 Plan Pro <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">Comercio Activo</span>
+                        </span>
+                        <span className="font-black text-xs text-slate-800 dark:text-slate-200">$35 / mes</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Multimoneda BCV en Vivo · Pagos Divididos (Zelle, Pago Móvil, Efectivo) · Créditos con WhatsApp · IA Edith · Productos Ilimitados.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Enterprise */}
+                  <label
+                    onClick={() => setSelectedPlanValue('enterprise')}
+                    className={`flex items-start gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition ${
+                      selectedPlanValue === 'enterprise'
+                        ? 'border-purple-500 bg-purple-50/50 dark:bg-purple-950/20 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="planChoice"
+                      value="enterprise"
+                      checked={selectedPlanValue === 'enterprise'}
+                      onChange={() => setSelectedPlanValue('enterprise')}
+                      className="mt-1 text-purple-600 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                          🟣 Plan Enterprise <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">Cadenas & Franquicias</span>
+                        </span>
+                        <span className="font-black text-xs text-slate-800 dark:text-slate-200">$79 / mes</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Todo de Pro + Cajas y Sucursales Ilimitadas · Dominio Propio · API & Webhooks · Reportes Financieros Avanzados · Soporte VIP 24/7.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] text-slate-400">
+                    Plan actual: <strong className="text-slate-700 dark:text-slate-300">{getPlanLabel(((selectedTenantForPlan.settings as any)?.plan || (selectedTenantForPlan as any).plan || 'pro'))}</strong>
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={planLoading}
+                      onClick={() => setSelectedTenantForPlan(null)}
+                      className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={planLoading}
+                      className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
+                    >
+                      {planLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      <span>Guardar Plan</span>
+                    </button>
+                  </div>
                 </div>
               </form>
             )}
