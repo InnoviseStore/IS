@@ -42,15 +42,47 @@ function stockLabel(qty?: number | null) {
   return 'Disponible';
 }
 
-// Categorías intuitivas detectadas por palabra clave en catálogo
-function detectCategory(name: string): string {
+// Categorías intuitivas detectadas por palabra clave en catálogo o atributos de moda
+function detectCategory(name: string, description?: string | null): string {
+  if (description) {
+    const match = description.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
+    if (match) {
+      try {
+        const data = JSON.parse(match[1])
+        if (data.garmentType) return data.garmentType
+      } catch {}
+    }
+    const badgeMatch = description.match(/^🏷️\s*([^|\n]+)/)
+    if (badgeMatch) return badgeMatch[1].trim()
+  }
+
   const n = name.toLowerCase();
+  // Ropa / Calzado
+  if (n.includes('zapato') || n.includes('sneaker') || n.includes('calzado') || n.includes('zapatilla') || n.includes('sandalia') || n.includes('bota') || n.includes('tacón') || n.includes('tacon')) return 'Calzado & Zapatos';
+  if (n.includes('pantalon') || n.includes('pantalón') || n.includes('jean') || n.includes('short') || n.includes('bermuda')) return 'Pantalones & Jeans';
+  if (n.includes('camisa') || n.includes('franela') || n.includes('top') || n.includes('blusa') || n.includes('sweater') || n.includes('chaqueta')) return 'Prendas Superiores';
+  if (n.includes('vestido') || n.includes('falda')) return 'Vestidos & Faldas';
+  if (n.includes('bolso') || n.includes('cartera') || n.includes('mochila') || n.includes('billetera')) return 'Bolsos & Carteras';
+
+  // Tecnología
   if (n.includes('funda') || n.includes('case')) return 'Fundas';
   if (n.includes('vidrio') || n.includes('mica') || n.includes('pantalla') || n.includes('protector')) return 'Micas y Protectores';
   if (n.includes('cable') || n.includes('adaptador')) return 'Cables y Conexiones';
   if (n.includes('cargador') || n.includes('power bank') || n.includes('bateria')) return 'Cargadores y Baterías';
-  if (n.includes('audifono') || n.includes('earbud') || n.includes('sound') || n.includes('audio')) return 'Audio';
-  return 'Accesorios';
+  if (n.includes('audifono') || n.includes('earbud') || n.includes('sound') || n.includes('audio') || n.includes('altavoz') || n.includes('corneta')) return 'Audio';
+  return 'General';
+}
+
+function parseApparelBadge(desc?: string | null): { gender?: string; sizes?: string[] } | null {
+  if (!desc) return null
+  const match = desc.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
+  if (match) {
+    try {
+      const data = JSON.parse(match[1])
+      return { gender: data.gender, sizes: data.sizes }
+    } catch {}
+  }
+  return null
 }
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
@@ -76,6 +108,10 @@ function ProductCard({
   const [justAdded, setJustAdded] = useState(false);
   const priceVes = product.unit_price_usd * exchangeRate;
   const outOfStock = product.stock_quantity === 0;
+  const apparel = parseApparelBadge(product.description);
+  const cleanDescription = product.description
+    ? product.description.replace(/<!--.*?-->/g, '').replace(/^🏷️[^\n]+\n\n?/, '').trim()
+    : null;
 
   function handleAdd() {
     onAdd();
@@ -122,7 +158,7 @@ function ProductCard({
       <div className="flex flex-col flex-1 p-3.5 sm:p-4 gap-2">
         <div>
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-            {detectCategory(product.name)}
+            {detectCategory(product.name, product.description)}
           </span>
           <Link href={productHref} prefetch={true}>
             <h3 className="font-bold text-sm text-slate-900 dark:text-white leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-0.5">
@@ -132,11 +168,27 @@ function ProductCard({
           {product.sku && (
             <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">SKU: {product.sku}</p>
           )}
+
+          {/* Insignias de Moda (Género y Tallas) */}
+          {apparel && (apparel.gender || (apparel.sizes && apparel.sizes.length > 0)) && (
+            <div className="flex items-center gap-1 flex-wrap mt-1.5">
+              {apparel.gender && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  {apparel.gender}
+                </span>
+              )}
+              {apparel.sizes && apparel.sizes.length > 0 && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  Tallas: {apparel.sizes.join(', ')}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {product.description && (
+        {cleanDescription && (
           <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-            {product.description}
+            {cleanDescription}
           </p>
         )}
 
@@ -235,7 +287,7 @@ export default function ProductGrid({
   // Extract all categories dynamically
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => set.add(detectCategory(p.name)));
+    products.forEach((p) => set.add(detectCategory(p.name, p.description)));
     return ['all', ...Array.from(set)];
   }, [products]);
 
@@ -251,13 +303,13 @@ export default function ProductGrid({
           p.name.toLowerCase().includes(q) ||
           (p.sku && p.sku.toLowerCase().includes(q)) ||
           (p.description && p.description.toLowerCase().includes(q)) ||
-          detectCategory(p.name).toLowerCase().includes(q)
+          detectCategory(p.name, p.description).toLowerCase().includes(q)
       );
     }
 
     // Category filter
     if (selectedCategory !== 'all') {
-      list = list.filter((p) => detectCategory(p.name) === selectedCategory);
+      list = list.filter((p) => detectCategory(p.name, p.description) === selectedCategory);
     }
 
     // Price range filter

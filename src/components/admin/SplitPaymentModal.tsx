@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
-import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
+import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
 
 interface PaymentRow {
   id: string
@@ -21,7 +22,7 @@ const METHOD_LABELS: Record<PaymentMethodType, string> = {
   cash_ves: '💴 Efectivo VES',
   transfer_ves: '🏛️ Transferencia (VES)',
   debit_ves: '💳 Punto / Débito (VES)',
-  credit_7d: '⏳ Crédito (7 días)',
+  credit_7d: '⏳ Crédito',
 }
 
 const SELECTABLE_METHODS: PaymentMethodType[] = ['zelle', 'pago_movil', 'cash_usd', 'cash_ves', 'transfer_ves', 'debit_ves']
@@ -48,7 +49,10 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [isCredit, setIsCredit] = useState(false)
+  const [creditDays, setCreditDays] = useState<number>(7)
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false)
+  const [showCollectionModal, setShowCollectionModal] = useState(false)
+  const [registeredSaleData, setRegisteredSaleData] = useState<InitialCreditSaleInfo | null>(null)
   const [payments, setPayments] = useState<PaymentRow[]>([
     { id: '1', method: 'zelle', amount: '', reference: '' }
   ])
@@ -59,23 +63,24 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
   // Detect if this tenant is an IGTF agent (set in tenant settings)
   const isIgtfAgent = Boolean((tenant?.settings as Record<string, unknown>)?.is_igtf_agent ?? false)
 
-  // Customer search with debounce
+  // Customer search with debounce (búsqueda por nombre o cédula/RIF)
   useEffect(() => {
     if (!tenant || customerType !== 'registered' || customerSearch.length < 2) {
       setCustomerResults([])
       return
     }
     const timer = setTimeout(async () => {
+      const cleanSearch = customerSearch.trim()
       const supabase = createClient()
       const { data } = await supabase
         .from('customers')
         .select('*')
         .eq('tenant_id', tenant.id)
         .eq('is_active', true)
-        .ilike('full_name', `%${customerSearch}%`)
-        .limit(6)
+        .or(`full_name.ilike.%${cleanSearch}%,id_number.ilike.%${cleanSearch}%`)
+        .limit(8)
       setCustomerResults(data ?? [])
-    }, 300)
+    }, 250)
     return () => clearTimeout(timer)
   }, [customerSearch, tenant, customerType])
 
@@ -113,7 +118,8 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
   const grandTotalVes = grandTotalUsd * exchangeRate
   const remainingUsd = grandTotalUsd - paidUsd
 
-  const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-VE')
+  const dueDateObj = new Date(Date.now() + (creditDays || 7) * 24 * 60 * 60 * 1000)
+  const dueDate = dueDateObj.toLocaleDateString('es-VE')
   const availableCredit = selectedCustomer
     ? Number(selectedCustomer.credit_limit_usd) - Number(selectedCustomer.current_debt_usd)
     : 0
@@ -153,7 +159,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
         method: 'credit_7d' as const,
         amount_usd: parseFloat(creditAmountUsd.toFixed(4)),
         amount_ves: parseFloat((creditAmountUsd * exchangeRate).toFixed(2)),
-        reference: `Crédito a 7 días (Vence: ${dueDate})`,
+        reference: `Crédito a ${creditDays} días (Vence: ${dueDate})`,
         igtf_amount: undefined,
       })
     }
@@ -172,7 +178,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
         payment_breakdown: paymentBreakdown,
         created_by: profile.id,
         credit_amount_usd: isCredit ? creditAmountUsd : 0,
-        due_date: isCredit ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
+        due_date: isCredit ? dueDateObj.toISOString() : null,
         items: cartItems.map((item) => ({
           product_id: item.product_id,
           product_name: item.name,
@@ -200,7 +206,23 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
         throw new Error(data.error || 'Error al registrar la venta')
       }
 
-      setSuccess(data.order?.order_number || 'IS-OK')
+      const orderNumber = data.order?.order_number || 'IS-OK'
+      if (isCredit && selectedCustomer) {
+        setRegisteredSaleData({
+          orderNumber,
+          totalUsd: grandTotalUsd,
+          paidUsd: paidUsd,
+          creditAmountUsd: creditAmountUsd,
+          dueDate: dueDate,
+          items: cartItems.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.unit_price_usd })),
+          payments: validPayments.map((p) => ({
+            method: p.method,
+            amountUsd: VES_METHODS.includes(p.method) ? (parseFloat(p.amount) || 0) / exchangeRate : (parseFloat(p.amount) || 0)
+          }))
+        })
+      }
+
+      setSuccess(orderNumber)
     } catch (e: unknown) {
       setError((e as Error).message ?? 'Error al guardar la orden')
     }
@@ -212,11 +234,13 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-        <div className="relative z-10 glass-card p-8 max-w-sm w-full text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+        <div className="relative z-10 glass-card p-6 sm:p-8 max-w-sm w-full text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
           <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">¡Venta Registrada!</h3>
+          <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">
+            {isCredit ? '¡Venta a Crédito Registrada!' : '¡Venta Registrada!'}
+          </h3>
           <p className="text-sm text-slate-600 dark:text-slate-300 mb-1 font-medium">
             Orden: <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{success}</span>
           </p>
@@ -228,13 +252,33 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
               IGTF (3%): <span className="font-extrabold">${igtfTotal.toFixed(2)} USD</span>
             </p>
           )}
-          <p className="text-base font-extrabold text-slate-900 dark:text-white mt-1 mb-6">
+          <p className="text-base font-extrabold text-slate-900 dark:text-white mt-1 mb-4">
             Total: <span className="text-blue-600 dark:text-blue-400">${grandTotalUsd.toFixed(2)} USD</span>
           </p>
-          <button onClick={onSuccess} className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition">
+
+          {isCredit && selectedCustomer && (
+            <button
+              type="button"
+              onClick={() => setShowCollectionModal(true)}
+              className="w-full mb-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Enviar Detalle / Cobro por WhatsApp</span>
+            </button>
+          )}
+
+          <button onClick={onSuccess} className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition cursor-pointer">
             Nueva Venta
           </button>
         </div>
+
+        {showCollectionModal && selectedCustomer && (
+          <CreditCollectionModal
+            customer={selectedCustomer}
+            initialSaleInfo={registeredSaleData || undefined}
+            onClose={() => setShowCollectionModal(false)}
+          />
+        )}
       </div>
     )
   }
@@ -275,7 +319,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                 <div className="relative flex items-center gap-2">
                   <div className="relative flex-1">
                     <input
-                      type="text" placeholder="Buscar cliente por nombre o cédula…"
+                      type="text" placeholder="Buscar cliente por nombre o cédula / RIF…"
                       value={customerSearch}
                       onChange={(e) => { setCustomerSearch(e.target.value); setSelectedCustomer(null) }}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
@@ -287,10 +331,19 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                             key={c.id}
                             type="button"
                             onClick={() => { setSelectedCustomer(c); setCustomerSearch(c.full_name); setCustomerResults([]) }}
-                            className="w-full px-4 py-3 text-left text-sm hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
+                            className="w-full px-4 py-3 text-left text-sm hover:bg-blue-50 dark:hover:bg-blue-950/40 transition cursor-pointer"
                           >
-                            <p className="font-bold text-slate-900 dark:text-white">{c.full_name}</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{c.phone || 'Sin tlf'} | Crédito disp.: ${(c.credit_limit_usd - c.current_debt_usd).toFixed(2)}</p>
+                            <div className="flex items-center justify-between">
+                              <p className="font-bold text-slate-900 dark:text-white">{c.full_name}</p>
+                              {c.id_number && (
+                                <span className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md font-semibold">
+                                  {c.id_number}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                              {c.phone ? `📱 ${c.phone}` : 'Sin tlf'} | Crédito disp.: ${(c.credit_limit_usd - c.current_debt_usd).toFixed(2)}
+                            </p>
                           </button>
                         ))}
                       </div>
@@ -299,7 +352,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                   <button
                     type="button"
                     onClick={() => setShowNewCustomerModal(true)}
-                    className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-200 dark:border-blue-900/60 transition shrink-0"
+                    className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-200 dark:border-blue-900/60 transition shrink-0 cursor-pointer"
                     title="Registrar nuevo cliente en el acto"
                   >
                     <UserPlus className="w-4 h-4" />
@@ -309,28 +362,120 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
               </div>
             )}
 
-            {selectedCustomer && (
-              <div className="mt-3 space-y-2">
+            {/* OPCIÓN GENERAL DE VENTA A CRÉDITO */}
+            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <input
-                    type="checkbox" id="credit" checked={isCredit}
-                    onChange={(e) => setIsCredit(e.target.checked)}
+                    type="checkbox"
+                    id="credit"
+                    checked={isCredit}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setIsCredit(checked)
+                      if (checked && customerType === 'final') {
+                        setCustomerType('registered')
+                      }
+                    }}
                     className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
                   />
-                  <label htmlFor="credit" className="text-sm text-slate-800 dark:text-slate-200 font-bold cursor-pointer">
-                    Venta a Crédito (7 días)
+                  <label htmlFor="credit" className="text-sm text-slate-800 dark:text-slate-200 font-bold cursor-pointer flex items-center gap-2">
+                    <span>Venta a Crédito / Financiamiento</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                      Flexible
+                    </span>
                   </label>
                 </div>
-                {isCredit && (
-                  <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 px-4 py-3 text-xs space-y-1.5 font-medium">
-                    <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Límite de crédito:</span><span className="font-bold text-slate-800 dark:text-slate-200">${selectedCustomer.credit_limit_usd.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Deuda actual:</span><span className="font-bold text-amber-700 dark:text-amber-400">${selectedCustomer.current_debt_usd.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-400">Disponible:</span><span className={`font-extrabold ${availableCredit >= creditAmountUsd ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>${availableCredit.toFixed(2)}</span></div>
-                    <div className="flex justify-between pt-1 border-t border-amber-200 dark:border-amber-900/60"><span className="text-slate-600 dark:text-slate-400">Fecha de vencimiento:</span><span className="font-bold text-slate-800 dark:text-slate-200">{dueDate}</span></div>
-                  </div>
-                )}
               </div>
-            )}
+
+              {isCredit && (
+                <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 p-3.5 text-xs space-y-3 font-medium">
+                  {/* Selector Dinámico de Días de Crédito */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-slate-700 dark:text-slate-300 font-bold">Plazo de Crédito (Días):</span>
+                      <span className="text-blue-600 dark:text-blue-400 font-black text-xs">
+                        Vence: {dueDate}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[7, 15, 30].map((days) => (
+                        <button
+                          key={days}
+                          type="button"
+                          onClick={() => setCreditDays(days)}
+                          className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                            creditDays === days
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {days} días
+                        </button>
+                      ))}
+                      <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1">
+                        <span className="text-[11px] text-slate-500 font-medium">Personalizado:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="180"
+                          value={creditDays}
+                          onChange={(e) => setCreditDays(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-12 text-center font-bold text-slate-800 dark:text-slate-100 bg-transparent outline-none text-xs"
+                        />
+                        <span className="text-[11px] text-slate-500">días</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Advertencia si no se ha seleccionado cliente registrado */}
+                  {!selectedCustomer ? (
+                    <div className="flex items-start gap-2 bg-white/80 dark:bg-slate-900/80 border border-amber-300 dark:border-amber-800/80 rounded-xl p-3 text-amber-900 dark:text-amber-200">
+                      <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                      <div className="space-y-1">
+                        <p className="text-xs">
+                          Para otorgar crédito es indispensable asignar o registrar un cliente con cédula y teléfono para llevar el control y enviar los recordatorios de cobro.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomerType('registered')
+                            setShowNewCustomerModal(true)
+                          }}
+                          className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 hover:underline text-xs cursor-pointer mt-1"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Registrar nuevo cliente en el acto</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 pt-2 border-t border-amber-200/80 dark:border-amber-900/60">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">Cliente titular:</span>
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {selectedCustomer.full_name} {selectedCustomer.id_number && `(${selectedCustomer.id_number})`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">Límite de crédito:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">${selectedCustomer.credit_limit_usd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">Deuda actual:</span>
+                        <span className="font-bold text-amber-700 dark:text-amber-400">${selectedCustomer.current_debt_usd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 dark:text-slate-400">Disponible:</span>
+                        <span className={`font-extrabold ${availableCredit >= creditAmountUsd ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          ${availableCredit.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* SECTION 2: Payment Methods (Or Initial Downpayment when Credit) */}
@@ -490,7 +635,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-amber-700 dark:text-amber-400 font-bold">Monto financiado a crédito (7d):</span>
+                  <span className="text-amber-700 dark:text-amber-400 font-bold">Monto financiado a crédito ({creditDays} días):</span>
                   <span className="font-extrabold text-amber-700 dark:text-amber-400">${creditAmountUsd.toFixed(2)} USD</span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">

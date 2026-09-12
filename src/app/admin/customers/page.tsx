@@ -6,6 +6,7 @@ import { useTenant } from '@/contexts/TenantContext'
 import type { Customer } from '@/types/database'
 import { Search, Users, MessageCircle, Plus, Pencil } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
+import { CreditCollectionModal } from '@/components/admin/CreditCollectionModal'
 
 export default function CustomersPage() {
   const { tenant } = useTenant()
@@ -14,6 +15,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [collectionCustomer, setCollectionCustomer] = useState<Customer | null>(null)
 
   const load = useCallback(async () => {
     if (!tenant) return
@@ -119,15 +121,11 @@ export default function CustomersPage() {
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        {c.current_debt_usd > 0 && c.phone ? (
+                        {c.current_debt_usd > 0 ? (
                           <button
-                            onClick={() => {
-                              const cleanPhone = c.phone!.replace(/[^0-9]/g, '')
-                              const msg = `Hola ${c.full_name}, te escribimos de *${tenant?.name ?? 'Innovise Store'}* para recordarte que tienes un saldo pendiente a crédito por *$${c.current_debt_usd.toFixed(2)} USD*. Agradecemos tu pronta confirmación para conciliar tu cuenta.`
-                              window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank')
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 transition"
-                            title="Enviar recordatorio de cobro por WhatsApp"
+                            onClick={() => setCollectionCustomer(c)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer"
+                            title="Gestionar cobro detallado por WhatsApp"
                           >
                             <MessageCircle className="w-3.5 h-3.5" />
                             Cobrar
@@ -156,6 +154,13 @@ export default function CustomersPage() {
           onSaved={() => {
             load()
           }}
+        />
+      )}
+
+      {collectionCustomer && (
+        <CreditCollectionModal
+          customer={collectionCustomer}
+          onClose={() => setCollectionCustomer(null)}
         />
       )}
     </div>

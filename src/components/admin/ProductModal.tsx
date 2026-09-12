@@ -24,6 +24,37 @@ interface ColorVariantItem {
   image_url?: string
 }
 
+export interface ApparelAttributes {
+  garmentType?: string
+  gender?: string
+  sizes: string[]
+}
+
+function parseApparelAttributes(desc?: string | null): { cleanDescription: string; apparel: ApparelAttributes } {
+  if (!desc) return { cleanDescription: '', apparel: { sizes: [] } }
+  const match = desc.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
+  if (!match) {
+    return { cleanDescription: desc, apparel: { sizes: [] } }
+  }
+  try {
+    const apparel = JSON.parse(match[1]) as ApparelAttributes
+    const cleanDescription = desc
+      .replace(/<!--APPAREL_ATTRIBUTES:(.*?)-->/, '')
+      .replace(/^🏷️[^\n]+\n\n?/, '')
+      .trim()
+    return {
+      cleanDescription,
+      apparel: {
+        garmentType: apparel.garmentType || '',
+        gender: apparel.gender || '',
+        sizes: Array.isArray(apparel.sizes) ? apparel.sizes : [],
+      },
+    }
+  } catch {
+    return { cleanDescription: desc, apparel: { sizes: [] } }
+  }
+}
+
 function parseColorVariants(desc?: string | null): { baseDescription: string; colors: ColorVariantItem[] } {
   if (!desc) return { baseDescription: '', colors: [] }
   const match = desc.match(/<!--COLOR_VARIANTS:(.*?)-->/)
@@ -93,14 +124,28 @@ export function ProductModal({ product, onClose, onSaved }: Props) {
   const colorFileInputRef = useRef<HTMLInputElement>(null)
 
   const parsedInitial = parseColorVariants(product?.description)
+  const parsedApparel = parseApparelAttributes(parsedInitial.baseDescription)
 
   const [name, setName] = useState(product?.name ?? '')
-  const [description, setDescription] = useState(parsedInitial.baseDescription)
+  const [description, setDescription] = useState(parsedApparel.cleanDescription)
   const [sku, setSku] = useState(product?.sku ?? '')
   const [priceUsd, setPriceUsd] = useState(product?.base_price_usd?.toString() ?? '')
   const [costUsd, setCostUsd] = useState(product?.cost_usd?.toString() ?? '')
   const [stock, setStock] = useState(product?.stock?.toString() ?? '0')
   const [isActive, setIsActive] = useState(product?.is_active ?? true)
+
+  // Rubro Ropa / Calzado (Especializado)
+  const isFashionRubro =
+    (tenant?.settings as Record<string, unknown>)?.rubro === 'moda' ||
+    tenant?.slug === 'emeve-vzla'
+
+  const [showApparelSection, setShowApparelSection] = useState(
+    Boolean(isFashionRubro || parsedApparel.apparel.garmentType || parsedApparel.apparel.sizes.length > 0)
+  )
+  const [apparelGarmentType, setApparelGarmentType] = useState(parsedApparel.apparel.garmentType || '')
+  const [apparelGender, setApparelGender] = useState(parsedApparel.apparel.gender || '')
+  const [apparelSizes, setApparelSizes] = useState<string[]>(parsedApparel.apparel.sizes || [])
+  const [customSizeInput, setCustomSizeInput] = useState('')
 
   // Variantes de color
   const [colors, setColors] = useState<ColorVariantItem[]>(parsedInitial.colors)
@@ -311,8 +356,29 @@ export function ProductModal({ product, onClose, onSaved }: Props) {
 
     const primaryImage = allImages[0] || null
 
-    // Serializar variantes de color dentro de description
-    const baseDesc = description.replace(/<!--COLOR_VARIANTS:(.*?)-->/, '').trim()
+    // Serializar atributos de moda y variantes de color dentro de description
+    let baseDesc = description
+      .replace(/<!--COLOR_VARIANTS:(.*?)-->/, '')
+      .replace(/<!--APPAREL_ATTRIBUTES:(.*?)-->/, '')
+      .replace(/^🏷️[^\n]+\n\n?/, '')
+      .trim()
+
+    // Si tiene atributos de ropa/calzado, generar la etiqueta estructurada y la insignia legible
+    if (apparelGarmentType || apparelGender || apparelSizes.length > 0) {
+      const apparelData: ApparelAttributes = {
+        garmentType: apparelGarmentType || undefined,
+        gender: apparelGender || undefined,
+        sizes: apparelSizes,
+      }
+      const badgeParts = []
+      if (apparelGarmentType) badgeParts.push(apparelGarmentType)
+      if (apparelGender) badgeParts.push(apparelGender)
+      if (apparelSizes.length > 0) badgeParts.push(`Tallas: ${apparelSizes.join(', ')}`)
+
+      const badgeLine = badgeParts.length > 0 ? `🏷️ ${badgeParts.join(' | ')}\n\n` : ''
+      baseDesc = `<!--APPAREL_ATTRIBUTES:${JSON.stringify(apparelData)}-->\n${badgeLine}${baseDesc}`
+    }
+
     const finalDescription = colors.length > 0
       ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(colors)}-->`
       : baseDesc
@@ -573,6 +639,200 @@ export function ProductModal({ product, onClose, onSaved }: Props) {
                 />
               </div>
             </div>
+
+            {/* SECCIÓN ESPECIALIZADA: RUBRO ROPA & CALZADO */}
+            {(isFashionRubro || showApparelSection) && (
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-50/60 via-purple-50/40 to-blue-50/30 dark:from-slate-800/90 dark:to-slate-800/50 border border-pink-200/80 dark:border-slate-700 space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-pink-100 dark:bg-pink-950/80 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-sm shadow-xs">
+                      👗
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        Rubro Ropa & Calzado (Especializado)
+                      </h3>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Categorización por tipo de prenda, género y tallas para tu tienda
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300 border border-pink-200 dark:border-pink-900">
+                    Moda & Calzado
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* 1. Tipo de Prenda o Calzado */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Tipo de Prenda / Calzado:
+                    </label>
+                    <select
+                      value={apparelGarmentType}
+                      onChange={(e) => setApparelGarmentType(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    >
+                      <option value="">-- Seleccionar Categoría --</option>
+                      <optgroup label="Prendas de Vestir">
+                        <option value="Franelas & Camisetas">👕 Franelas & Camisetas</option>
+                        <option value="Camisas & Blusas">👔 Camisas & Blusas</option>
+                        <option value="Pantalones & Jeans">👖 Pantalones & Jeans</option>
+                        <option value="Shorts & Bermudas">🩳 Shorts & Bermudas</option>
+                        <option value="Vestidos & Faldas">👗 Vestidos & Faldas</option>
+                        <option value="Chaquetas & Sweaters">🧥 Chaquetas & Sweaters</option>
+                        <option value="Ropa Deportiva / Fitness">🏃 Ropa Deportiva / Fitness</option>
+                        <option value="Ropa Interior & Pijamas">🩲 Ropa Interior & Pijamas</option>
+                      </optgroup>
+                      <optgroup label="Calzado">
+                        <option value="Calzado Deportivo / Sneakers">👟 Sneakers / Zapatillas Deportivas</option>
+                        <option value="Calzado Casual & Zapatos">👞 Calzado Casual / Zapatos</option>
+                        <option value="Sandalias & Pantuflas">👡 Sandalias & Pantuflas</option>
+                        <option value="Botas & Botines">👢 Botas & Botines</option>
+                        <option value="Tacones">👠 Tacones & Plataformas</option>
+                      </optgroup>
+                      <optgroup label="Accesorios de Moda">
+                        <option value="Carteras & Bolsos">👜 Carteras, Bolsos & Mochilas</option>
+                        <option value="Gorras & Sombreros">🧢 Gorras & Sombreros</option>
+                        <option value="Cinturones & Billeteras">👛 Cinturones & Billeteras</option>
+                        <option value="Joyería & Relojes">💍 Joyería & Relojes</option>
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  {/* 2. Público / Género */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Público / Género:
+                    </label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {['Hombre', 'Mujer', 'Unisex', 'Niño', 'Niña'].map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => setApparelGender(apparelGender === g ? '' : g)}
+                          className={`py-1.5 px-2 rounded-xl text-center text-xs font-bold transition cursor-pointer ${
+                            apparelGender === g
+                              ? 'bg-pink-600 text-white shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {g === 'Hombre' && '👨 Hombre'}
+                          {g === 'Mujer' && '👩 Mujer'}
+                          {g === 'Unisex' && '⚧️ Unisex'}
+                          {g === 'Niño' && '👦 Niño'}
+                          {g === 'Niña' && '👧 Niña'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Tallas Disponibles (Multi-selección) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      Tallas Disponibles ({apparelSizes.length} seleccionadas):
+                    </label>
+                    {apparelSizes.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setApparelSizes([])}
+                        className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        Limpiar tallas
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* Selector de Tallas Ropa */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] font-semibold text-slate-400 mr-1">Ropa:</span>
+                      {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'].map((s) => {
+                        const isSelected = apparelSizes.includes(s)
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => {
+                              setApparelSizes((prev) =>
+                                isSelected ? prev.filter((x) => x !== s) : [...prev, s]
+                              )
+                            }}
+                            className={`min-w-8 h-7 px-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Selector de Tallas Calzado */}
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      <span className="text-[10px] font-semibold text-slate-400 mr-1">Calzado:</span>
+                      {['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45'].map((sz) => {
+                        const isSelected = apparelSizes.includes(sz)
+                        return (
+                          <button
+                            key={sz}
+                            type="button"
+                            onClick={() => {
+                              setApparelSizes((prev) =>
+                                isSelected ? prev.filter((x) => x !== sz) : [...prev, sz]
+                              )
+                            }}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                              isSelected
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {sz}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Entrada personalizada de talla */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Otra talla personalizada (ej. Talla única, 32x34, 6 meses)…"
+                        value={customSizeInput}
+                        onChange={(e) => setCustomSizeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            if (customSizeInput.trim() && !apparelSizes.includes(customSizeInput.trim())) {
+                              setApparelSizes((p) => [...p, customSizeInput.trim()])
+                              setCustomSizeInput('')
+                            }
+                          }
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white placeholder:text-slate-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customSizeInput.trim() && !apparelSizes.includes(customSizeInput.trim())) {
+                            setApparelSizes((p) => [...p, customSizeInput.trim()])
+                            setCustomSizeInput('')
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 transition cursor-pointer"
+                      >
+                        + Añadir
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* SECCIÓN 2: VARIANTES DE COLOR Y FOTOS POR COLOR */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3">

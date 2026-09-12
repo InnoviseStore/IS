@@ -41,6 +41,28 @@ export function parseColorVariants(description?: string | null): { cleanDescript
   }
 }
 
+interface ApparelAttributes {
+  garmentType?: string
+  gender?: string
+  sizes: string[]
+}
+
+function parseApparel(desc?: string | null): ApparelAttributes | null {
+  if (!desc) return null
+  const match = desc.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
+  if (match) {
+    try {
+      const data = JSON.parse(match[1])
+      return {
+        garmentType: data.garmentType,
+        gender: data.gender,
+        sizes: Array.isArray(data.sizes) ? data.sizes : [],
+      }
+    } catch {}
+  }
+  return null
+}
+
 interface Props {
   product: Product
   tenantSlug: string
@@ -63,6 +85,9 @@ export function ProductDetailClient({
   const [zoomCoords, setZoomCoords] = useState<{ x: number; y: number } | null>(null)
   const thumbnailsRef = useRef<HTMLDivElement>(null)
   const { addItem, openCart } = useCart()
+
+  const apparel = parseApparel(product.description)
+  const [selectedSize, setSelectedSize] = useState<string>(apparel?.sizes?.[0] || '')
 
   const { cleanDescription, colors } = parseColorVariants(product.description)
   const [selectedColor, setSelectedColor] = useState<string>(colors[0]?.name || '')
@@ -136,7 +161,12 @@ export function ProductDetailClient({
   }
 
   function handleAddToCart() {
-    const itemName = selectedColor ? `${product.name} (${selectedColor})` : product.name
+    const variantParts = []
+    if (selectedSize) variantParts.push(`Talla: ${selectedSize}`)
+    if (selectedColor) variantParts.push(`Color: ${selectedColor}`)
+    const variantStr = variantParts.length > 0 ? ` (${variantParts.join(' | ')})` : ''
+    const itemName = `${product.name}${variantStr}`
+
     addItem({
       id: product.id,
       product_id: product.id,
@@ -154,9 +184,11 @@ export function ProductDetailClient({
   }
 
   function handleAskWhatsApp() {
+    const sizeText = selectedSize ? `📏 Talla: ${selectedSize}\n` : ''
     const colorText = selectedColor ? `🎨 Color: ${selectedColor}\n` : ''
     const text = `Hola *${tenantName}*, tengo una consulta sobre este producto de su catálogo:\n\n` +
       `📦 *${product.name}*\n` +
+      sizeText +
       colorText +
       `💵 Precio: $${product.unit_price_usd.toFixed(2)} USD (Bs. ${priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })})\n` +
       (product.sku ? `🔖 SKU: ${product.sku}\n\n` : '\n') +
@@ -336,6 +368,22 @@ export function ProductDetailClient({
             {product.sku && (
               <p className="text-xs font-mono text-slate-400 mt-1">Código SKU: {product.sku}</p>
             )}
+
+            {/* Insignias de Rubro Ropa / Calzado */}
+            {apparel && (apparel.garmentType || apparel.gender) && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-2">
+                {apparel.garmentType && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    {apparel.garmentType}
+                  </span>
+                )}
+                {apparel.gender && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    {apparel.gender}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Bloque de Precios en Alto Contraste */}
@@ -354,6 +402,35 @@ export function ProductDetailClient({
               Calculado según tasa oficial del Banco Central de Venezuela (Bs. {exchangeRate.toFixed(2)}/USD).
             </p>
           </div>
+
+          {/* Selector de Tallas (si el producto tiene tallas configuradas) */}
+          {apparel && apparel.sizes && apparel.sizes.length > 0 && (
+            <div className="space-y-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span>Talla Disponible:</span>
+                <span className="text-blue-600 dark:text-blue-400 font-extrabold">{selectedSize || 'Selecciona una talla'}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {apparel.sizes.map((s) => {
+                  const isSelected = selectedSize === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSelectedSize(s)}
+                      className={`min-w-10 h-8 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white shadow-xs scale-105'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Selector de Color (si el producto tiene variantes de color) */}
           {colors.length > 0 && (
