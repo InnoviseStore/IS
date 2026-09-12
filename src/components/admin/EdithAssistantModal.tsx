@@ -1,13 +1,55 @@
 'use client'
 
-import { useState } from 'react'
-import { Sparkles, Send, X, Bot, Loader2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import {
+  Sparkles,
+  Send,
+  X,
+  Bot,
+  Loader2,
+  Package,
+  ShoppingCart,
+  Home,
+  BarChart3,
+  RotateCcw
+} from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
 }
+
+const QUICK_PROMPTS = [
+  {
+    id: 'stock',
+    icon: Package,
+    label: '📦 ¿Qué productos están por agotarse?',
+    prompt: '¿Qué productos están por agotarse?',
+    color: 'hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400'
+  },
+  {
+    id: 'sales',
+    icon: ShoppingCart,
+    label: '🛒 ¿Cómo van mis ventas hoy?',
+    prompt: '¿Cómo van mis ventas hoy?',
+    color: 'hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400'
+  },
+  {
+    id: 'cash',
+    icon: Home,
+    label: '🏠 ¿Cuánto dinero tengo disponible?',
+    prompt: '¿Cuánto dinero tengo disponible?',
+    color: 'hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+  },
+  {
+    id: 'profit',
+    icon: BarChart3,
+    label: '📊 ¿Cuánta utilidad generé este mes?',
+    prompt: '¿Cuánta utilidad generé este mes?',
+    color: 'hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400'
+  }
+]
 
 export function EdithAssistantModal() {
   const { tenant, exchangeRate } = useTenant()
@@ -16,18 +58,28 @@ export function EdithAssistantModal() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: `¡Hola! Soy Edith, tu copiloto inteligente de administración para ${tenant?.name ?? 'Innovise Store'}. ¿En qué te ayudo hoy? Puedes consultarme sobre tus ventas, qué productos reponer o tu ganancia neta.`,
+      content: `¡Hola! Soy Edith, tu copiloto inteligente de administración para **${tenant?.name ?? 'tu tienda'}**.\n\nPuedes hacerme preguntas directas o presionar cualquiera de los botones rápidos de abajo sobre ventas, inventario crítico, dinero en caja o utilidad neta.`,
     },
   ])
   const [loading, setLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault()
-    if (!input.trim() || loading) return
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
-    const userMsg = input.trim()
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom()
+    }
+  }, [messages, isOpen])
+
+  async function executePrompt(userPrompt: string) {
+    if (!userPrompt.trim() || loading) return
+
+    const cleanPrompt = userPrompt.trim()
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', content: userMsg }])
+    setMessages((prev) => [...prev, { role: 'user', content: cleanPrompt }])
     setLoading(true)
 
     try {
@@ -35,8 +87,8 @@ export function EdithAssistantModal() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: userMsg,
-          tenantSlug: tenant?.slug,
+          prompt: cleanPrompt,
+          tenantSlug: tenant?.slug || 'innovise',
           exchangeRate,
         }),
       })
@@ -54,7 +106,7 @@ export function EdithAssistantModal() {
         ...prev,
         {
           role: 'assistant',
-          content: 'Hubo un error de conexión al consultar el asistente inteligente.',
+          content: 'Hubo un error de conexión al consultar al copiloto Edith.',
         },
       ])
     } finally {
@@ -62,79 +114,155 @@ export function EdithAssistantModal() {
     }
   }
 
+  function handleSend(e: React.FormEvent) {
+    e.preventDefault()
+    executePrompt(input)
+  }
+
+  function resetChat() {
+    setMessages([
+      {
+        role: 'assistant',
+        content: `Chat reiniciado. Estoy lista para responder sobre las métricas y estado operativo de **${tenant?.name ?? 'tu tienda'}**.`,
+      },
+    ])
+  }
+
   return (
     <>
-      {/* Botón flotante minimalista */}
+      {/* Botón Flotante Circular (FAB) */}
       <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold shadow-lg hover:scale-105 transition-all duration-200 cursor-pointer"
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="fixed bottom-6 right-6 z-50 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 dark:from-white dark:via-slate-100 dark:to-slate-200 text-white dark:text-slate-950 shadow-2xl shadow-indigo-950/50 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 border-2 border-indigo-400/40 dark:border-slate-300 cursor-pointer group"
+        aria-label={isOpen ? 'Cerrar asistente Edith' : 'Abrir copiloto inteligente Edith'}
+        title="Copiloto Inteligente Edith (IA)"
       >
-        <Sparkles className="w-3.5 h-3.5 text-amber-400 dark:text-amber-500 animate-pulse" />
-        Preguntar a Edith (IA)
+        {/* Glow ambient pulse */}
+        <span className="absolute -inset-1 rounded-full bg-indigo-500/20 animate-pulse pointer-events-none" />
+
+        {isOpen ? (
+          <X className="w-5 h-5 transition-transform duration-200 group-hover:rotate-90" />
+        ) : (
+          <div className="relative flex items-center justify-center">
+            <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-300 dark:text-indigo-600 transition-transform duration-200 group-hover:scale-110" />
+            <Sparkles className="w-3 h-3 text-amber-400 dark:text-amber-500 absolute -top-1.5 -right-1.5 animate-pulse" />
+          </div>
+        )}
       </button>
 
-      {/* Modal flotante */}
+      {/* Ventana Desplegable de Edith */}
       {isOpen && (
-        <div className="fixed bottom-20 right-6 z-50 w-80 sm:w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[480px] transition-all">
+        <div
+          style={{ width: 'calc(100vw - 2rem)', maxWidth: '410px', height: '540px', maxHeight: '80vh' }}
+          className="fixed bottom-22 right-4 sm:right-6 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all animate-in fade-in slide-in-from-bottom-5 duration-200"
+        >
           {/* Header */}
-          <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center">
-                <Bot className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+          <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/50 flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                <Bot className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">Edith Copiloto</p>
-                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">IA Activa</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+                    Edith Copiloto
+                  </p>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[190px]">
+                  {tenant?.name ?? 'Innovise Store'}
+                </p>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-            >
-              <X className="w-4 h-4" />
-            </button>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={resetChat}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                title="Reiniciar conversación"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                title="Minimizar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Mensajes */}
-          <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs">
+          {/* Área de Mensajes */}
+          <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs min-h-0">
             {messages.map((m, idx) => (
               <div
                 key={idx}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[85%] p-2.5 rounded-xl leading-relaxed ${
+                  className={`max-w-[88%] p-3 rounded-2xl leading-relaxed whitespace-pre-wrap text-xs ${
                     m.role === 'user'
-                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-medium rounded-br-none'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-br-xs shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 rounded-bl-xs border border-slate-200/50 dark:border-slate-700/50 shadow-2xs'
                   }`}
                 >
                   {m.content}
                 </div>
               </div>
             ))}
+
             {loading && (
               <div className="flex justify-start">
-                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-[11px] flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Edith está pensando...
+                <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2 border border-slate-200/60 dark:border-slate-700/60">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                  <span>Consultando métricas de tu tienda...</span>
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <form onSubmit={handleSend} className="p-2.5 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+          {/* Botones Predeterminados Rápidos */}
+          <div className="px-3 pt-2 pb-1 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex-shrink-0">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-500" /> Consultas Rápidas:
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {QUICK_PROMPTS.map((qp) => (
+                <button
+                  key={qp.id}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => executePrompt(qp.prompt)}
+                  className={`px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-left text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs flex items-center gap-1.5 ${qp.color}`}
+                >
+                  <span className="truncate">{qp.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Formulario de Entrada */}
+          <form
+            onSubmit={handleSend}
+            className="p-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-white dark:bg-slate-900 flex-shrink-0"
+          >
             <input
               type="text"
-              placeholder="Pregúntale algo sobre tu negocio..."
+              placeholder="Pregúntale algo a Edith..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 px-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none"
+              className="flex-1 px-3.5 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-indigo-500 transition"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 disabled:opacity-40"
+              className="p-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white disabled:opacity-40 transition shadow-xs active:scale-95 cursor-pointer"
+              title="Enviar consulta"
             >
               <Send className="w-3.5 h-3.5" />
             </button>
