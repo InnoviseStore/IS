@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
-import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
 import { formatDate, formatDateTime } from '@/lib/formatters'
+import { getTenantFeatures } from '@/lib/planLimits'
 
 interface PaymentRow {
   id: string
@@ -60,6 +61,8 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const features = getTenantFeatures(tenant)
 
   // Detect if this tenant is an IGTF agent (set in tenant settings)
   const isIgtfAgent = Boolean((tenant?.settings as Record<string, unknown>)?.is_igtf_agent ?? false)
@@ -370,21 +373,29 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                   <input
                     type="checkbox"
                     id="credit"
-                    checked={isCredit}
+                    disabled={!features.hasCreditSales}
+                    checked={features.hasCreditSales && isCredit}
                     onChange={(e) => {
+                      if (!features.hasCreditSales) return
                       const checked = e.target.checked
                       setIsCredit(checked)
                       if (checked && customerType === 'final') {
                         setCustomerType('registered')
                       }
                     }}
-                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                    className="w-4 h-4 rounded accent-blue-600 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                   />
-                  <label htmlFor="credit" className="text-sm text-slate-800 dark:text-slate-200 font-bold cursor-pointer flex items-center gap-2">
+                  <label htmlFor="credit" className="text-sm text-slate-800 dark:text-slate-200 font-bold flex items-center gap-2">
                     <span>Venta a Crédito / Financiamiento</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 px-2 py-0.5 rounded-full">
-                      Flexible
-                    </span>
+                    {!features.hasCreditSales ? (
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" /> Plan Pro
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                        Flexible
+                      </span>
+                    )}
                   </label>
                 </div>
               </div>
@@ -583,11 +594,21 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
                 )
               })}
             </div>
-            <button onClick={addPaymentRow}
-              className="mt-2.5 flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
-              <Plus className="w-3.5 h-3.5" />
-              {isCredit ? 'Agregar abono inicial' : 'Agregar método de pago'}
-            </button>
+            {features.hasSplitPayments ? (
+              <button
+                type="button"
+                onClick={addPaymentRow}
+                className="mt-2.5 flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {isCredit ? 'Agregar abono inicial' : 'Agregar método de pago'}
+              </button>
+            ) : (
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-slate-400" />
+                <span>Pagos divididos multimoneda disponible a partir de <strong>Plan Pro</strong>.</span>
+              </p>
+            )}
           </div>
 
           {/* SECTION 3: Balance */}

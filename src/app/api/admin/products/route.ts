@@ -38,6 +38,29 @@ export async function POST(req: Request) {
 
     const supabase = getAdminClient()
 
+    // Validación de límite de productos para Plan Básico (150 productos máx)
+    if (!id) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('settings')
+        .eq('id', tenant_id)
+        .single()
+      const tenantPlan = (tenantData?.settings as Record<string, unknown>)?.plan || 'pro'
+      if (tenantPlan === 'basic') {
+        const { count, error: countErr } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+        if (!countErr && (count ?? 0) >= 150) {
+          return NextResponse.json(
+            { error: 'Has alcanzado el límite de 150 productos permitido en el Plan Básico. Solicita la actualización a Plan Pro al Administrador para disfrutar de productos ilimitados.' },
+            { status: 403 }
+          )
+        }
+      }
+    }
+
     // Preparar lista de imágenes
     const sanitizedImages: string[] = Array.isArray(images)
       ? images.filter((img) => typeof img === 'string' && img.trim().length > 0)

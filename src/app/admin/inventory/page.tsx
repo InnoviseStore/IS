@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { ProductModal } from '@/components/admin/ProductModal'
@@ -16,9 +16,14 @@ import {
   AlertTriangle, 
   Loader2, 
   CheckCircle2, 
-  X 
+  X,
+  Lock,
+  Filter,
+  Tag
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/formatters'
+import { getTenantFeatures } from '@/lib/planLimits'
+import { detectCategory } from '@/lib/categories'
 
 function StockBadge({ stock }: { stock: number }) {
   if (stock < 3) return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900 whitespace-nowrap">Bajo ({stock})</span>
@@ -30,10 +35,13 @@ export default function InventoryPage() {
   const { tenant, exchangeRate } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+
+  const features = getTenantFeatures(tenant)
 
   // Estados para eliminación de productos
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
@@ -56,11 +64,21 @@ export default function InventoryPage() {
 
   useEffect(() => { load() }, [load])
 
-  const filtered = products.filter(
-    (p) =>
+  // Categorías presentes en este inventario
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    products.forEach((p) => set.add(detectCategory(p.name, p.description)))
+    return ['all', ...Array.from(set)]
+  }, [products])
+
+  const filtered = products.filter((p) => {
+    const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       (p.sku ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+    const cat = detectCategory(p.name, p.description)
+    const matchesCategory = selectedCategory === 'all' || cat === selectedCategory
+    return matchesSearch && matchesCategory
+  })
 
   function openCreate() { setEditingProduct(null); setModalOpen(true) }
   function openEdit(p: Product) { setEditingProduct(p); setModalOpen(true) }
@@ -101,11 +119,19 @@ export default function InventoryPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setImportModalOpen(true)}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+            onClick={() => {
+              if (!features.hasBulkImport) {
+                alert('La importación masiva en Excel/CSV es una función exclusiva a partir del Plan Pro. Contacta al Administrador de la plataforma para actualizar tu suscripción.')
+                return
+              }
+              setImportModalOpen(true)
+            }}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer shadow-xs"
+            title={!features.hasBulkImport ? 'Función exclusiva de Plan Pro' : 'Importar productos desde Excel/CSV'}
           >
             <UploadCloud className="w-3.5 h-3.5" />
             <span>Importar</span>
+            {!features.hasBulkImport && <Lock className="w-2.5 h-2.5 text-slate-400" />}
           </button>
           <button
             onClick={openCreate}
@@ -130,16 +156,38 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Barra de Búsqueda */}
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Buscar por nombre o SKU…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-xs"
-        />
+      {/* Barra de Búsqueda y Filtro de Categoría */}
+      <div className="flex flex-col sm:flex-row items-center gap-2.5">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre o SKU…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-xs"
+          />
+        </div>
+        <div className="w-full sm:w-64 flex-shrink-0">
+          <div className="relative">
+            <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer truncate"
+            >
+              <option value="all">Todas las categorías ({products.length})</option>
+              {categories.filter((c) => c !== 'all').map((cat) => {
+                const count = products.filter((p) => detectCategory(p.name, p.description) === cat).length
+                return (
+                  <option key={cat} value={cat}>
+                    {cat} ({count})
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Estados de Carga y Vacío */}
@@ -176,6 +224,9 @@ export default function InventoryPage() {
                         <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${p.is_active ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-900' : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'}`}>
                           {p.is_active ? 'Activo' : 'Inactivo'}
                         </span>
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                          {detectCategory(p.name, p.description)}
+                        </span>
                         {p.sku && <span className="font-mono text-[10px] text-slate-400">#{p.sku}</span>}
                       </div>
                       <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate mt-0.5">{p.name}</p>
@@ -205,7 +256,7 @@ export default function InventoryPage() {
                       </button>
                       <button 
                         onClick={() => setProductToDelete(p)} 
-                        className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition cursor-pointer"
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition cursor-pointer"
                         title="Eliminar producto"
                         aria-label={`Eliminar ${p.name}`}
                       >
@@ -224,7 +275,7 @@ export default function InventoryPage() {
               <table className="w-full text-sm">
                 <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                   <tr>
-                    {['Producto', 'SKU', 'Precio USD', 'Precio VES', 'Costo', 'Margen', 'Stock', 'Estado', 'Fecha Registro', 'Acciones'].map((h) => (
+                    {['Producto', 'Categoría', 'SKU', 'Precio USD', 'Precio VES', 'Costo', 'Margen', 'Stock', 'Estado', 'Fecha Registro', 'Acciones'].map((h) => (
                       <th key={h} className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -246,8 +297,13 @@ export default function InventoryPage() {
                                 <Package className="w-4 h-4 text-slate-400" />
                               )}
                             </div>
-                            <span className="max-w-[200px] truncate">{p.name}</span>
+                            <span className="max-w-[180px] truncate">{p.name}</span>
                           </div>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            {detectCategory(p.name, p.description)}
+                          </span>
                         </td>
                         <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300 text-xs">{p.sku ?? '—'}</td>
                         <td className="px-4 py-3.5 font-extrabold text-slate-900 dark:text-white">${p.base_price_usd.toFixed(2)}</td>
@@ -290,6 +346,7 @@ export default function InventoryPage() {
           onClose={() => setModalOpen(false)}
           onSaved={() => { setModalOpen(false); load() }}
           onDeleted={() => { setModalOpen(false); load() }}
+          currentProductCount={products.length}
         />
       )}
 

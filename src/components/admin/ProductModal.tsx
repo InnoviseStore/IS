@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useTenant } from '@/contexts/TenantContext'
+import { getTenantFeatures } from '@/lib/planLimits'
 import type { Product } from '@/types/database'
 import { 
   X, 
@@ -73,6 +74,7 @@ interface Props {
   onClose: () => void
   onSaved: () => void
   onDeleted?: () => void
+  currentProductCount?: number
 }
 
 async function compressImage(file: File): Promise<string> {
@@ -118,9 +120,11 @@ async function compressImage(file: File): Promise<string> {
   })
 }
 
-export function ProductModal({ product, onClose, onSaved, onDeleted }: Props) {
+export function ProductModal({ product, onClose, onSaved, onDeleted, currentProductCount }: Props) {
   const { tenant, exchangeRate } = useTenant()
   const isEditing = product !== null
+  const features = getTenantFeatures(tenant)
+  const isOverProductLimit = !isEditing && features.maxProducts !== Infinity && (currentProductCount ?? 0) >= features.maxProducts
   const fileInputRef = useRef<HTMLInputElement>(null)
   const colorFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -368,6 +372,27 @@ export function ProductModal({ product, onClose, onSaved, onDeleted }: Props) {
       setError('No hay una tienda activa seleccionada.')
       return
     }
+
+    const features = getTenantFeatures(tenant)
+    if (!product && features.maxProducts !== Infinity) {
+      // Validar si el tenant ya tiene 150 productos
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { count } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant.id)
+          .eq('is_active', true)
+        if ((count ?? 0) >= features.maxProducts) {
+          setError(`Has alcanzado el límite de ${features.maxProducts} productos del ${features.name}. Para agregar más productos solicita la actualización a Plan Pro al administrador.`)
+          return
+        }
+      } catch (err) {
+        console.warn('Could not check product limit:', err)
+      }
+    }
+
     setLoading(true)
     setError(null)
 
@@ -521,6 +546,18 @@ export function ProductModal({ product, onClose, onSaved, onDeleted }: Props) {
               <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <div className="text-xs leading-relaxed">{error}</div>
+              </div>
+            )}
+
+            {isOverProductLimit && (
+              <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold text-xs">Límite de {features.maxProducts} productos alcanzado</p>
+                  <p className="text-[11px] leading-relaxed">
+                    Tu tienda se encuentra en el <strong>{features.name}</strong>, el cual permite hasta {features.maxProducts} productos activos. Para seguir agregando productos ilimitados, solicita la actualización a <strong>Plan Pro</strong> al Administrador.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -1194,7 +1231,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted }: Props) {
               </button>
               <button 
                 type="submit" 
-                disabled={loading || uploadingImage}
+                disabled={loading || uploadingImage || isOverProductLimit}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all duration-200 disabled:opacity-60 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
               >
                 {loading ? (

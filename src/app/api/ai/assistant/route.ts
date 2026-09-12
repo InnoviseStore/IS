@@ -29,12 +29,21 @@ export async function POST(req: Request) {
     // 1. Cargar datos del tenant específico (Aislamiento Multi-Tenant Estricto)
     const { data: tenant, error: tenantErr } = await supabase
       .from('tenants')
-      .select('id, name, slug, currency_rate_bcv')
+      .select('id, name, slug, currency_rate_bcv, settings')
       .eq('slug', tenantSlug || 'innovise')
       .single()
 
     if (tenantErr || !tenant) {
       return NextResponse.json({ reply: 'No se encontró información del comercio actual.' })
+    }
+
+    // Validación de plan: Edith requiere Plan Pro o Enterprise
+    const tenantSettings = (tenant.settings || {}) as Record<string, unknown>
+    const plan = (tenantSettings.plan as string) || 'pro'
+    if (plan === 'basic') {
+      return NextResponse.json({
+        reply: '🔒 **Copiloto IA no disponible en Plan Básico**\n\nEl asistente inteligente con IA de Edith es exclusivo de los planes **Pro** y **Enterprise**. Para acceder a métricas en lenguaje natural, proyecciones financieras y detección de inventario crítico con IA, contacta al Administrador de la plataforma para actualizar tu suscripción.',
+      })
     }
 
     const rate = exchangeRate || Number(tenant.currency_rate_bcv) || 91.50

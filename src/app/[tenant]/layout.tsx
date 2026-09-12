@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Tenant } from '@/types/database'
-import StorefrontLayoutClient, { type StoreData } from './StorefrontLayoutClient'
+import { detectCategory, slugifyCategory } from '@/lib/categories'
+import StorefrontLayoutClient, { type StoreData, type StoreCategory } from './StorefrontLayoutClient'
 
 interface StorefrontLayoutProps {
   children: React.ReactNode
@@ -50,8 +51,27 @@ export default async function StorefrontLayout({
 
   const exchangeRate = Number(tenant.currency_rate_bcv) || 91.5
 
+  // Fetch active products to compute categories dynamically
+  const { data: productsData } = await supabase
+    .from('products')
+    .select('id, name, description')
+    .eq('tenant_id', tenant.id)
+    .eq('is_active', true)
+
+  const categoryCounts: Record<string, number> = {}
+  ;(productsData || []).forEach((p) => {
+    const cat = detectCategory(p.name, p.description)
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
+  })
+
+  const categories: StoreCategory[] = Object.entries(categoryCounts).map(([name, count]) => ({
+    name,
+    slug: slugifyCategory(name),
+    count,
+  }))
+
   return (
-    <StorefrontLayoutClient store={store} exchangeRate={exchangeRate}>
+    <StorefrontLayoutClient store={store} categories={categories} exchangeRate={exchangeRate}>
       {children}
     </StorefrontLayoutClient>
   )
