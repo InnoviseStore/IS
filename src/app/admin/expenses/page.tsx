@@ -6,6 +6,7 @@ import { useTenant } from '@/contexts/TenantContext'
 import type { Expense } from '@/types/database'
 import { ExpenseModal } from '@/components/admin/ExpenseModal'
 import { Plus, Search, Filter, Trash2, Edit2, Loader2, ArrowUpRight, ReceiptText } from 'lucide-react'
+import { formatDate, formatDateTime } from '@/lib/formatters'
 
 export default function ExpensesPage() {
   const { tenant, exchangeRate } = useTenant()
@@ -159,7 +160,12 @@ export default function ExpensesPage() {
                 {filtered.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                     <td className="py-3 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {item.expense_date}
+                      <div>{formatDate(item.expense_date)}</div>
+                      {item.created_at && (
+                        <div className="text-[10px] text-slate-400">
+                          {formatDateTime(item.created_at).split(' ')[1]}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-semibold">
                       <div>{item.description}</div>

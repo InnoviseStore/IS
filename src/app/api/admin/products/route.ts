@@ -138,6 +138,14 @@ export async function DELETE(req: Request) {
     }
 
     const supabase = getAdminClient()
+
+    // 1. Desvincular de order_items para conservar el historial de ventas pasadas
+    await supabase.from('order_items').update({ product_id: null }).eq('product_id', id)
+
+    // 2. Eliminar logs de inventario asociados a este producto
+    await supabase.from('inventory_logs').delete().eq('product_id', id)
+
+    // 3. Eliminar el producto de la tabla products
     const { error } = await supabase.from('products').delete().eq('id', id)
 
     if (error) throw new Error(error.message)

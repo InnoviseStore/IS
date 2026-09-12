@@ -15,6 +15,7 @@ import {
   Edit3,
   Sparkles
 } from 'lucide-react'
+import { formatDate, formatDateTime } from '@/lib/formatters'
 
 export interface InitialCreditSaleInfo {
   orderNumber?: string
@@ -52,7 +53,7 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
     totalPurchaseUsd: initialSaleInfo?.totalUsd ?? customer.current_debt_usd,
     totalPaidUsd: initialSaleInfo?.paidUsd ?? 0,
     pendingDebtUsd: initialSaleInfo?.creditAmountUsd ?? customer.current_debt_usd,
-    dueDateStr: initialSaleInfo?.dueDate ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-VE')
+    dueDateStr: initialSaleInfo?.dueDate ? formatDate(initialSaleInfo.dueDate) : formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
   })
 
   // Cargar órdenes a crédito históricas si no viene de una venta inmediata
@@ -89,15 +90,15 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
               paymentsList.push({
                 method: p.method,
                 amountUsd: Number(p.amount_usd),
-                date: new Date(activeOrder.created_at).toLocaleDateString('es-VE')
+                date: formatDateTime(activeOrder.created_at)
               })
             }
           })
         }
 
         const dueDateFormatted = activeOrder.due_date
-          ? new Date(activeOrder.due_date).toLocaleDateString('es-VE')
-          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-VE')
+          ? formatDate(activeOrder.due_date)
+          : formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
 
         const totalPaid = paymentsList.reduce((s, p) => s + p.amountUsd, 0)
         const totalOrder = Number(activeOrder.total_usd) || (customer.current_debt_usd + totalPaid)

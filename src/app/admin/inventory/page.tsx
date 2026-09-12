@@ -6,7 +6,19 @@ import { useTenant } from '@/contexts/TenantContext'
 import { ProductModal } from '@/components/admin/ProductModal'
 import { ImportProductsModal } from '@/components/admin/ImportProductsModal'
 import type { Product } from '@/types/database'
-import { Plus, Search, Pencil, Package, UploadCloud } from 'lucide-react'
+import { 
+  Plus, 
+  Search, 
+  Pencil, 
+  Package, 
+  UploadCloud, 
+  Trash2, 
+  AlertTriangle, 
+  Loader2, 
+  CheckCircle2, 
+  X 
+} from 'lucide-react'
+import { formatDateTime } from '@/lib/formatters'
 
 function StockBadge({ stock }: { stock: number }) {
   if (stock < 3) return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900 whitespace-nowrap">Bajo ({stock})</span>
@@ -22,6 +34,12 @@ export default function InventoryPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+
+  // Estados para eliminación de productos
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!tenant) return
@@ -46,6 +64,32 @@ export default function InventoryPage() {
 
   function openCreate() { setEditingProduct(null); setModalOpen(true) }
   function openEdit(p: Product) { setEditingProduct(p); setModalOpen(true) }
+
+  async function handleDeleteConfirm() {
+    if (!productToDelete) return
+    setDeleting(true)
+    setDeleteError(null)
+
+    try {
+      const res = await fetch(`/api/admin/products?id=${productToDelete.id}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'No se pudo eliminar el producto.')
+      }
+
+      setDeleteSuccess(`Producto "${productToDelete.name}" eliminado correctamente.`)
+      setProductToDelete(null)
+      load()
+      setTimeout(() => setDeleteSuccess(null), 4000)
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : 'Error al eliminar el producto.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-8">
@@ -72,6 +116,19 @@ export default function InventoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Alerta de Éxito al Eliminar */}
+      {deleteSuccess && (
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm font-semibold animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{deleteSuccess}</span>
+          </div>
+          <button onClick={() => setDeleteSuccess(null)} className="p-1 hover:opacity-75">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Barra de Búsqueda */}
       <div className="relative">
@@ -101,10 +158,6 @@ export default function InventoryPage() {
           <div className="grid grid-cols-1 gap-2.5 md:hidden">
             {filtered.map((p) => {
               const priceVes = p.base_price_usd * exchangeRate
-              const margin = p.cost_usd && p.base_price_usd > 0
-                ? (((p.base_price_usd - p.cost_usd) / p.base_price_usd) * 100).toFixed(1)
-                : null
-
               return (
                 <div 
                   key={p.id}
@@ -133,19 +186,32 @@ export default function InventoryPage() {
                           Bs. {priceVes.toLocaleString('es-VE', { maximumFractionDigits: 0 })}
                         </span>
                       </div>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        {formatDateTime(p.created_at)}
+                      </p>
                     </div>
                   </div>
 
                   <div className="flex flex-col items-end justify-between self-stretch flex-shrink-0">
                     <StockBadge stock={p.stock} />
-                    <button 
-                      onClick={() => openEdit(p)} 
-                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
-                      title="Editar producto"
-                      aria-label={`Editar ${p.name}`}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 mt-2">
+                      <button 
+                        onClick={() => openEdit(p)} 
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
+                        title="Editar producto"
+                        aria-label={`Editar ${p.name}`}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => setProductToDelete(p)} 
+                        className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition cursor-pointer"
+                        title="Eliminar producto"
+                        aria-label={`Eliminar ${p.name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -158,7 +224,7 @@ export default function InventoryPage() {
               <table className="w-full text-sm">
                 <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                   <tr>
-                    {['Producto', 'SKU', 'Precio USD', 'Precio VES', 'Costo', 'Margen', 'Stock', 'Estado', ''].map((h) => (
+                    {['Producto', 'SKU', 'Precio USD', 'Precio VES', 'Costo', 'Margen', 'Stock', 'Estado', 'Fecha Registro', 'Acciones'].map((h) => (
                       <th key={h} className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -194,10 +260,18 @@ export default function InventoryPage() {
                             {p.is_active ? 'Activo' : 'Inactivo'}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition cursor-pointer" title="Editar producto">
-                            <Pencil className="w-4 h-4" />
-                          </button>
+                        <td className="px-4 py-3.5 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          {formatDateTime(p.created_at)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition cursor-pointer" title="Editar producto">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setProductToDelete(p)} className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer" title="Eliminar producto">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -209,19 +283,101 @@ export default function InventoryPage() {
         </>
       )}
 
+      {/* Modal de Creación / Edición de Producto */}
       {modalOpen && (
         <ProductModal
           product={editingProduct}
           onClose={() => setModalOpen(false)}
           onSaved={() => { setModalOpen(false); load() }}
+          onDeleted={() => { setModalOpen(false); load() }}
         />
       )}
 
+      {/* Modal de Importación Masiva */}
       <ImportProductsModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         onSuccess={() => { setImportModalOpen(false); load() }}
       />
+
+      {/* Modal de Confirmación para Eliminar Producto */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
+                  ¿Eliminar este producto?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Se eliminará permanentemente del inventario y del catálogo público de la tienda.
+                </p>
+              </div>
+            </div>
+
+            {/* Ficha del Producto a Eliminar */}
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                {productToDelete.image_url ? (
+                  <img src={productToDelete.image_url} alt={productToDelete.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Package className="w-5 h-5 text-slate-400" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-slate-900 dark:text-white text-xs truncate">
+                  {productToDelete.name}
+                </p>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                  {productToDelete.sku && <span className="font-mono">SKU: #{productToDelete.sku}</span>}
+                  <span>·</span>
+                  <span className="font-semibold text-blue-600">${productToDelete.base_price_usd.toFixed(2)}</span>
+                  <span>·</span>
+                  <span>Stock: {productToDelete.stock}</span>
+                </div>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => { setProductToDelete(null); setDeleteError(null) }}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleDeleteConfirm}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/20 active:scale-95 cursor-pointer disabled:opacity-60"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Eliminando…</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Sí, Eliminar Producto</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

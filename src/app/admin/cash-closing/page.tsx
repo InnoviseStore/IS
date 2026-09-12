@@ -8,6 +8,7 @@ import {
   CheckCircle2, Clock, Banknote, Loader2, RefreshCw,
   Receipt, TrendingUp, AlertTriangle, Lock
 } from 'lucide-react'
+import { formatDate, formatDateTime } from '@/lib/formatters'
 
 const METHOD_LABELS: Record<PaymentMethodType, string> = {
   zelle: '🏦 Zelle (USD)',
@@ -108,7 +109,7 @@ export default function CashClosingPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Cierre de Caja</h1>
           <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
-            Resumen del día — {new Date().toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            Resumen del día — {formatDate(new Date())}
           </p>
         </div>
         <button
@@ -128,7 +129,7 @@ export default function CashClosingPage() {
           <div>
             <p className="font-bold text-emerald-800 dark:text-emerald-300 text-sm">Caja cerrada exitosamente</p>
             <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">
-              Cierre registrado el {closedAt ? new Date(closedAt).toLocaleString('es-VE') : '—'}
+              Cierre registrado el {closedAt ? formatDateTime(closedAt) : '—'}
             </p>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Quotation, Product, Customer } from '@/types/database'
 import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle } from 'lucide-react'
+import { formatDate, formatDateTime } from '@/lib/formatters'
 
 export default function QuotationsPage() {
   const router = useRouter()
@@ -155,7 +156,7 @@ export default function QuotationsPage() {
 
   function shareViaWhatsApp(q: Quotation) {
     const text = `📄 *Cotización ${q.quotation_number}* - ${tenant?.name ?? 'Innovise Store'}\n\n` +
-      `📅 Válida hasta: ${q.valid_until}\n\n` +
+      `📅 Válida hasta: ${formatDate(q.valid_until)}\n\n` +
       `📦 *Productos:*\n` +
       q.items.map((i) => `• ${i.quantity}x ${i.name} — $${(i.unit_price_usd * i.quantity).toFixed(2)}`).join('\n') +
       `\n\n💰 *Total: $${q.total_usd.toFixed(2)} USD | Bs. ${q.total_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}*\n` +
@@ -241,9 +242,9 @@ export default function QuotationsPage() {
                       )}
                     </td>
                     <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 text-xs">
                         <Clock className="w-3 h-3" />
-                        {q.valid_until}
+                        <span>{formatDate(q.valid_until)}</span>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300">

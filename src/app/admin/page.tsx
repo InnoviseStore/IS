@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { TrendingUp, AlertTriangle, Clock, DollarSign, Vault, PieChart, Wallet, Trash2, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react'
+import { formatDate, formatDateTime } from '@/lib/formatters'
 
 function StatCard({
   title, subtitle, value, sub, icon: Icon, color,
@@ -215,6 +216,7 @@ export default function AdminDashboard() {
               <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                 <tr>
                   <th className="text-left py-3 px-4 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Nro. Orden</th>
+                  <th className="text-left py-3 px-4 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Fecha y Hora</th>
                   <th className="text-left py-3 px-4 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Total USD</th>
                   <th className="text-left py-3 px-4 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Total VES</th>
                   <th className="text-left py-3 px-4 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">Estado</th>
@@ -227,6 +229,9 @@ export default function AdminDashboard() {
                   return (
                     <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
                       <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">{o.order_number}</td>
+                      <td className="py-3 px-4 text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                        {formatDateTime(o.created_at)}
+                      </td>
                       <td className="py-3 px-4 font-extrabold text-slate-900 dark:text-white">${o.total_usd.toFixed(2)}</td>
                       <td className="py-3 px-4 font-semibold text-blue-600 dark:text-blue-400">Bs. {(o.total_usd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                       <td className="py-3 px-4">

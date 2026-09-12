@@ -12,6 +12,7 @@ import {
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
 import { EdithAssistantModal } from '@/components/admin/EdithAssistantModal'
+import { getPlanLabel } from '@/lib/formatters'
 
 const baseNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -90,7 +91,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <p className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight">
               {tenant?.name ?? 'Innovise Store'}
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{profile?.role ?? 'admin'}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+                {getPlanLabel((tenant?.settings as Record<string, unknown>)?.plan as string || (tenant as unknown as { plan?: string })?.plan)}
+              </span>
+            </div>
           </div>
         </div>
         <button

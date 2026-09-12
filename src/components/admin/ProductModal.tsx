@@ -72,6 +72,7 @@ interface Props {
   product: Product | null
   onClose: () => void
   onSaved: () => void
+  onDeleted?: () => void
 }
 
 async function compressImage(file: File): Promise<string> {
@@ -117,11 +118,35 @@ async function compressImage(file: File): Promise<string> {
   })
 }
 
-export function ProductModal({ product, onClose, onSaved }: Props) {
+export function ProductModal({ product, onClose, onSaved, onDeleted }: Props) {
   const { tenant, exchangeRate } = useTenant()
   const isEditing = product !== null
   const fileInputRef = useRef<HTMLInputElement>(null)
   const colorFileInputRef = useRef<HTMLInputElement>(null)
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletingProduct, setDeletingProduct] = useState(false)
+  const [modalDeleteError, setModalDeleteError] = useState<string | null>(null)
+
+  async function handleDeleteFromModal() {
+    if (!product?.id) return
+    setDeletingProduct(true)
+    setModalDeleteError(null)
+    try {
+      const res = await fetch(`/api/admin/products?id=${product.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Error al eliminar el producto')
+      }
+      setShowDeleteConfirm(false)
+      if (onDeleted) onDeleted()
+      else onClose()
+    } catch (e: unknown) {
+      setModalDeleteError(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeletingProduct(false)
+    }
+  }
 
   const parsedInitial = parseColorVariants(product?.description)
   const parsedApparel = parseApparelAttributes(parsedInitial.baseDescription)
@@ -1146,31 +1171,98 @@ export function ProductModal({ product, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0">
-            <button 
-              type="button" 
-              onClick={handleRequestClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit" 
-              disabled={loading || uploadingImage}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all duration-200 disabled:opacity-60 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Guardando en base de datos…
-                </>
-              ) : (
-                isEditing ? 'Guardar Cambios' : 'Crear Producto'
-              )}
-            </button>
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0">
+            {isEditing ? (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 text-xs font-bold transition cursor-pointer"
+                title="Eliminar este producto permanentemente"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Eliminar Producto</span>
+              </button>
+            ) : <div />}
+
+            <div className="flex items-center gap-2.5">
+              <button 
+                type="button" 
+                onClick={handleRequestClose}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit" 
+                disabled={loading || uploadingImage}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all duration-200 disabled:opacity-60 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Guardando en base de datos…
+                  </>
+                ) : (
+                  isEditing ? 'Guardar Cambios' : 'Crear Producto'
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* Modal de confirmación para eliminar producto desde el modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-2xl bg-rose-50 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  ¿Eliminar producto?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Se eliminará permanentemente &quot;{product?.name}&quot; del inventario y del catálogo.
+                </p>
+              </div>
+            </div>
+
+            {modalDeleteError && (
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {modalDeleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={deletingProduct}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-300 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deletingProduct}
+                onClick={handleDeleteFromModal}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm"
+              >
+                {deletingProduct ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Eliminando…</span>
+                  </>
+                ) : (
+                  <span>Sí, Eliminar</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -22,6 +22,7 @@ import {
   ArrowRight,
   Palette
 } from 'lucide-react'
+import { formatDate, formatDateTime, getPlanLabel } from '@/lib/formatters'
 
 export default function SuperAdminMasterPage() {
   const { profile, switchTenant, tenant: activeTenant } = useTenant()
@@ -271,7 +272,14 @@ export default function SuperAdminMasterPage() {
                     <tr key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900 dark:text-white text-sm">{t.name}</div>
-                        <div className="text-[10px] text-slate-400">Plan: {tenantPlan}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            {getPlanLabel(tenantPlan)}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            · {formatDate(t.created_at)}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <a

@@ -7,6 +7,7 @@ import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
 import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
+import { formatDate, formatDateTime } from '@/lib/formatters'
 
 interface PaymentRow {
   id: string
@@ -119,7 +120,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
   const remainingUsd = grandTotalUsd - paidUsd
 
   const dueDateObj = new Date(Date.now() + (creditDays || 7) * 24 * 60 * 60 * 1000)
-  const dueDate = dueDateObj.toLocaleDateString('es-VE')
+  const dueDate = formatDate(dueDateObj)
   const availableCredit = selectedCustomer
     ? Number(selectedCustomer.credit_limit_usd) - Number(selectedCustomer.current_debt_usd)
     : 0
