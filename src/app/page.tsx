@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
@@ -15,15 +18,122 @@ import {
   Layers,
   Bot,
   Mail,
-  PhoneCall,
   ExternalLink,
-  DollarSign
+  DollarSign,
+  Check,
+  X,
+  Star,
+  ChevronDown,
+  Building2,
+  UserCheck
 } from 'lucide-react'
 
 export default function LandingPage() {
-  const whatsappDevUrl = `https://wa.me/584262485369?text=${encodeURIComponent(
-    'Hola! Vengo de la página principal de Innovise Store / IS System. Me gustaría consultar presupuesto y detalles para implementar esta plataforma de comercio electrónico y POS para mi negocio.'
-  )}`
+  const [showFullComparison, setShowFullComparison] = useState(false)
+
+  const whatsappDevUrl = (planName?: string) => {
+    const text = planName
+      ? `Hola! Vengo de la página principal de IS System y estoy interesado en el ${planName}. Me gustaría conocer precios y cómo implementarlo en mi negocio.`
+      : 'Hola! Vengo de la página principal de Innovise Store / IS System. Me gustaría consultar presupuesto y detalles para implementar esta plataforma de comercio electrónico y POS para mi negocio.'
+    return `https://wa.me/584262485369?text=${encodeURIComponent(text)}`
+  }
+
+  const plans = [
+    {
+      id: 'basic',
+      name: 'Plan Básico',
+      subtitle: 'Emprendedor',
+      badge: 'Para Empezar',
+      badgeColor: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+      description: 'La solución esencial para digitalizar tu negocio y recibir pedidos organizados directo a tu WhatsApp.',
+      isPopular: false,
+      buttonText: 'Consultar Plan Básico',
+      buttonClass: 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900',
+      highlights: [
+        'Vitrina web virtual activa 24/7 (/[tienda])',
+        'Conversión automática a Bolívares con tasa BCV del día',
+        'Checkout rápido con pedidos estructurados a WhatsApp',
+        'Control de inventario básico (hasta 100 productos)',
+        'Registro de ventas de contado simples',
+        '1 usuario administrador',
+      ],
+      notIncluded: [
+        'Pagos divididos (Zelle + Pago Móvil)',
+        'Ventas a crédito y cobranzas por WhatsApp',
+        'Filtros de tallas y género para ropa / calzado',
+        'Asistente de Inteligencia Artificial (Edith)',
+        'Importación masiva desde Excel',
+        'Cierre de caja contable y gastos',
+      ]
+    },
+    {
+      id: 'pro',
+      name: 'Plan Pro',
+      subtitle: 'Profesional',
+      badge: '⭐ Más Popular / Recomendado',
+      badgeColor: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/30',
+      description: 'El estándar completo para tiendas físicas, boutiques, calzado y comercios con ventas diarias continuas.',
+      isPopular: true,
+      buttonText: 'Elegir Plan Pro',
+      buttonClass: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-600/30',
+      highlights: [
+        'Todo lo del Plan Básico, y además:',
+        'Punto de Venta (POS) con Pagos Divididos (Zelle + Pago Móvil + Efectivo)',
+        'Crédito flexible (7, 15, 30 o días libres) con fecha de corte calculada',
+        'Módulo de Cobro por WhatsApp con historial de abonos y detalle de productos',
+        'Especialización Ropa y Calzado: selector de tallas (XS-XXL, 35-45) e insignias',
+        'Importador masivo con plantilla Excel descargable (.csv UTF-8)',
+        'Copiloto con IA (Edith): utilidades netas, stock crítico y dinero disponible',
+        'Cierre de caja diario por vía de pago y balance de gastos operativos',
+        'Cotizaciones / Presupuestos B2B convertibles al POS con 1 clic',
+        'Productos y fotos ilimitadas con variantes de color',
+        'Hasta 5 usuarios (Dueño, Administradores, Cajeros)',
+      ],
+      notIncluded: [
+        'Multi-sucursal con enrutamiento de stock',
+        'Dominio personalizado propio (.com)',
+      ]
+    },
+    {
+      id: 'enterprise',
+      name: 'Plan Enterprise',
+      subtitle: 'Corporativo / Cadenas',
+      badge: 'Máxima Potencia',
+      badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+      description: 'Infraestructura de alto rendimiento para cadenas de tiendas, distribuidores mayoristas y franquicias.',
+      isPopular: false,
+      buttonText: 'Solicitar Enterprise',
+      buttonClass: 'bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-600/20',
+      highlights: [
+        'Todo lo del Plan Pro, y además:',
+        'Usuarios y cajeros ilimitados con perfiles de acceso estrictos',
+        'Soporte multi-sucursal con control de inventario por sede',
+        'POS de alta velocidad para cajas simultáneas sin conflicto',
+        'Asistente IA Edith con análisis predictivo y reposición mayorista',
+        'Dominio web exclusivo propio (ej. mitienda.com)',
+        'Listas de precios B2B diferenciadas para revendedores',
+        'Acompañamiento técnico VIP 24/7 y despliegue asistido',
+      ],
+      notIncluded: []
+    }
+  ]
+
+  const comparisonRows = [
+    { feature: 'Vitrina Web Pública con Catálogo', basic: '✅ Estándar', pro: '✅ Personalizada + Variantes', enterprise: '✅ Marca blanca + Multi-sucursal' },
+    { feature: 'Tasa BCV Oficial en Vivo con Fecha Valor', basic: '✅ Automática', pro: '✅ En tiempo real + editable', enterprise: '✅ Sincronización continua' },
+    { feature: 'Checkout y Pedidos a WhatsApp', basic: '✅ Estándar', pro: '✅ Con desglose de tallas/colores', enterprise: '✅ Enrutamiento inteligente a sedes' },
+    { feature: 'Punto de Venta (POS) en Tienda', basic: '⚠️ Solo ventas simples', pro: '✅ Pagos Divididos Multimoneda', enterprise: '✅ Multi-caja simultánea de alta rotación' },
+    { feature: 'Venta a Crédito y Cobranza', basic: '❌ No', pro: '✅ Plazos libres + Cobro WhatsApp', enterprise: '✅ Límites estrictos y alertas' },
+    { feature: 'Módulo Especializado Ropa y Calzado', basic: '❌ No', pro: '✅ Tallas, Género y Prendas', enterprise: '✅ Colecciones y tallajes avanzados' },
+    { feature: 'Importación Masiva desde Excel', basic: '❌ Carga manual', pro: '✅ Plantilla .csv con previsualización', enterprise: '✅ Importación masiva automatizada' },
+    { feature: 'Asistente Inteligente con IA (Edith)', basic: '❌ No', pro: '✅ Utilidad neta, stock y caja', enterprise: '✅ Predictivo y soporte financiero' },
+    { feature: 'Cierre de Caja Contable Diario', basic: '❌ No', pro: '✅ Discriminado por método de pago', enterprise: '✅ Auditoría por cajero y turno' },
+    { feature: 'Control de Gastos Operativos', basic: '❌ No', pro: '✅ Categorías y proveedores', enterprise: '✅ Reportes contables avanzados' },
+    { feature: 'Presupuestos y Cotizaciones B2B', basic: '❌ No', pro: '✅ Con envío WhatsApp y paso a POS', enterprise: '✅ Listas de precio preferenciales' },
+    { feature: 'Límite de Productos en Catálogo', basic: 'Hasta 100 productos', pro: 'Ilimitados', enterprise: 'Ilimitados (alta capacidad)' },
+    { feature: 'Usuarios y Accesos Simultáneos', basic: '1 Usuario', pro: 'Hasta 5 Usuarios', enterprise: 'Ilimitados con roles' },
+    { feature: 'Soporte Técnico y Asesoría', basic: 'Estándar', pro: 'Prioritario por WhatsApp', enterprise: 'Dedicado VIP 24/7' },
+  ]
 
   return (
     <main className="relative min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden selection:bg-blue-600 selection:text-white">
@@ -52,11 +162,18 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
+            <a
+              href="#planes"
+              className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Ver Planes</span>
+            </a>
             <Link
               href="/innovise"
-              className="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className="hidden md:inline-flex px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              Ver Tienda Demo
+              Ver Demo
             </Link>
             <Link
               href="/login"
@@ -65,13 +182,13 @@ export default function LandingPage() {
               Portal Admin
             </Link>
             <a
-              href={whatsappDevUrl}
+              href={whatsappDevUrl()}
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition shadow-md shadow-emerald-600/20 active:scale-95"
+              className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition shadow-md shadow-emerald-600/20 active:scale-95"
             >
               <MessageCircle className="w-4 h-4" />
-              <span>Contactar Desarrollador</span>
+              <span>Contactar</span>
             </a>
           </div>
         </div>
@@ -95,7 +212,15 @@ export default function LandingPage() {
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-2">
           <a
-            href={whatsappDevUrl}
+            href="#planes"
+            className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all duration-200 shadow-xl shadow-blue-600/30 active:scale-98"
+          >
+            <Sparkles className="w-5 h-5" />
+            <span>Ver Planes y Beneficios</span>
+          </a>
+
+          <a
+            href={whatsappDevUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all duration-200 shadow-xl shadow-emerald-600/30 active:scale-98"
@@ -128,6 +253,174 @@ export default function LandingPage() {
             Despliegue llave en mano
           </span>
         </div>
+      </section>
+
+      {/* SECCIÓN DE PLANES Y BENEFICIOS */}
+      <section id="planes" className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 scroll-mt-24 space-y-12">
+        <div className="text-center space-y-4 max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-xs font-bold">
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Planes a tu Medida</span>
+          </div>
+          <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
+            Elige el Plan Perfecto para tu Negocio
+          </h2>
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
+            Desde emprendedores que están iniciando hasta cadenas con múltiples cajas. Selecciona el nivel de automatización que necesitas y escala a tu propio ritmo.
+          </p>
+        </div>
+
+        {/* 3 Pricing Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+          {plans.map((p) => (
+            <div
+              key={p.id}
+              className={`relative rounded-3xl backdrop-blur-md p-6 sm:p-8 flex flex-col justify-between transition-all duration-300 ${
+                p.isPopular
+                  ? 'bg-white dark:bg-slate-900 border-2 border-blue-600 shadow-2xl shadow-blue-500/20 scale-100 lg:-translate-y-2'
+                  : 'bg-white/70 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 shadow-xl hover:border-slate-300 dark:hover:border-slate-700'
+              }`}
+            >
+              {p.isPopular && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-black uppercase tracking-wider shadow-md">
+                  Recomendado
+                </div>
+              )}
+
+              <div className="space-y-6">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">{p.name}</h3>
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${p.badgeColor}`}>
+                      {p.badge}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mt-1">
+                    {p.subtitle}
+                  </p>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-3 leading-relaxed">
+                    {p.description}
+                  </p>
+                </div>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-5 space-y-3">
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-slate-900 dark:text-slate-200">
+                    Beneficios Incluidos:
+                  </p>
+                  <ul className="space-y-2.5 text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium">
+                    {p.highlights.map((h, idx) => (
+                      <li key={idx} className="flex items-start gap-2.5">
+                        <Check className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {p.notIncluded.length > 0 && (
+                    <div className="pt-3 border-t border-slate-100/60 dark:border-slate-800/60">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                        No incluido:
+                      </p>
+                      <ul className="space-y-1.5 text-xs text-slate-400 dark:text-slate-500">
+                        {p.notIncluded.map((ni, idx) => (
+                          <li key={idx} className="flex items-start gap-2 line-through opacity-70">
+                            <X className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                            <span>{ni}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-8 mt-6 border-t border-slate-100 dark:border-slate-800">
+                <a
+                  href={whatsappDevUrl(p.name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-98 ${p.buttonClass}`}
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>{p.buttonText}</span>
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Botón para expandir tabla de comparación detallada */}
+        <div className="text-center pt-4">
+          <button
+            onClick={() => setShowFullComparison(!showFullComparison)}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-sm cursor-pointer"
+          >
+            <span>{showFullComparison ? 'Ocultar Comparativa Detallada' : 'Ver Comparativa Completa Módulo por Módulo'}</span>
+            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showFullComparison ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+
+        {/* Tabla Comparativa Desplegable */}
+        {showFullComparison && (
+          <div className="glass-card rounded-3xl overflow-hidden border border-slate-200/90 dark:border-slate-800 shadow-2xl animate-in fade-in duration-300">
+            <div className="p-6 bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 text-center">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                Matriz Comparativa de Funcionalidades y Beneficios
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Conoce con precisión qué incluye cada nivel antes de activar tu comercio.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs sm:text-sm text-left">
+                <thead className="bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-extrabold">
+                  <tr>
+                    <th className="py-3.5 px-4 sm:px-6">Funcionalidad / Módulo</th>
+                    <th className="py-3.5 px-4 text-center">🟢 Plan Básico</th>
+                    <th className="py-3.5 px-4 text-center text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/20">
+                      🔵 Plan Pro (Recomendado)
+                    </th>
+                    <th className="py-3.5 px-4 text-center">🟣 Plan Enterprise</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                  {comparisonRows.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 sm:px-6 font-bold text-slate-900 dark:text-white">
+                        {row.feature}
+                      </td>
+                      <td className="py-3 px-4 text-center text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {row.basic}
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-blue-700 dark:text-blue-300 bg-blue-50/30 dark:bg-blue-950/10 whitespace-nowrap">
+                        {row.pro}
+                      </td>
+                      <td className="py-3 px-4 text-center text-purple-700 dark:text-purple-300 whitespace-nowrap">
+                        {row.enterprise}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-6 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <span className="text-xs text-slate-500 font-medium text-center sm:text-left">
+                ¿Necesitas una adaptación o módulo a la medida para tu negocio?
+              </span>
+              <a
+                href={whatsappDevUrl('Consulta Personalizada')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-md transition"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Hablar con el Desarrollador por WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Visual Mockups Showcase (Lo que hace la plataforma) */}
@@ -311,7 +604,7 @@ export default function LandingPage() {
             {/* Botones de Contacto */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4">
               <a
-                href={whatsappDevUrl}
+                href={whatsappDevUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 transition active:scale-95"
@@ -345,6 +638,9 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-4">
+            <a href="#planes" className="hover:text-blue-600 transition">
+              Planes y Beneficios
+            </a>
             <Link href="/innovise" className="hover:text-blue-600 transition">
               Tienda Demo (Innovise)
             </Link>
