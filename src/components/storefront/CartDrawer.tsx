@@ -86,6 +86,7 @@ export default function CartDrawer({
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<string | null>(null);
 
   // Trap focus inside drawer
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -161,6 +162,7 @@ export default function CartDrawer({
   }
 
   function handleClearAndClose() {
+    setConfirmedOrderNumber(null);
     clearCart();
     setIsSuccess(false);
     setFullName('');

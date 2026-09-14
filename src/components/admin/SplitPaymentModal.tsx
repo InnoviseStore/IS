@@ -40,16 +40,34 @@ interface Props {
   cartItems: CartItem[]
   totalUsd: number
   exchangeRate: number
+  existingOrderId?: string | null
+  initialCustomer?: Customer | null
   onClose: () => void
   onSuccess: () => void
 }
 
-export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, onSuccess }: Props) {
+export function SplitPaymentModal({
+  cartItems,
+  totalUsd,
+  exchangeRate,
+  existingOrderId,
+  initialCustomer,
+  onClose,
+  onSuccess,
+}: Props) {
   const { tenant, profile } = useTenant()
   const [customerType, setCustomerType] = useState<'final' | 'registered'>('final')
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+
+  // Si se pasa un cliente inicial desde el pedido web
+  useEffect(() => {
+    if (initialCustomer) {
+      setSelectedCustomer(initialCustomer)
+      setCustomerType('registered')
+    }
+  }, [initialCustomer])
   const [isCredit, setIsCredit] = useState(false)
   const [creditDays, setCreditDays] = useState<number>(7)
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false)
@@ -191,6 +209,7 @@ export function SplitPaymentModal({ cartItems, totalUsd, exchangeRate, onClose, 
           quantity: item.quantity,
         })),
         isCredit,
+        existing_order_id: existingOrderId || undefined,
         customer: selectedCustomer
           ? {
               id: selectedCustomer.id,

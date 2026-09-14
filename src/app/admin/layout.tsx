@@ -7,7 +7,7 @@ import { useState } from 'react'
 import {
   LayoutDashboard, Package, ShoppingCart, Users,
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
-  RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown
+  RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
@@ -16,6 +16,7 @@ import { getPlanLabel } from '@/lib/formatters'
 
 const baseNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/orders', label: 'Pedidos Web', icon: ClipboardList },
   { href: '/admin/inventory', label: 'Inventario', icon: Package },
   { href: '/admin/pos', label: 'Facturación / POS', icon: ShoppingCart },
   { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText },

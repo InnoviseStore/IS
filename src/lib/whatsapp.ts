@@ -14,6 +14,7 @@ export interface CustomerInfo {
   fullName: string;
   phone: string;
   notes?: string;
+  orderNumber?: string;
 }
 
 export interface WhatsAppConfig {
@@ -61,12 +62,21 @@ export function generateWhatsAppMessage(
   const lines: string[] = [];
 
   // Header
-  lines.push(`🛒 *Nuevo Pedido - ${storeName}*`);
+  if (customer.orderNumber) {
+    lines.push(`🛒 *Nuevo Pedido #${customer.orderNumber} - ${storeName}*`);
+  } else {
+    lines.push(`🛒 *Nuevo Pedido - ${storeName}*`);
+  }
   lines.push('');
 
+  // Order identifier if available
+  if (customer.orderNumber) {
+    lines.push(`🔖 *N° de Orden:* #${customer.orderNumber}`);
+  }
+
   // Customer info
-  lines.push(`👤 Cliente: ${customer.fullName}`);
-  lines.push(`📱 Teléfono: ${customer.phone}`);
+  lines.push(`👤 *Cliente:* ${customer.fullName}`);
+  lines.push(`📱 *WhatsApp:* ${customer.phone}`);
   lines.push('');
 
   // Order detail
@@ -89,11 +99,11 @@ export function generateWhatsAppMessage(
   // Optional notes
   if (customer.notes && customer.notes.trim().length > 0) {
     lines.push('');
-    lines.push(`📝 Notas: ${customer.notes.trim()}`);
+    lines.push(`📝 *Notas / Indicaciones:* ${customer.notes.trim()}`);
   }
 
   lines.push('');
-  lines.push(`_Mensaje generado desde ${storeName}_`);
+  lines.push(`_Pedido registrado en la plataforma ${storeName}_`);
 
   return lines.join('\n');
 }
