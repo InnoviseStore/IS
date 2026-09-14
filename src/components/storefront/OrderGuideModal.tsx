@@ -6,25 +6,35 @@ import { ShoppingBag, MessageSquare, CheckCircle2, X, Sparkles, ArrowRight } fro
 interface OrderGuideModalProps {
   tenantSlug: string
   storeName: string
+  isOpen?: boolean
+  onClose?: () => void
 }
 
-export default function OrderGuideModal({ tenantSlug, storeName }: OrderGuideModalProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export default function OrderGuideModal({
+  tenantSlug,
+  storeName,
+  isOpen: controlledIsOpen,
+  onClose,
+}: OrderGuideModalProps) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false)
+
+  const isControlled = controlledIsOpen !== undefined
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen
 
   useEffect(() => {
     try {
       const storageKey = `has_seen_order_guide_${tenantSlug}`
       const hasSeen = localStorage.getItem(storageKey)
-      if (!hasSeen) {
+      if (!hasSeen && !isControlled) {
         const timer = setTimeout(() => {
-          setIsOpen(true)
+          setInternalIsOpen(true)
         }, 600)
         return () => clearTimeout(timer)
       }
     } catch {
       // Ignore
     }
-  }, [tenantSlug])
+  }, [tenantSlug, isControlled])
 
   const handleDismiss = () => {
     try {
@@ -33,7 +43,11 @@ export default function OrderGuideModal({ tenantSlug, storeName }: OrderGuideMod
     } catch {
       // Ignore
     }
-    setIsOpen(false)
+    if (isControlled) {
+      onClose?.()
+    } else {
+      setInternalIsOpen(false)
+    }
   }
 
   if (!isOpen) return null

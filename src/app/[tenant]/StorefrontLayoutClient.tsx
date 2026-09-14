@@ -18,6 +18,7 @@ import {
   Search,
   Users,
   Info,
+  HelpCircle,
 } from 'lucide-react'
 import { CartProvider, useCart } from '@/contexts/CartContext'
 import OrderGuideModal from '@/components/storefront/OrderGuideModal'
@@ -57,10 +58,12 @@ function StorefrontHeader({
   store,
   categories = [],
   onOpenSearch,
+  onOpenGuide,
 }: {
   store: StoreData
   categories?: StoreCategory[]
   onOpenSearch: () => void
+  onOpenGuide: () => void
 }) {
   const { itemCount, openCart } = useCart()
   const [isDark, setIsDark] = useState(false)
@@ -250,6 +253,20 @@ function StorefrontHeader({
                 </span>
               </button>
 
+              {/* Botón Guía Rápida / Pregunta */}
+              <button
+                type="button"
+                onClick={onOpenGuide}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-blue-600 dark:hover:text-blue-400 transition active:scale-95 cursor-pointer shadow-2xs"
+                aria-label="Guía rápida: ¿Cómo comprar?"
+                title="Guía rápida: ¿Cómo hacer un pedido?"
+              >
+                <HelpCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="hidden lg:inline text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  ¿Cómo comprar?
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={toggleDark}
@@ -360,6 +377,21 @@ function StorefrontHeader({
                   </span>
                   <ArrowRight className="w-4 h-4 opacity-50" />
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false)
+                    onOpenGuide()
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-600 dark:hover:text-blue-400 transition cursor-pointer text-left"
+                >
+                  <span className="flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    ¿Cómo comprar? (Guía)
+                  </span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                </button>
               </div>
 
               <div>
@@ -431,6 +463,7 @@ function StorefrontShell({
   children: React.ReactNode
 }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [isGuideOpen, setIsGuideOpen] = useState(false)
 
   const instagramUrl = store.instagram_handle
     ? `https://www.instagram.com/${store.instagram_handle.replace('@', '')}/`
@@ -455,6 +488,7 @@ function StorefrontShell({
           store={store}
           categories={categories}
           onOpenSearch={() => setIsSearchOpen(true)}
+          onOpenGuide={() => setIsGuideOpen(true)}
         />
 
         {/* Page Content */}
@@ -553,8 +587,31 @@ function StorefrontShell({
         exchangeRate={exchangeRate}
       />
 
+      {/* Floating Help / Guía Rápida Button (accessible across the entire catalog) */}
+      <aside className="fixed bottom-6 left-5 z-30 pointer-events-auto" aria-label="Ayuda del Catálogo">
+        <button
+          type="button"
+          onClick={() => setIsGuideOpen(true)}
+          className="group flex items-center gap-2 px-3 sm:px-3.5 py-2.5 rounded-full bg-white/95 dark:bg-slate-900/95 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-900/10 dark:shadow-black/40 backdrop-blur-md transition-all duration-200 active:scale-95 cursor-pointer hover:shadow-blue-500/25"
+          title="Guía rápida: ¿Cómo comprar?"
+          aria-label="Guía rápida: ¿Cómo comprar?"
+        >
+          <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-950/80 group-hover:bg-white/20 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:text-white transition-colors">
+            <HelpCircle className="w-4 h-4" />
+          </div>
+          <span className="text-xs font-bold pr-1 hidden sm:inline group-hover:inline transition-all">
+            ¿Cómo comprar?
+          </span>
+        </button>
+      </aside>
+
       {/* Order Guide / Welcome Explanation Modal */}
-      <OrderGuideModal tenantSlug={store.slug} storeName={store.name} />
+      <OrderGuideModal
+        tenantSlug={store.slug}
+        storeName={store.name}
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
 
       {/* Global Cart Drawer */}
       <CartDrawer
