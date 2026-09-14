@@ -87,6 +87,7 @@ export default function CartDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<string | null>(null);
+  const [whatsAppUrl, setWhatsAppUrl] = useState<string | null>(null);
 
   // Trap focus inside drawer
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -190,8 +191,14 @@ export default function CartDrawer({
         config: { phone: storePhone, storeName },
       });
 
-      window.open(url, '_blank', 'noopener,noreferrer');
+      setWhatsAppUrl(url);
       setIsSuccess(true);
+
+      try {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } catch (openErr) {
+        console.warn('Popup bloqueado, enlace disponible en pantalla:', openErr);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -199,6 +206,7 @@ export default function CartDrawer({
 
   function handleClearAndClose() {
     setConfirmedOrderNumber(null);
+    setWhatsAppUrl(null);
     clearCart();
     setIsSuccess(false);
     setFullName('');
@@ -275,6 +283,17 @@ export default function CartDrawer({
               </p>
             </div>
             <div className="flex flex-col gap-2.5 w-full max-w-xs mt-2">
+              {whatsAppUrl && (
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition"
+                >
+                  <MessageCircle className="h-5 w-5" />
+                  <span>Abrir WhatsApp {confirmedOrderNumber ? `(#${confirmedOrderNumber})` : ''}</span>
+                </a>
+              )}
               <button
                 type="button"
                 onClick={handleClearAndClose}

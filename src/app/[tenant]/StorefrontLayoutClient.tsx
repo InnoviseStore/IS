@@ -22,6 +22,7 @@ import {
 import { CartProvider, useCart } from '@/contexts/CartContext'
 import OrderGuideModal from '@/components/storefront/OrderGuideModal'
 import StorefrontSearchModal, { type SearchProductItem } from '@/components/storefront/StorefrontSearchModal'
+import CartDrawer from '@/components/storefront/CartDrawer'
 
 export interface StoreData {
   id: string
@@ -554,6 +555,14 @@ function StorefrontShell({
 
       {/* Order Guide / Welcome Explanation Modal */}
       <OrderGuideModal tenantSlug={store.slug} storeName={store.name} />
+
+      {/* Global Cart Drawer */}
+      <CartDrawer
+        tenantSlug={store.slug}
+        exchangeRate={exchangeRate}
+        storePhone={store.phone_whatsapp || '584121234567'}
+        storeName={store.name}
+      />
     </div>
   )
 }

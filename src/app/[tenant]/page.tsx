@@ -7,7 +7,6 @@ import Link from 'next/link'
 import type { Tenant, Product as DBProduct } from '@/types/database'
 import ProductGrid, { type Product } from '@/components/storefront/ProductGrid'
 import { ProductCarousel } from '@/components/storefront/ProductCarousel'
-import CartDrawer from '@/components/storefront/CartDrawer'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
 import { MessageCircle, Sparkles } from 'lucide-react'
 
@@ -229,14 +228,6 @@ export default async function StorefrontPage({ params }: PageProps) {
           tenantSlug={tenant.slug}
         />
       </section>
-
-      {/* Cart Drawer */}
-      <CartDrawer
-        tenantSlug={tenant.slug}
-        exchangeRate={exchangeRate}
-        storePhone={tenant.phone_whatsapp || '584121234567'}
-        storeName={tenant.name}
-      />
     </main>
   )
 }
