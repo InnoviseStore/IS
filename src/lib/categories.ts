@@ -1,4 +1,18 @@
+export function extractCategory(description?: string | null): string | null {
+  if (!description) return null
+  const catMatch = description.match(/<!--CATEGORY:(.*?)-->/)
+  if (catMatch && catMatch[1].trim()) {
+    return catMatch[1].trim()
+  }
+  return null
+}
+
 export function detectCategory(name: string, description?: string | null): string {
+  const explicitCategory = extractCategory(description)
+  if (explicitCategory) {
+    return explicitCategory
+  }
+
   if (description) {
     const match = description.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
     if (match) {

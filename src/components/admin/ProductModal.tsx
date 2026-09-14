@@ -16,8 +16,10 @@ import {
   AlertCircle,
   Sparkles,
   Palette,
-  AlertTriangle
+  AlertTriangle,
+  Tag,
 } from 'lucide-react'
+import { detectCategory, extractCategory } from '@/lib/categories'
 
 interface ColorVariantItem {
   name: string
@@ -155,7 +157,12 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const parsedInitial = parseColorVariants(product?.description)
   const parsedApparel = parseApparelAttributes(parsedInitial.baseDescription)
 
+  const initialCategory = product
+    ? (extractCategory(product.description) || detectCategory(product.name, product.description))
+    : ''
+
   const [name, setName] = useState(product?.name ?? '')
+  const [category, setCategory] = useState(initialCategory === 'General' ? '' : initialCategory)
   const [description, setDescription] = useState(parsedApparel.cleanDescription)
   const [sku, setSku] = useState(product?.sku ?? '')
   const [priceUsd, setPriceUsd] = useState(product?.base_price_usd?.toString() ?? '')
@@ -257,6 +264,9 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
 
       const data = await res.json()
       if (data.success && data.suggestedSku) {
+        if (data.category && !category.trim()) {
+          setCategory(data.category)
+        }
         setAiSuggestion({
           category: data.category,
           suggestedSku: data.suggestedSku,
@@ -274,6 +284,9 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   function handleApplyAiSuggestion() {
     if (!aiSuggestion) return
     setSku(aiSuggestion.suggestedSku)
+    if (aiSuggestion.category) {
+      setCategory(aiSuggestion.category)
+    }
     setAiSuggestion(null)
   }
 
@@ -444,12 +457,18 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
 
     const primaryImage = allImages[0] || null
 
-    // Serializar atributos de moda y variantes de color dentro de description
+    // Serializar atributos de moda, variantes de color y categoría dentro de description
     let baseDesc = description
       .replace(/<!--COLOR_VARIANTS:(.*?)-->/, '')
       .replace(/<!--APPAREL_ATTRIBUTES:(.*?)-->/, '')
+      .replace(/<!--CATEGORY:(.*?)-->/, '')
       .replace(/^🏷️[^\n]+\n\n?/, '')
       .trim()
+
+    // Si tiene categoría explícita asignada
+    if (category.trim()) {
+      baseDesc = `<!--CATEGORY:${category.trim()}-->\n${baseDesc}`
+    }
 
     // Si tiene atributos de ropa/calzado, generar la etiqueta estructurada y la insignia legible
     if (apparelGarmentType || apparelGender || apparelSizes.length > 0) {
@@ -702,6 +721,63 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm resize-y leading-relaxed font-normal"
                   placeholder="Detalles, especificaciones o redacta con IA…" 
                 />
+              </div>
+
+              {/* CATEGORÍA DEL PRODUCTO */}
+              <div className="col-span-2 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                    <Tag className="w-3.5 h-3.5 text-blue-500" />
+                    Categoría del Producto
+                  </label>
+                  {category && (
+                    <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-200/60 dark:border-blue-800/60">
+                      Asignada: {category}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    list="product-categories-list"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="Ej. Audio, Calzado & Zapatos, Fundas, Accesorios..."
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                  />
+                  <datalist id="product-categories-list">
+                    <option value="Audio" />
+                    <option value="Cables y Conexiones" />
+                    <option value="Cargadores y Baterías" />
+                    <option value="Fundas" />
+                    <option value="Micas y Protectores" />
+                    <option value="Calzado & Zapatos" />
+                    <option value="Pantalones & Jeans" />
+                    <option value="Prendas Superiores" />
+                    <option value="Vestidos & Faldas" />
+                    <option value="Bolsos & Carteras" />
+                    <option value="Accesorios" />
+                    <option value="Tecnología" />
+                  </datalist>
+                </div>
+                {/* Sugerencias rápidas */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Sugerencias:</span>
+                  {['Audio', 'Cables y Conexiones', 'Cargadores y Baterías', 'Fundas', 'Micas y Protectores', 'Calzado & Zapatos', 'Prendas Superiores', 'Accesorios'].map((catName) => (
+                    <button
+                      key={catName}
+                      type="button"
+                      onClick={() => setCategory(catName)}
+                      className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border transition cursor-pointer ${
+                        category.toLowerCase() === catName.toLowerCase()
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                      }`}
+                    >
+                      {catName}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>

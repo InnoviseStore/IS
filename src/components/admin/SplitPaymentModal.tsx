@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
-import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock, FileDown, Printer } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
+import { generateOrderPdf } from '@/lib/pdfGenerator'
 
 interface PaymentRow {
   id: string
@@ -79,6 +80,7 @@ export function SplitPaymentModal({
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
 
   const features = getTenantFeatures(tenant)
 
@@ -253,6 +255,48 @@ export function SplitPaymentModal({
     setLoading(false)
   }
 
+  async function handleDownloadPdf(action: 'download' | 'print' = 'download') {
+    if (!tenant || !success) return
+    setGeneratingPdf(true)
+    try {
+      await generateOrderPdf({
+        tenant,
+        action,
+        order: {
+          id: existingOrderId || 'temp-id',
+          order_number: success,
+          tenant_id: tenant.id,
+          customer_id: selectedCustomer?.id || null,
+          status: 'completed',
+          payment_condition: isCredit ? 'credit_7d' : 'immediate',
+          exchange_rate_at_sale: exchangeRate,
+          subtotal_usd: totalUsd,
+          total_usd: grandTotalUsd,
+          total_ves: grandTotalVes,
+          payment_breakdown: payments.map((p) => ({
+            method: p.method,
+            amount_usd: VES_METHODS.includes(p.method) ? (parseFloat(p.amount) || 0) / exchangeRate : (parseFloat(p.amount) || 0),
+            amount_ves: VES_METHODS.includes(p.method) ? parseFloat(p.amount) || 0 : (parseFloat(p.amount) || 0) * exchangeRate,
+            reference: p.reference,
+          })),
+          created_at: new Date().toISOString(),
+          customer: selectedCustomer || null,
+          order_items: cartItems.map((i) => ({
+            product_name: i.name,
+            product_sku: i.sku || null,
+            quantity: i.quantity,
+            unit_price_usd: i.unit_price_usd,
+            subtotal_usd: i.unit_price_usd * i.quantity,
+          })),
+        } as any,
+      })
+    } catch (e) {
+      console.error('Error generating PDF:', e)
+    } finally {
+      setGeneratingPdf(false)
+    }
+  }
+
   if (success) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -278,6 +322,30 @@ export function SplitPaymentModal({
           <p className="text-base font-extrabold text-slate-900 dark:text-white mt-1 mb-4">
             Total: <span className="text-blue-600 dark:text-blue-400">${grandTotalUsd.toFixed(2)} USD</span>
           </p>
+
+          {/* Botones de Factura PDF e Impresión */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => handleDownloadPdf('download')}
+              disabled={generatingPdf}
+              className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-60"
+              title="Descargar Factura en formato PDF"
+            >
+              {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+              <span>Factura PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownloadPdf('print')}
+              disabled={generatingPdf}
+              className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-60"
+              title="Imprimir Factura / Ticket"
+            >
+              <Printer className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Imprimir</span>
+            </button>
+          </div>
 
           {isCredit && selectedCustomer && (
             <button

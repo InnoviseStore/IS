@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Quotation, Product, Customer } from '@/types/database'
-import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle } from 'lucide-react'
+import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
+import { generateQuotationPdf } from '@/lib/pdfGenerator'
 
 export default function QuotationsPage() {
   const router = useRouter()
@@ -269,6 +270,20 @@ export default function QuotationsPage() {
                           title="Enviar por WhatsApp"
                         >
                           <Send className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await generateQuotationPdf({ quotation: q, tenant, action: 'download' })
+                            } catch (err) {
+                              console.error('Error generating quotation PDF:', err)
+                              alert('No se pudo generar el PDF del presupuesto.')
+                            }
+                          }}
+                          className="p-1 rounded-md text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
+                          title="Descargar Presupuesto en PDF"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => router.push('/admin/pos')}

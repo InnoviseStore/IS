@@ -20,8 +20,10 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  FileText,
 } from 'lucide-react'
 import Link from 'next/link'
+import { generateOrderPdf } from '@/lib/pdfGenerator'
 
 interface OrderItem {
   id: string
@@ -543,6 +545,23 @@ export default function AdminOrdersPage() {
                           Anular
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await generateOrderPdf({ order, tenant, action: 'download' })
+                          } catch (err) {
+                            console.error('Error generating PDF:', err)
+                            alert('No se pudo generar el PDF. Revisa la consola.')
+                          }
+                        }}
+                        className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                        title="Descargar Factura/Nota PDF"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>PDF</span>
+                      </button>
 
                       <button
                         type="button"
