@@ -15,8 +15,13 @@ import {
   ChevronDown,
   Layers,
   ArrowRight,
+  Search,
+  Users,
+  Info,
 } from 'lucide-react'
 import { CartProvider, useCart } from '@/contexts/CartContext'
+import OrderGuideModal from '@/components/storefront/OrderGuideModal'
+import StorefrontSearchModal, { type SearchProductItem } from '@/components/storefront/StorefrontSearchModal'
 
 export interface StoreData {
   id: string
@@ -43,15 +48,18 @@ interface Props {
   store: StoreData
   categories?: StoreCategory[]
   exchangeRate?: number
+  searchProducts?: SearchProductItem[]
   children: React.ReactNode
 }
 
 function StorefrontHeader({
   store,
   categories = [],
+  onOpenSearch,
 }: {
   store: StoreData
   categories?: StoreCategory[]
+  onOpenSearch: () => void
 }) {
   const { itemCount, openCart } = useCart()
   const [isDark, setIsDark] = useState(false)
@@ -143,6 +151,15 @@ function StorefrontHeader({
                 Inicio
               </Link>
 
+              {/* Botón Nosotros */}
+              <Link
+                href={`/${store.slug}/nosotros`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                <Info className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <span>Nosotros</span>
+              </Link>
+
               {/* Categorías Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -216,9 +233,24 @@ function StorefrontHeader({
               )}
             </nav>
 
-            {/* Right actions: Dark Mode Toggle + Cart Button */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            {/* Right actions: Search Button + Dark Mode Toggle + Cart Button */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Top Search Button */}
               <button
+                type="button"
+                onClick={onOpenSearch}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-blue-600 dark:hover:text-blue-400 transition active:scale-95"
+                aria-label="Buscar productos"
+                title="Buscar en el catálogo"
+              >
+                <Search className="w-4 h-4" />
+                <span className="hidden sm:inline text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Buscar...
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={toggleDark}
                 className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition active:scale-95"
                 aria-label="Cambiar modo claro / oscuro"
@@ -228,14 +260,15 @@ function StorefrontHeader({
               </button>
 
               <button
+                type="button"
                 onClick={openCart}
-                className="relative flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+                className="relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all"
                 aria-label="Abrir carrito"
               >
                 <ShoppingCart className="h-4 w-4" />
                 <span className="hidden sm:inline">Carrito</span>
                 {itemCount > 0 && (
-                  <span className="h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center shadow-sm">
+                  <span className="h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center shadow-xs">
                     {itemCount > 99 ? '99+' : itemCount}
                   </span>
                 )}
@@ -291,14 +324,39 @@ function StorefrontHeader({
             </div>
 
             {/* Navigation & Categories */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              <div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Search button in mobile drawer */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  onOpenSearch()
+                }}
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-600 transition"
+              >
+                <Search className="w-4 h-4 text-slate-400" />
+                <span>Buscar productos...</span>
+              </button>
+
+              <div className="space-y-1">
                 <Link
                   href={`/${store.slug}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-600 dark:hover:text-blue-400 transition"
                 >
-                  <span>🏠 Inicio / Todo el Catálogo</span>
+                  <span>🏠 Inicio / Catálogo</span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                </Link>
+
+                <Link
+                  href={`/${store.slug}/nosotros`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-600 dark:hover:text-blue-400 transition"
+                >
+                  <span className="flex items-center gap-2">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    Nosotros
+                  </span>
                   <ArrowRight className="w-4 h-4 opacity-50" />
                 </Link>
               </div>
@@ -361,12 +419,18 @@ function StorefrontHeader({
 function StorefrontShell({
   store,
   categories = [],
+  searchProducts = [],
+  exchangeRate = 91.5,
   children,
 }: {
   store: StoreData
   categories?: StoreCategory[]
+  searchProducts?: SearchProductItem[]
+  exchangeRate?: number
   children: React.ReactNode
 }) {
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+
   const instagramUrl = store.instagram_handle
     ? `https://www.instagram.com/${store.instagram_handle.replace('@', '')}/`
     : null
@@ -385,8 +449,12 @@ function StorefrontShell({
       </div>
 
       <div className="relative z-10 flex flex-col flex-1">
-        {/* Sticky Header with Categories and Contact */}
-        <StorefrontHeader store={store} categories={categories} />
+        {/* Sticky Header with Categories, Nosotros and Search */}
+        <StorefrontHeader
+          store={store}
+          categories={categories}
+          onOpenSearch={() => setIsSearchOpen(true)}
+        />
 
         {/* Page Content */}
         <main className="flex-1">{children}</main>
@@ -423,6 +491,21 @@ function StorefrontShell({
                 </div>
               </div>
 
+              {/* Navigation in footer */}
+              <div className="flex items-center gap-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <Link href={`/${store.slug}`} className="hover:text-blue-600 dark:hover:text-blue-400">
+                  Inicio
+                </Link>
+                <Link href={`/${store.slug}/nosotros`} className="hover:text-blue-600 dark:hover:text-blue-400">
+                  Nosotros
+                </Link>
+                {whatsappUrl && (
+                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 dark:hover:text-emerald-400">
+                    Atención al Cliente
+                  </a>
+                )}
+              </div>
+
               {/* Social links */}
               <div className="flex items-center gap-3">
                 {instagramUrl && (
@@ -430,7 +513,7 @@ function StorefrontShell({
                     href={instagramUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:opacity-90 hover:scale-105 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:opacity-90 hover:scale-105 transition-all shadow-xs"
                     aria-label="Instagram"
                   >
                     <Instagram className="h-4 w-4" />
@@ -442,7 +525,7 @@ function StorefrontShell({
                     href={whatsappUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white text-sm font-semibold hover:scale-105 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white text-sm font-semibold hover:scale-105 transition-all shadow-xs"
                     aria-label="WhatsApp"
                   >
                     <MessageCircle className="h-4 w-4" />
@@ -459,6 +542,18 @@ function StorefrontShell({
           </div>
         </footer>
       </div>
+
+      {/* Global Storefront Search Modal */}
+      <StorefrontSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        tenantSlug={store.slug}
+        products={searchProducts}
+        exchangeRate={exchangeRate}
+      />
+
+      {/* Order Guide / Welcome Explanation Modal */}
+      <OrderGuideModal tenantSlug={store.slug} storeName={store.name} />
     </div>
   )
 }
@@ -467,11 +562,17 @@ export default function StorefrontLayoutClient({
   store,
   categories = [],
   exchangeRate = 91.5,
+  searchProducts = [],
   children,
 }: Props) {
   return (
     <CartProvider tenantSlug={store.slug} exchangeRate={exchangeRate}>
-      <StorefrontShell store={store} categories={categories}>
+      <StorefrontShell
+        store={store}
+        categories={categories}
+        searchProducts={searchProducts}
+        exchangeRate={exchangeRate}
+      >
         {children}
       </StorefrontShell>
     </CartProvider>

@@ -2,7 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { useTenant } from '@/contexts/TenantContext'
-import { Save, ExternalLink, RefreshCw, Loader2, AlertCircle, Check, Tag } from 'lucide-react'
+import { 
+  Save, 
+  ExternalLink, 
+  RefreshCw, 
+  Loader2, 
+  AlertCircle, 
+  Check, 
+  Tag, 
+  Building2, 
+  Truck, 
+  BadgePercent, 
+  Headphones 
+} from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
 
@@ -14,12 +26,47 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
+  // Estados para la página 'Nosotros'
+  const [aboutTitle, setAboutTitle] = useState('')
+  const [aboutDescription, setAboutDescription] = useState('')
+  const [aboutShippingText, setAboutShippingText] = useState('ENVÍOS A TODO EL PAÍS')
+  const [aboutShippingSubtext, setAboutShippingSubtext] = useState('')
+  const [aboutPriceText, setAboutPriceText] = useState('EL MEJOR PRECIO DEL MERCADO')
+  const [aboutPriceSubtext, setAboutPriceSubtext] = useState('')
+  const [aboutSupportText, setAboutSupportText] = useState('SOPORTE POSVENTA')
+  const [aboutSupportSubtext, setAboutSupportSubtext] = useState('')
+
   const features = getTenantFeatures(tenant)
 
   // Sincronizar inputs cuando cargue el tenant
   useEffect(() => {
-    if (tenant?.phone_whatsapp) {
-      setPhone(tenant.phone_whatsapp)
+    if (tenant) {
+      if (tenant.phone_whatsapp) {
+        setPhone(tenant.phone_whatsapp)
+      }
+      const settings = (tenant.settings || {}) as Record<string, unknown>
+      const about = (settings.about || {}) as Record<string, string>
+
+      setAboutTitle(about.title || `Sobre ${tenant.name}`)
+      setAboutDescription(
+        about.description ||
+          'Somos una tienda dedicada a brindar la mejor selección de productos con atención personalizada, entregas confiables y garantía de satisfacción.'
+      )
+      setAboutShippingText(about.shippingText || 'ENVÍOS A TODO EL PAÍS')
+      setAboutShippingSubtext(
+        about.shippingSubtext ||
+          'Despachos rápidos y asegurados a nivel nacional a través de Zoom, Tealca, MRW y entregas directas.'
+      )
+      setAboutPriceText(about.priceText || 'EL MEJOR PRECIO DEL MERCADO')
+      setAboutPriceSubtext(
+        about.priceSubtext ||
+          'Precios de oportunidad altamente competitivos y calculados a la tasa oficial del Banco Central de Venezuela.'
+      )
+      setAboutSupportText(about.supportText || 'SOPORTE POSVENTA')
+      setAboutSupportSubtext(
+        about.supportSubtext ||
+          'Acompañamiento, garantía real y atención personalizada directa por WhatsApp antes y después de tu compra.'
+      )
     }
   }, [tenant])
 
@@ -33,8 +80,22 @@ export default function SettingsPage() {
     setErrorMessage(null)
 
     const r = parseFloat(rate)
-    const payload: { phone_whatsapp?: string; currency_rate_bcv?: number } = {
+    const payload: {
+      phone_whatsapp?: string
+      currency_rate_bcv?: number
+      about?: Record<string, unknown>
+    } = {
       phone_whatsapp: phone.trim(),
+      about: {
+        title: aboutTitle.trim(),
+        description: aboutDescription.trim(),
+        shippingText: aboutShippingText.trim(),
+        shippingSubtext: aboutShippingSubtext.trim(),
+        priceText: aboutPriceText.trim(),
+        priceSubtext: aboutPriceSubtext.trim(),
+        supportText: aboutSupportText.trim(),
+        supportSubtext: aboutSupportSubtext.trim(),
+      },
     }
 
     if (!isNaN(r) && r > 0) {
@@ -62,96 +123,227 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-3xl pb-12">
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Configuración de Tienda</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">Parámetros generales de {tenant?.name}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+          Parámetros generales y contenido público de {tenant?.name}
+        </p>
       </div>
 
-      <div className="glass-card p-6 border border-slate-200/80 dark:border-slate-800/80">
-        <form onSubmit={handleSave} className="space-y-5">
-          <div>
-            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-              Nombre de la Tienda
-            </label>
-            <input
-              type="text"
-              disabled
-              value={tenant?.name ?? 'Innovise Store'}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm font-semibold cursor-not-allowed"
-            />
-          </div>
+      <div className="glass-card p-6 sm:p-7 border border-slate-200/80 dark:border-slate-800/80">
+        <form onSubmit={handleSave} className="space-y-6">
+          {/* SECCIÓN 1: DATOS BÁSICOS */}
+          <div className="space-y-4">
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <Building2 className="w-4 h-4 text-blue-600" />
+              <span>1. Identidad y Canales</span>
+            </h2>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-              Slug del Storefront (URL Pública)
-            </label>
-            <div className="flex items-center gap-2">
+            <div>
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                Nombre de la Tienda
+              </label>
               <input
                 type="text"
                 disabled
-                value={`/${tenant?.slug ?? 'innovise'}`}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm cursor-not-allowed font-mono font-semibold"
+                value={tenant?.name ?? 'Innovise Store'}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm font-semibold cursor-not-allowed"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                Slug del Storefront (URL Pública)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  disabled
+                  value={`/${tenant?.slug ?? 'innovise'}`}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm cursor-not-allowed font-mono font-semibold"
+                />
+                <Link
+                  href={`/${tenant?.slug ?? 'innovise'}`}
+                  target="_blank"
+                  className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition flex items-center justify-center border border-blue-200 dark:border-blue-800/60"
+                  title="Abrir vitrina virtual"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                Teléfono WhatsApp (Pedidos Storefront)
+              </label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="584121234567"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Formato internacional sin signos (ej. 584121234567).</p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                  Tasa Oficial BCV (USD/VES)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleLiveSync}
+                  disabled={isSyncingBcv}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBcv ? 'animate-spin' : ''}`} />
+                  Sincronizar ahora con bcv.org.ve
+                </button>
+              </div>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 dark:text-slate-400">Bs.</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-extrabold"
+                />
+              </div>
+              {bcvFechaValor && (
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">
+                  Fecha Valor oficial registrada: <strong className="text-slate-800 dark:text-slate-200">{bcvFechaValor}</strong>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* SECCIÓN 2: PÁGINA "NOSOTROS" EDITABLE */}
+          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>📖 2. Página Pública &quot;Nosotros&quot;</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Personaliza lo que ofrece tu comercio a los visitantes del catálogo.
+                </p>
+              </div>
               <Link
-                href={`/${tenant?.slug ?? 'innovise'}`}
+                href={`/${tenant?.slug ?? 'innovise'}/nosotros`}
                 target="_blank"
-                className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition flex items-center justify-center border border-blue-200 dark:border-blue-800/60"
-                title="Abrir vitrina virtual"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition"
               >
-                <ExternalLink className="w-5 h-5" />
+                <span>Ver Página Pública</span>
+                <ExternalLink className="w-3.5 h-3.5" />
               </Link>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-              Teléfono WhatsApp (Pedidos Storefront)
-            </label>
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="584121234567"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Formato internacional sin signos (ej. 584121234567).</p>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                Tasa Oficial BCV (USD/VES)
+            <div>
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                Título Principal
               </label>
-              <button
-                type="button"
-                onClick={handleLiveSync}
-                disabled={isSyncingBcv}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBcv ? 'animate-spin' : ''}`} />
-                Sincronizar ahora con bcv.org.ve
-              </button>
-            </div>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 dark:text-slate-400">Bs.</span>
               <input
-                type="number"
-                step="0.01"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-extrabold"
+                type="text"
+                value={aboutTitle}
+                onChange={(e) => setAboutTitle(e.target.value)}
+                placeholder="Ej. Sobre Innovise Store"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            {bcvFechaValor && (
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">
-                Fecha Valor oficial registrada: <strong className="text-slate-800 dark:text-slate-200">{bcvFechaValor}</strong>
-              </p>
-            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                ¿Qué ofrece tu tienda? (Descripción Detallada)
+              </label>
+              <textarea
+                rows={3}
+                value={aboutDescription}
+                onChange={(e) => setAboutDescription(e.target.value)}
+                placeholder="Explica tu propuesta, experiencia o rubro principal..."
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
+              />
+            </div>
+
+            {/* Los 3 Pilares */}
+            <div className="space-y-3 pt-2">
+              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                Los 3 Pilares y Beneficios Destacados:
+              </h3>
+
+              {/* Pilar 1: Envíos */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400">
+                  <Truck className="w-4 h-4" />
+                  <span>Pilar 1: Logística de Envíos</span>
+                </div>
+                <input
+                  type="text"
+                  value={aboutShippingText}
+                  onChange={(e) => setAboutShippingText(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  placeholder="ENVÍOS A TODO EL PAÍS"
+                />
+                <textarea
+                  rows={2}
+                  value={aboutShippingSubtext}
+                  onChange={(e) => setAboutShippingSubtext(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
+                  placeholder="Detalle de agencias, zonas de entrega o delivery local..."
+                />
+              </div>
+
+              {/* Pilar 2: Precios */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  <BadgePercent className="w-4 h-4" />
+                  <span>Pilar 2: Competitividad de Precios</span>
+                </div>
+                <input
+                  type="text"
+                  value={aboutPriceText}
+                  onChange={(e) => setAboutPriceText(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  placeholder="EL MEJOR PRECIO DEL MERCADO"
+                />
+                <textarea
+                  rows={2}
+                  value={aboutPriceSubtext}
+                  onChange={(e) => setAboutPriceSubtext(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
+                  placeholder="Explicación de precios justos, ofertas o tasa BCV..."
+                />
+              </div>
+
+              {/* Pilar 3: Soporte */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-purple-600 dark:text-purple-400">
+                  <Headphones className="w-4 h-4" />
+                  <span>Pilar 3: Atención y Posventa</span>
+                </div>
+                <input
+                  type="text"
+                  value={aboutSupportText}
+                  onChange={(e) => setAboutSupportText(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  placeholder="SOPORTE POSVENTA"
+                />
+                <textarea
+                  rows={2}
+                  value={aboutSupportSubtext}
+                  onChange={(e) => setAboutSupportSubtext(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
+                  placeholder="Garantía, atención por WhatsApp o cambios..."
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Plan SaaS de la Tienda (Informativo - Administrado por Superadmin) */}
-          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800/80">
+          {/* Plan SaaS de la Tienda (Informativo) */}
+          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-indigo-500" /> Plan SaaS de la Tienda

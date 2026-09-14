@@ -15,7 +15,7 @@ function getAdminClient() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { tenant_id, phone_whatsapp, currency_rate_bcv, name, plan } = body
+    const { tenant_id, phone_whatsapp, currency_rate_bcv, name, plan, about } = body
 
     if (!tenant_id) {
       return NextResponse.json(
@@ -44,17 +44,17 @@ export async function POST(req: Request) {
       updateData.name = name.trim()
     }
 
-    if (plan !== undefined) {
+    if (plan !== undefined || about !== undefined) {
       const { data: currentTenant } = await supabase
         .from('tenants')
         .select('settings')
         .eq('id', tenant_id)
         .single()
       const prevSettings = (currentTenant?.settings || {}) as Record<string, unknown>
-      updateData.settings = {
-        ...prevSettings,
-        plan,
-      }
+      const newSettings = { ...prevSettings }
+      if (plan !== undefined) newSettings.plan = plan
+      if (about !== undefined) newSettings.about = about
+      updateData.settings = newSettings
     }
 
     if (Object.keys(updateData).length === 0) {

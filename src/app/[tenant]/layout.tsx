@@ -51,10 +51,10 @@ export default async function StorefrontLayout({
 
   const exchangeRate = Number(tenant.currency_rate_bcv) || 91.5
 
-  // Fetch active products to compute categories dynamically
+  // Fetch active products to compute categories and power the top search bar
   const { data: productsData } = await supabase
     .from('products')
-    .select('id, name, description')
+    .select('id, name, description, base_price_usd, image_url, sku')
     .eq('tenant_id', tenant.id)
     .eq('is_active', true)
 
@@ -70,8 +70,22 @@ export default async function StorefrontLayout({
     count,
   }))
 
+  const searchProducts = (productsData || []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    base_price_usd: Number(p.base_price_usd) || 0,
+    image_url: p.image_url,
+    sku: p.sku,
+  }))
+
   return (
-    <StorefrontLayoutClient store={store} categories={categories} exchangeRate={exchangeRate}>
+    <StorefrontLayoutClient
+      store={store}
+      categories={categories}
+      exchangeRate={exchangeRate}
+      searchProducts={searchProducts}
+    >
       {children}
     </StorefrontLayoutClient>
   )
