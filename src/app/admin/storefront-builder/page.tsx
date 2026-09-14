@@ -57,7 +57,7 @@ export default function StorefrontBuilderPage() {
   // Plan verification
   const plan = getTenantPlan(tenant)
   const planDetails = PLAN_CONFIG[plan]
-  const isSuperAdmin = profile?.role === 'superadmin' || !profile?.role
+  const isSuperAdmin = profile?.role === 'superadmin'
   const isUnlocked = isSuperAdmin || planDetails.hasStorefrontBuilder
 
   // Cargar productos y configuración del tema existente

@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 export async function POST(req: Request) {
   try {
+    // 1. Verificación Estricta: Solo superadmin puede crear nuevos comercios
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin'],
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const {
       name,
       slug,

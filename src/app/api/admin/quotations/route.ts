@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -20,6 +21,15 @@ export async function GET(req: Request) {
 
     if (!tenantId) {
       return NextResponse.json({ error: 'tenant_id es requerido' }, { status: 400 })
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      targetTenantId: tenantId,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()
@@ -131,6 +141,15 @@ export async function POST(req: Request) {
       )
     }
 
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      targetTenantId: tenant_id,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const supabase = getAdminClient()
 
     // Generar un número de cotización infalible
@@ -227,8 +246,17 @@ export async function DELETE(req: Request) {
     const id = searchParams.get('id')
     const tenantId = searchParams.get('tenant_id')
 
-    if (!id) {
-      return NextResponse.json({ error: 'id es requerido' }, { status: 400 })
+    if (!id || !tenantId) {
+      return NextResponse.json({ error: 'id y tenant_id son requeridos' }, { status: 400 })
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+      targetTenantId: tenantId,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()

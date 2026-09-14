@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -23,6 +24,15 @@ export async function POST(req: Request) {
         { error: 'tenant_id y theme_config son requeridos' },
         { status: 400 }
       )
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+      targetTenantId: tenant_id,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()

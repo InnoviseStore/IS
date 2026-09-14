@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -22,6 +23,15 @@ export async function GET(req: Request) {
 
     if (!tenantId) {
       return NextResponse.json({ error: 'tenant_id es requerido.' }, { status: 400 })
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      targetTenantId: tenantId,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()
@@ -69,6 +79,15 @@ export async function POST(req: Request) {
 
     if (!tenant_id || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Faltan campos requeridos en la venta.' }, { status: 400 })
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      targetTenantId: tenant_id,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()
@@ -215,6 +234,14 @@ export async function POST(req: Request) {
 // PATCH: Actualizar estado de orden (ej. anular)
 export async function PATCH(req: Request) {
   try {
+    // 1. Validar autenticación
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const body = await req.json()
     const { order_id, status, notes } = body
 
@@ -223,6 +250,22 @@ export async function PATCH(req: Request) {
     }
 
     const supabase = getAdminClient()
+
+    // 2. Verificar que la orden pertenezca al tenant del usuario
+    const { data: existingOrder, error: checkErr } = await supabase
+      .from('orders')
+      .select('tenant_id')
+      .eq('id', order_id)
+      .single()
+
+    if (checkErr || !existingOrder) {
+      return NextResponse.json({ error: 'Orden no encontrada.' }, { status: 404 })
+    }
+
+    if (!auth.isSuperAdmin && existingOrder.tenant_id !== auth.tenantId) {
+      return NextResponse.json({ error: 'Acceso denegado: no puedes modificar órdenes de otro comercio.' }, { status: 403 })
+    }
+
     const updatePayload: Record<string, any> = {
       updated_at: new Date().toISOString(),
     }
@@ -247,6 +290,14 @@ export async function PATCH(req: Request) {
 // DELETE: Eliminar o anular orden
 export async function DELETE(req: Request) {
   try {
+    // 1. Validar autenticación
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const body = await req.json()
     const { order_id, admin_key } = body
 
@@ -265,9 +316,14 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'No se encontró la orden solicitada.' }, { status: 404 })
     }
 
+    // 2. Verificar que la orden pertenezca al comercio del usuario
+    if (!auth.isSuperAdmin && order.tenant_id !== auth.tenantId) {
+      return NextResponse.json({ error: 'Acceso denegado: no puedes anular órdenes de otro comercio.' }, { status: 403 })
+    }
+
     const isPending = order.status === 'pending' || order.status === 'cancelled'
-    if (!isPending && admin_key !== '997603710921') {
-      return NextResponse.json({ error: 'Clave de seguridad de administrador requerida para anular ventas completadas.' }, { status: 403 })
+    if (!isPending && !auth.isSuperAdmin && auth.role !== 'owner' && admin_key !== '997603710921') {
+      return NextResponse.json({ error: 'Solo el propietario de la tienda o un superadmin pueden anular ventas completadas.' }, { status: 403 })
     }
 
     if (order.status === 'completed' && Array.isArray(order.order_items)) {

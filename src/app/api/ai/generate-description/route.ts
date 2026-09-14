@@ -13,8 +13,17 @@ interface ColorItem {
   hex?: string
 }
 
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+
 export async function POST(req: Request) {
   try {
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const body = await req.json()
     const {
       name,

@@ -38,7 +38,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [editingRate, setEditingRate] = useState(false)
   const [rateInput, setRateInput] = useState('')
 
-  const isSuperAdmin = profile?.role === 'superadmin' || !profile?.role // Accessible for superadmin and master setup
+  const isSuperAdmin = profile?.role === 'superadmin'
   const navItems = [
     ...baseNavItems,
     ...(isSuperAdmin

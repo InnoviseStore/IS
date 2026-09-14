@@ -12,8 +12,52 @@ function getAdminClient() {
   })
 }
 
+// Rate Limiter en memoria para prevenir inundación de pedidos / DoS (10 pedidos cada 5 minutos por IP)
+const ipRateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const windowMs = 5 * 60 * 1000 // 5 minutos
+  const maxRequests = 10
+
+  const entry = ipRateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    ipRateLimitMap.set(ip, { count: 1, resetAt: now + windowMs })
+    return true
+  }
+
+  if (entry.count >= maxRequests) {
+    return false
+  }
+
+  entry.count += 1
+  return true
+}
+
+// Sanitizador simple contra inyecciones XSS / HTML en nombres y notas
+function sanitizeText(str?: string | null): string {
+  if (!str) return ''
+  return String(str)
+    .replace(/[<>]/g, '') // Eliminar tags HTML
+    .trim()
+    .slice(0, 500) // Limitar longitud máxima para prevenir desbordamientos
+}
+
 export async function POST(req: Request) {
   try {
+    // 1. Detección de IP y Control de Tasa (Rate Limiting)
+    const clientIp =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      req.headers.get('x-real-ip') ||
+      'unknown-ip'
+
+    if (!checkRateLimit(clientIp)) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes de pedido. Por favor espera unos minutos antes de volver a intentar.' },
+        { status: 429 }
+      )
+    }
+
     const body = await req.json()
     const {
       tenantSlug,
@@ -51,9 +95,15 @@ export async function POST(req: Request) {
 
     const tenantId = tenant.id
     const rate = Number(exchangeRate) || Number(tenant.currency_rate_bcv) || 91.5
+    const cleanFullName = sanitizeText(customer.fullName)
     const cleanPhone = customer.phone.replace(/\D/g, '')
-    const cleanIdNumber = customer.idNumber ? customer.idNumber.trim().toUpperCase() : null
-    const cleanAddress = customer.address ? customer.address.trim() : null
+    const cleanIdNumber = customer.idNumber ? sanitizeText(customer.idNumber).toUpperCase() : null
+    const cleanAddress = customer.address ? sanitizeText(customer.address) : null
+    const cleanCustomerNotes = customer.notes ? sanitizeText(customer.notes) : ''
+
+    if (!cleanFullName || !cleanPhone) {
+      return NextResponse.json({ error: 'Nombre y teléfono válidos son requeridos.' }, { status: 400 })
+    }
 
     // 2. Buscar o crear cliente en la tabla customers (priorizando Cédula/RIF)
     let customerId: string | null = null
@@ -70,12 +120,12 @@ export async function POST(req: Request) {
       existingCustomer = byId
     }
 
-    if (!existingCustomer) {
+    if (!existingCustomer && cleanPhone) {
       const { data: byPhone } = await supabase
         .from('customers')
         .select('*')
         .eq('tenant_id', tenantId)
-        .or(`phone.eq.${cleanPhone},phone.eq.${customer.phone}`)
+        .eq('phone', cleanPhone)
         .limit(1)
         .maybeSingle()
       existingCustomer = byPhone
@@ -95,11 +145,11 @@ export async function POST(req: Request) {
         .from('customers')
         .insert({
           tenant_id: tenantId,
-          full_name: customer.fullName.trim(),
+          full_name: cleanFullName,
           id_number: cleanIdNumber,
-          phone: customer.phone.trim(),
+          phone: cleanPhone,
           address: cleanAddress,
-          notes: customer.notes ? `Pedido web: ${customer.notes.trim()}` : 'Registrado desde Vitrina Web',
+          notes: cleanCustomerNotes ? `Pedido web: ${cleanCustomerNotes}` : 'Registrado desde Vitrina Web',
         })
         .select('id')
         .single()
@@ -119,11 +169,11 @@ export async function POST(req: Request) {
     const finalTotalVes = Number(totalVes) || finalTotalUsd * rate
 
     const orderNotes = [
-      `Cliente: ${customer.fullName.trim()}`,
+      `Cliente: ${cleanFullName}`,
       cleanIdNumber ? `CI/RIF: ${cleanIdNumber}` : null,
-      `WhatsApp: ${customer.phone.trim()}`,
+      `WhatsApp: ${cleanPhone}`,
       cleanAddress ? `Dirección: ${cleanAddress}` : null,
-      customer.notes?.trim() ? `Indicaciones: ${customer.notes.trim()}` : null,
+      cleanCustomerNotes ? `Indicaciones: ${cleanCustomerNotes}` : null,
       'Origen: Catálogo Web WhatsApp',
     ]
       .filter(Boolean)

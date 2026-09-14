@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 export async function POST(req: Request) {
   try {
+    const body = await req.json()
     const {
       tenant_id,
       name,
@@ -15,12 +17,29 @@ export async function POST(req: Request) {
       theme,
       rubro,
       plan,
-    } = await req.json()
+    } = body
 
     if (!tenant_id) {
       return NextResponse.json(
         { error: 'El ID de la tienda (tenant_id) es requerido.' },
         { status: 400 }
+      )
+    }
+
+    // 1. Validar autenticación y aislamiento (solo superadmin o owner del tenant)
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+      targetTenantId: tenant_id,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
+    // 2. Si se intenta modificar el plan de suscripción, SOLO superadmin puede hacerlo
+    if (plan !== undefined && !auth.isSuperAdmin) {
+      return NextResponse.json(
+        { error: 'Solo un superadministrador de la plataforma puede modificar el plan de suscripción.' },
+        { status: 403 }
       )
     }
 

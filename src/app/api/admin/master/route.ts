@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
+    // 1. Verificación Estricta: Solo 'superadmin' puede consultar el directorio maestro
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin'],
+    })
+
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, serviceRoleKey)

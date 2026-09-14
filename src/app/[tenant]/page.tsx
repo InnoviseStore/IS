@@ -61,7 +61,7 @@ async function getStorefrontData(slug: string) {
 
   const { data: productsRaw } = await supabase
     .from('products')
-    .select('*')
+    .select('id, tenant_id, name, sku, description, base_price_usd, stock, image_url, images, is_active')
     .eq('tenant_id', tenant.id)
     .eq('is_active', true)
     .order('name', { ascending: true })

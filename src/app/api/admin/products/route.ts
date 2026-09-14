@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -34,6 +35,15 @@ export async function POST(req: Request) {
         { error: 'Faltan campos obligatorios (nombre o comercio).' },
         { status: 400 }
       )
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+      targetTenantId: tenant_id,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()
@@ -153,6 +163,14 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    // 1. Validar autenticación
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
 
@@ -162,13 +180,28 @@ export async function DELETE(req: Request) {
 
     const supabase = getAdminClient()
 
-    // 1. Desvincular de order_items para conservar el historial de ventas pasadas
+    // 2. Verificar que el producto pertenezca al tenant del usuario
+    const { data: prod, error: fetchErr } = await supabase
+      .from('products')
+      .select('tenant_id')
+      .eq('id', id)
+      .single()
+
+    if (fetchErr || !prod) {
+      return NextResponse.json({ error: 'Producto no encontrado.' }, { status: 404 })
+    }
+
+    if (!auth.isSuperAdmin && prod.tenant_id !== auth.tenantId) {
+      return NextResponse.json({ error: 'Acceso denegado: no puedes eliminar productos de otro comercio.' }, { status: 403 })
+    }
+
+    // 3. Desvincular de order_items para conservar el historial de ventas pasadas
     await supabase.from('order_items').update({ product_id: null }).eq('product_id', id)
 
-    // 2. Eliminar logs de inventario asociados a este producto
+    // 4. Eliminar logs de inventario asociados a este producto
     await supabase.from('inventory_logs').delete().eq('product_id', id)
 
-    // 3. Eliminar el producto de la tabla products
+    // 5. Eliminar el producto de la tabla products
     const { error } = await supabase.from('products').delete().eq('id', id)
 
     if (error) throw new Error(error.message)

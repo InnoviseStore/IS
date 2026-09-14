@@ -66,8 +66,17 @@ const CATEGORY_RULES: CategoryRule[] = [
   },
 ]
 
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+
 export async function POST(req: Request) {
   try {
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
     const { name, tenantId, tenantSlug } = await req.json()
 
     if (!name || typeof name !== 'string') {

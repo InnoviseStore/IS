@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,15 @@ export async function POST(req: Request) {
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt es requerido' }, { status: 400 })
+    }
+
+    // 1. Validar autenticación y aislamiento estricto de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      targetTenantSlug: tenantSlug || 'innovise',
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -21,6 +22,15 @@ export async function DELETE(req: Request) {
 
     if (!id || !tenantId) {
       return NextResponse.json({ error: 'id y tenant_id son requeridos' }, { status: 400 })
+    }
+
+    // 1. Validar autenticación y pertenencia de tenant
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin'],
+      targetTenantId: tenantId,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
     }
 
     const supabase = getAdminClient()
