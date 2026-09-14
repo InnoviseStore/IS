@@ -83,7 +83,7 @@ export default function CartDrawer({
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<{ fullName?: string; phone?: string }>({});
 
-  // Submission state
+  // Submission & Confirmation state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<string | null>(null);
@@ -138,27 +138,63 @@ export default function CartDrawer({
     return Object.keys(nextErrors).length === 0;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
 
-    const url = buildWhatsAppCheckoutUrl({
-      items,
-      customer: { fullName: fullName.trim(), phone: phone.trim(), notes: notes.trim() },
-      totalUsd,
-      totalVes,
-      exchangeRate,
-      config: { phone: storePhone, storeName },
-    });
+    try {
+      let orderNumber: string | undefined = undefined;
 
-    window.open(url, '_blank', 'noopener,noreferrer');
+      // 1. Registrar la orden en la base de datos de la tienda
+      try {
+        const res = await fetch('/api/storefront/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantSlug,
+            customer: {
+              fullName: fullName.trim(),
+              phone: phone.trim(),
+              notes: notes.trim(),
+            },
+            items,
+            totalUsd,
+            totalVes,
+            exchangeRate,
+          }),
+        });
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+        const data = await res.json();
+        if (res.ok && data.order_number) {
+          orderNumber = data.order_number;
+          setConfirmedOrderNumber(data.order_number);
+        }
+      } catch (dbErr) {
+        console.warn('Advertencia al registrar en BD, continuando por WhatsApp:', dbErr);
+      }
+
+      // 2. Generar el enlace de WhatsApp con el número de orden oficial
+      const url = buildWhatsAppCheckoutUrl({
+        items,
+        customer: {
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          notes: notes.trim(),
+          orderNumber,
+        },
+        totalUsd,
+        totalVes,
+        exchangeRate,
+        config: { phone: storePhone, storeName },
+      });
+
+      window.open(url, '_blank', 'noopener,noreferrer');
       setIsSuccess(true);
-    }, 1500);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleClearAndClose() {
@@ -216,29 +252,42 @@ export default function CartDrawer({
 
         {/* Success State */}
         {isSuccess ? (
-          <div className="flex flex-col items-center justify-center flex-1 px-6 gap-6 text-center">
-            <div className="h-20 w-20 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center flex-1 px-6 gap-5 text-center">
+            <div className="h-20 w-20 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center shadow-lg shadow-emerald-500/20">
               <CheckCircle2 className="h-12 w-12 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">¡Pedido preparado!</p>
-              <p className="text-slate-600 dark:text-slate-300 text-sm mt-2">
-                Se abrió WhatsApp para enviar el detalle completo de tu pedido a{' '}
-                <strong className="font-semibold text-blue-600 dark:text-blue-400">{storeName}</strong>.
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800/60">
+                Pedido Registrado
+              </span>
+              <p className="text-2xl font-black text-slate-900 dark:text-white mt-2">¡Solicitud Enviada!</p>
+              {confirmedOrderNumber && (
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-1">
+                  N° de Pedido:{' '}
+                  <span className="font-mono font-black text-blue-600 dark:text-blue-400">
+                    #{confirmedOrderNumber}
+                  </span>
+                </p>
+              )}
+              <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm mt-2 max-w-xs mx-auto">
+                Tu pedido quedó registrado en el sistema de{' '}
+                <strong className="font-semibold text-blue-600 dark:text-blue-400">{storeName}</strong> y se abrió WhatsApp para coordinar el pago y la entrega con un asesor.
               </p>
             </div>
-            <div className="flex flex-col gap-3 w-full max-w-xs mt-4">
+            <div className="flex flex-col gap-2.5 w-full max-w-xs mt-2">
               <button
+                type="button"
                 onClick={handleClearAndClose}
-                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition"
+                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 active:scale-95 transition cursor-pointer"
               >
-                Cerrar y Limpiar Carrito
+                Limpiar Carrito y Continuar
               </button>
               <button
+                type="button"
                 onClick={() => setIsCartOpen(false)}
-                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="w-full py-2.5 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
-                Continuar Viendo Productos
+                Ver Catálogo
               </button>
             </div>
           </div>
@@ -255,7 +304,7 @@ export default function CartDrawer({
                 </span>
                 <button
                   onClick={clearCart}
-                  className="text-xs font-semibold text-rose-500 hover:text-rose-600 transition"
+                  className="text-xs font-semibold text-rose-500 hover:text-rose-600 transition cursor-pointer"
                 >
                   Vaciar carrito
                 </button>
@@ -296,7 +345,7 @@ export default function CartDrawer({
                         </p>
                         <button
                           onClick={() => removeItem(item.id)}
-                          className="text-slate-400 hover:text-rose-500 transition p-0.5"
+                          className="text-slate-400 hover:text-rose-500 transition p-0.5 cursor-pointer"
                           aria-label={`Eliminar ${item.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -308,7 +357,7 @@ export default function CartDrawer({
                         <div className="flex items-center gap-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-1.5 py-0.5 shadow-xs">
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                            className="h-6 w-6 flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg transition"
+                            className="h-6 w-6 flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg transition cursor-pointer"
                             aria-label="Disminuir"
                           >
                             <Minus className="h-3 w-3" />
@@ -318,7 +367,7 @@ export default function CartDrawer({
                           </span>
                           <button
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="h-6 w-6 flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg transition"
+                            className="h-6 w-6 flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg transition cursor-pointer"
                             aria-label="Aumentar"
                           >
                             <Plus className="h-3 w-3" />
