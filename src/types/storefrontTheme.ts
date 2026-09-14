@@ -27,6 +27,7 @@ export interface TemplateDefinition {
   name: string
   tagline: string
   description: string
+  layoutLabel: string
   bestFor: string
   badgeText: string
   badgeColor: string
@@ -44,6 +45,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     name: 'Modern Aurora',
     tagline: 'Fluido, moderno y envolvente',
     description: 'Fondos dinámicos con efecto degradado translúcido, tarjetas glassmorphism y carrusel de novedades.',
+    layoutLabel: 'Estructura: Bento Grid & Carrusel',
     bestFor: 'Tecnología, comercios modernos y tiendas multimarca.',
     badgeText: 'Popular',
     badgeColor: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
@@ -58,7 +60,8 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     id: 'minimal',
     name: 'Minimal Clean B&W',
     tagline: 'Elegancia sobria estilo Apple / Zara',
-    description: 'Espacios en blanco puros, tipografía sans refinada, bordes sutiles de 1px y protagonismo absoluto a la fotografía.',
+    description: 'Espacios en blanco puros, tipografía sans refinada, bordes sutiles de 1px y protagonismo absoluto a la fotografía en 2 columnas grandes.',
+    layoutLabel: 'Estructura: Lookbook Editorial 2 Columnas',
     bestFor: 'Moda, calzado, joyería, cosmética y diseño de interiores.',
     badgeText: 'Elegante',
     badgeColor: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
@@ -74,6 +77,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     name: 'Tech Cyber & Gaming',
     tagline: 'Oscuro de alto impacto con acentos neón',
     description: 'Estética futurista oscura con acentos cian/eléctricos, tipografía monoespaciada para códigos SKU y badges de specs.',
+    layoutLabel: 'Estructura: Cuadrícula Tech con Specs',
     bestFor: 'Electrónica, telefonía, repuestos, informática y gaming.',
     badgeText: 'Gamer / Tech',
     badgeColor: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300',
@@ -89,6 +93,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     name: 'Boutique Luxury Warm',
     tagline: 'Tonos cálidos, arena y acabados prémium',
     description: 'Paleta cálida refinada en tonos crema, arena y ámbar suave, bordes muy redondeados y sombras aterciopeladas.',
+    layoutLabel: 'Estructura: Vitrina Curva de Lujo',
     bestFor: 'Perfumería, regalos de lujo, gourmet, cuidado personal y accesorios de alta gama.',
     badgeText: 'Premium',
     badgeColor: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
@@ -103,7 +108,8 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     id: 'express',
     name: 'Direct Express Mayorista',
     tagline: 'Catálogo de alta densidad con compra directa',
-    description: 'Cuadrícula compacta y optimizada con selector numérico rápido y botón directo de compra por WhatsApp en cada producto.',
+    description: 'Formato lista/tabla horizontal optimizado para recorrer decenas de productos rápido con selector numérico y botón de pedido inmediato.',
+    layoutLabel: 'Estructura: Lista / Tabla Rápida de Mayorista',
     bestFor: 'Bodegones, distribuidores, ferreterías, farmacias y víveres.',
     badgeText: 'Conversión',
     badgeColor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',

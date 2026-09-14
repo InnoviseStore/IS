@@ -130,6 +130,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
             products={categoryProducts}
             exchangeRate={exchangeRate}
             tenantSlug={tenant.slug}
+            template={((tenant.settings as any)?.storefront_theme?.template) || 'aurora'}
+            primaryColor={((tenant.settings as any)?.storefront_theme?.primaryColor)}
           />
         ) : (
           <div className="py-16 text-center space-y-4">

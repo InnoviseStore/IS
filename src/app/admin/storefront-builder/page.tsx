@@ -42,7 +42,7 @@ const COLOR_PRESETS = [
 ]
 
 export default function StorefrontBuilderPage() {
-  const { tenant, profile, exchangeRate } = useTenant()
+  const { tenant, profile, exchangeRate, switchTenant } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -111,7 +111,7 @@ export default function StorefrontBuilderPage() {
     })
   }
 
-  // Guardar configuración
+  // Guardar configuración vía API de servidor segura con Service Role
   async function handleSave() {
     if (!tenant) return
     setSaving(true)
@@ -119,22 +119,32 @@ export default function StorefrontBuilderPage() {
     setSaveSuccess(false)
 
     try {
-      const supabase = createClient()
-      const currentSettings = ((tenant.settings || {}) as Record<string, unknown>)
-      const newSettings = {
-        ...currentSettings,
-        storefront_theme: config,
+      const res = await fetch('/api/admin/storefront-theme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          theme_config: config,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Error al guardar la configuración')
       }
 
-      const { error } = await supabase
-        .from('tenants')
-        .update({ settings: newSettings })
-        .eq('id', tenant.id)
-
-      if (error) throw error
+      if (tenant) {
+        switchTenant({
+          ...tenant,
+          settings: {
+            ...((tenant.settings || {}) as Record<string, unknown>),
+            storefront_theme: config,
+          },
+        })
+      }
 
       setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3500)
+      setTimeout(() => setSaveSuccess(false), 4500)
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Error al guardar el tema')
     } finally {
@@ -322,6 +332,9 @@ export default function StorefrontBuilderPage() {
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                         Ideal: {tpl.bestFor}
                       </p>
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        <span>📐 {tpl.layoutLabel}</span>
+                      </div>
                     </div>
                   </button>
                 )
@@ -694,48 +707,220 @@ export default function StorefrontBuilderPage() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {previewProducts.map((p) => (
-                      <div
-                        key={p.id}
-                        className={`p-2.5 rounded-2xl border transition-all ${activeTemplateDef.previewClasses.card}`}
-                      >
-                        <div className="relative aspect-square rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden mb-2">
-                          {p.image_url ? (
-                            <Image
-                              src={p.image_url}
-                              alt={p.name}
-                              fill
-                              unoptimized
-                              className="object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-slate-400">
-                              <Store className="w-6 h-6" />
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
-                          {p.name}
-                        </p>
-                        <div className="flex items-baseline justify-between mt-1">
-                          <p className="text-xs font-black" style={{ color: config.primaryColor }}>
-                            ${Number(p.base_price_usd).toFixed(2)}
-                          </p>
-                          <p className="text-[9px] font-semibold text-slate-500">
-                            Bs. {(Number(p.base_price_usd) * exchangeRate).toFixed(0)}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="w-full mt-2 py-1.5 rounded-xl text-[10px] font-bold text-white transition shadow-xs cursor-pointer"
-                          style={{ backgroundColor: config.primaryColor }}
+                  {config.template === 'express' ? (
+                    /* Layout Express: Lista Horizontal de Alta Densidad (Mayorista / Distribuidora) */
+                    <div className="space-y-2">
+                      {previewProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs gap-2"
                         >
-                          {config.template === 'express' ? 'Comprar 🚀' : 'Agregar +'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+                              {p.image_url ? (
+                                <Image
+                                  src={p.image_url}
+                                  alt={p.name}
+                                  fill
+                                  unoptimized
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <Store className="w-5 h-5 m-auto text-slate-400" />
+                              )}
+                            </div>
+                            <div className="truncate">
+                              <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                                {p.name}
+                              </p>
+                              <p className="text-[9px] font-mono text-slate-400">
+                                SKU: {p.sku || 'REF-N/A'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="text-right">
+                              <p className="text-xs font-black" style={{ color: config.primaryColor }}>
+                                ${Number(p.base_price_usd).toFixed(2)}
+                              </p>
+                              <p className="text-[9px] font-semibold text-slate-500">
+                                Bs. {(Number(p.base_price_usd) * exchangeRate).toFixed(0)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white shadow-xs cursor-pointer"
+                              style={{ backgroundColor: config.primaryColor }}
+                            >
+                              + Pedir
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : config.template === 'minimal' ? (
+                    /* Layout Minimal: Lookbook Editorial de Moda / Lujo en 2 Columnas Grandes */
+                    <div className="grid grid-cols-2 gap-3.5">
+                      {previewProducts.map((p) => (
+                        <div key={p.id} className="group space-y-1.5">
+                          <div className="relative aspect-[3/4] bg-neutral-100 dark:bg-neutral-900 overflow-hidden">
+                            {p.image_url ? (
+                              <Image
+                                src={p.image_url}
+                                alt={p.name}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <Store className="w-8 h-8 m-auto text-neutral-400" />
+                            )}
+                            <span className="absolute top-2 left-2 text-[8px] font-mono uppercase bg-black/80 text-white px-1.5 py-0.5">
+                              Disponible
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                              {p.name}
+                            </p>
+                            <p className="text-xs font-semibold" style={{ color: config.primaryColor }}>
+                              ${Number(p.base_price_usd).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : config.template === 'tech' ? (
+                    /* Layout Tech: Cuadrícula Cyber con Specs y Acentos Neón */
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {previewProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          className="p-2.5 rounded-2xl bg-slate-900 border border-cyan-500/30 shadow-md shadow-cyan-950/20"
+                        >
+                          <div className="relative aspect-square rounded-xl bg-slate-950 overflow-hidden mb-2">
+                            {p.image_url ? (
+                              <Image
+                                src={p.image_url}
+                                alt={p.name}
+                                fill
+                                unoptimized
+                                className="object-contain p-2"
+                              />
+                            ) : (
+                              <Store className="w-6 h-6 m-auto text-slate-700" />
+                            )}
+                            <span className="absolute top-1.5 left-1.5 px-1.5 py-0.2 rounded-md bg-black/80 text-[8px] font-mono text-cyan-400">
+                              ● Stock OK
+                            </span>
+                          </div>
+                          <p className="text-[11px] font-bold text-white truncate">
+                            {p.name}
+                          </p>
+                          <div className="flex items-baseline justify-between mt-1">
+                            <p className="text-xs font-black text-cyan-400" style={{ color: config.primaryColor }}>
+                              ${Number(p.base_price_usd).toFixed(2)}
+                            </p>
+                            <span className="text-[9px] font-mono text-slate-400">
+                              {p.sku || 'SKU'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="w-full mt-2 py-1 rounded-xl text-[10px] font-bold text-slate-950 transition shadow-xs cursor-pointer"
+                            style={{ backgroundColor: config.primaryColor }}
+                          >
+                            Configurar +
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : config.template === 'boutique' ? (
+                    /* Layout Boutique: Vitrina Curva de Lujo con Acabados Cálidos */
+                    <div className="grid grid-cols-2 gap-3">
+                      {previewProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          className="p-3 rounded-3xl bg-white/90 dark:bg-[#1f1c1a]/90 border border-amber-200/60 dark:border-amber-900/40 shadow-xs"
+                        >
+                          <div className="relative aspect-square rounded-2xl bg-[#faf7f2] dark:bg-[#141210] overflow-hidden mb-2">
+                            {p.image_url ? (
+                              <Image
+                                src={p.image_url}
+                                alt={p.name}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <Store className="w-6 h-6 m-auto text-amber-300" />
+                            )}
+                            <span className="absolute top-1.5 right-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-[8px] font-semibold text-amber-800">
+                              Exclusivo
+                            </span>
+                          </div>
+                          <p className="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {p.name}
+                          </p>
+                          <div className="flex items-baseline justify-between mt-1">
+                            <p className="text-xs font-black text-amber-800 dark:text-amber-300" style={{ color: config.primaryColor }}>
+                              ${Number(p.base_price_usd).toFixed(2)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="w-full mt-2 py-1 rounded-xl text-[10px] font-bold text-white transition shadow-xs cursor-pointer"
+                            style={{ backgroundColor: config.primaryColor }}
+                          >
+                            Seleccionar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Layout Aurora: Bento Cards Modernas */
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {previewProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          className="p-2.5 rounded-2xl border bg-white/70 dark:bg-slate-900/60 backdrop-blur-md border-white/60 dark:border-slate-800 shadow-xs"
+                        >
+                          <div className="relative aspect-square rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden mb-2">
+                            {p.image_url ? (
+                              <Image
+                                src={p.image_url}
+                                alt={p.name}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <Store className="w-6 h-6 m-auto text-slate-400" />
+                            )}
+                          </div>
+                          <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                            {p.name}
+                          </p>
+                          <div className="flex items-baseline justify-between mt-1">
+                            <p className="text-xs font-black" style={{ color: config.primaryColor }}>
+                              ${Number(p.base_price_usd).toFixed(2)}
+                            </p>
+                            <p className="text-[9px] font-semibold text-slate-500">
+                              Bs. {(Number(p.base_price_usd) * exchangeRate).toFixed(0)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="w-full mt-2 py-1.5 rounded-xl text-[10px] font-bold text-white transition shadow-xs cursor-pointer"
+                            style={{ backgroundColor: config.primaryColor }}
+                          >
+                            Agregar +
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

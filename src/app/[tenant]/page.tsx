@@ -258,6 +258,8 @@ export default async function StorefrontPage({ params }: PageProps) {
           products={products}
           exchangeRate={exchangeRate}
           tenantSlug={tenant.slug}
+          template={templateId}
+          primaryColor={themeConfig.primaryColor}
         />
       </section>
     </main>

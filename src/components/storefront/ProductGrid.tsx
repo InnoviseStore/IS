@@ -266,17 +266,381 @@ const ProductCard = React.memo(function ProductCard({
   );
 });
 
+// ─── Lookbook Card (Minimal Template - 2 Cols Editorial Fashion) ──────────────
+const LookbookCard = React.memo(function LookbookCard({
+  product,
+  exchangeRate,
+  tenantSlug,
+  cartItem,
+  onAdd,
+  onIncrease,
+  onDecrease,
+  primaryColor,
+}: ProductCardProps & { primaryColor?: string }) {
+  const [justAdded, setJustAdded] = useState(false);
+  const priceVes = product.unit_price_usd * exchangeRate;
+  const outOfStock = product.stock_quantity === 0;
+  const productSlug = encodeURIComponent(product.sku || product.id);
+  const productHref = `/${tenantSlug}/p/${productSlug}`;
+
+  function handleAdd() {
+    onAdd();
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1200);
+  }
+
+  return (
+    <div className="group flex flex-col space-y-3">
+      <Link href={productHref} prefetch={true} className="relative aspect-[3/4] bg-neutral-100 dark:bg-neutral-900 overflow-hidden block">
+        {product.image_url ? (
+          <Image
+            src={product.image_url}
+            alt={product.name}
+            fill
+            unoptimized
+            className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+            sizes="(max-width: 768px) 100vw, 50vw"
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400">
+            <Package className="w-12 h-12 stroke-[1.5]" />
+          </div>
+        )}
+        <div className="absolute top-4 left-4 text-[10px] font-mono uppercase tracking-widest bg-black/80 dark:bg-white/90 text-white dark:text-black px-2.5 py-1">
+          {stockLabel(product.stock_quantity)}
+        </div>
+      </Link>
+
+      <div className="flex flex-col space-y-1.5 pt-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <Link href={productHref} prefetch={true}>
+            <h3 className="text-sm sm:text-base font-medium tracking-tight text-neutral-900 dark:text-neutral-100 group-hover:opacity-75 transition-opacity line-clamp-1">
+              {product.name}
+            </h3>
+          </Link>
+          <p className="text-sm sm:text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100 flex-shrink-0" style={primaryColor ? { color: primaryColor } : undefined}>
+            ${formatUsd(product.unit_price_usd)}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
+          <span>{product.sku ? `REF: ${product.sku}` : detectCategory(product.name, product.description)}</span>
+          <span>Bs. {formatVes(priceVes)}</span>
+        </div>
+
+        <div className="pt-2">
+          {outOfStock ? (
+            <span className="text-xs text-neutral-400 uppercase tracking-wider font-mono">Agotado</span>
+          ) : cartItem ? (
+            <div className="flex items-center gap-2 border border-neutral-300 dark:border-neutral-700 px-3 py-1 w-fit">
+              <button onClick={onDecrease} className="text-xs px-1 hover:opacity-70 cursor-pointer">-</button>
+              <span className="text-xs font-mono px-2">{cartItem.quantity}</span>
+              <button onClick={onIncrease} className="text-xs px-1 hover:opacity-70 cursor-pointer">+</button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAdd}
+              className="text-xs font-medium uppercase tracking-widest border-b border-black dark:border-white pb-0.5 hover:opacity-70 transition-opacity w-fit cursor-pointer"
+            >
+              {justAdded ? '✓ En la bolsa' : '+ Añadir a la bolsa'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ─── Tech Cyber Card (Gamer & Electronics Specs Layout) ─────────────────────────
+const TechCard = React.memo(function TechCard({
+  product,
+  exchangeRate,
+  tenantSlug,
+  cartItem,
+  onAdd,
+  onIncrease,
+  onDecrease,
+  primaryColor = '#06b6d4',
+}: ProductCardProps & { primaryColor?: string }) {
+  const [justAdded, setJustAdded] = useState(false);
+  const priceVes = product.unit_price_usd * exchangeRate;
+  const outOfStock = product.stock_quantity === 0;
+  const productSlug = encodeURIComponent(product.sku || product.id);
+  const productHref = `/${tenantSlug}/p/${productSlug}`;
+
+  function handleAdd() {
+    onAdd();
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1200);
+  }
+
+  return (
+    <div className="group relative flex flex-col bg-slate-900/90 border border-slate-800 hover:border-cyan-500/60 transition-all duration-300 rounded-2xl overflow-hidden shadow-lg shadow-cyan-950/20">
+      <Link href={productHref} prefetch={true} className="relative aspect-square bg-slate-950 block overflow-hidden">
+        {product.image_url ? (
+          <Image
+            src={product.image_url}
+            alt={product.name}
+            fill
+            unoptimized
+            className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+            sizes="(max-width: 640px) 100vw, 25vw"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-slate-700">
+            <Package className="w-10 h-10" />
+          </div>
+        )}
+        <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/80 border border-cyan-500/30 text-[10px] font-mono text-cyan-400">
+          ● {stockLabel(product.stock_quantity)}
+        </div>
+      </Link>
+
+      <div className="p-3.5 flex flex-col flex-1 justify-between gap-2.5 bg-slate-900/95">
+        <div>
+          <div className="flex items-center justify-between text-[10px] font-mono text-cyan-400/80 mb-1">
+            <span>{detectCategory(product.name, product.description)}</span>
+            {product.sku && <span>SKU: {product.sku}</span>}
+          </div>
+          <Link href={productHref} prefetch={true}>
+            <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-2 hover:text-cyan-400 transition-colors">
+              {product.name}
+            </h3>
+          </Link>
+        </div>
+
+        <div className="pt-2 border-t border-slate-800">
+          <div className="flex items-baseline justify-between">
+            <p className="text-base font-extrabold text-cyan-400 tracking-tight" style={{ color: primaryColor }}>
+              ${formatUsd(product.unit_price_usd)}
+              <span className="text-[10px] font-normal text-slate-400 ml-1">USD</span>
+            </p>
+            <p className="text-[11px] font-mono text-slate-400">
+              Bs. {formatVes(priceVes)}
+            </p>
+          </div>
+
+          <div className="mt-2.5">
+            {outOfStock ? (
+              <button disabled className="w-full py-2 rounded-xl bg-slate-800 text-slate-500 text-xs font-mono">
+                [AGOTADO]
+              </button>
+            ) : cartItem ? (
+              <div className="flex items-center justify-between bg-slate-950 border border-cyan-500/40 rounded-xl px-2 py-1">
+                <button onClick={onDecrease} className="p-1 text-cyan-400 hover:text-white cursor-pointer">-</button>
+                <span className="text-xs font-mono font-bold text-white">{cartItem.quantity}</span>
+                <button onClick={onIncrease} className="p-1 text-cyan-400 hover:text-white cursor-pointer">+</button>
+              </div>
+            ) : (
+              <button
+                onClick={handleAdd}
+                className="w-full py-2 rounded-xl text-xs font-bold text-slate-950 transition active:scale-95 shadow-md shadow-cyan-500/20 cursor-pointer"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {justAdded ? '✓ Agregado' : 'Añadir al Setup +'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ─── Boutique Card (Luxury Warm Showcase Layout) ────────────────────────────────
+const BoutiqueCard = React.memo(function BoutiqueCard({
+  product,
+  exchangeRate,
+  tenantSlug,
+  cartItem,
+  onAdd,
+  onIncrease,
+  onDecrease,
+  primaryColor = '#d97706',
+}: ProductCardProps & { primaryColor?: string }) {
+  const [justAdded, setJustAdded] = useState(false);
+  const priceVes = product.unit_price_usd * exchangeRate;
+  const outOfStock = product.stock_quantity === 0;
+  const productSlug = encodeURIComponent(product.sku || product.id);
+  const productHref = `/${tenantSlug}/p/${productSlug}`;
+
+  function handleAdd() {
+    onAdd();
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1200);
+  }
+
+  return (
+    <div className="group flex flex-col bg-white/90 dark:bg-[#1f1c1a]/90 rounded-3xl border border-amber-200/60 dark:border-amber-900/40 p-3.5 shadow-md shadow-amber-950/5 hover:shadow-xl hover:border-amber-400 transition-all duration-300">
+      <Link href={productHref} prefetch={true} className="relative aspect-square rounded-2xl overflow-hidden bg-[#faf7f2] dark:bg-[#141210] block mb-3">
+        {product.image_url ? (
+          <Image
+            src={product.image_url}
+            alt={product.name}
+            fill
+            unoptimized
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
+            sizes="(max-width: 640px) 100vw, 25vw"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-amber-300 dark:text-amber-700">
+            <Package className="w-10 h-10" />
+          </div>
+        )}
+        <div className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-full bg-amber-50/90 dark:bg-amber-950/90 text-amber-800 dark:text-amber-200 border border-amber-300/50 text-[10px] font-semibold">
+          {stockLabel(product.stock_quantity)}
+        </div>
+      </Link>
+
+      <div className="flex flex-col flex-1 justify-between gap-2">
+        <div>
+          <span className="text-[10px] font-medium tracking-wider text-amber-700 dark:text-amber-400 uppercase">
+            {detectCategory(product.name, product.description)}
+          </span>
+          <Link href={productHref} prefetch={true}>
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-2 hover:text-amber-700 transition-colors mt-0.5">
+              {product.name}
+            </h3>
+          </Link>
+        </div>
+
+        <div className="pt-2 border-t border-amber-100 dark:border-amber-900/30 flex items-center justify-between">
+          <div>
+            <p className="text-base font-extrabold text-amber-800 dark:text-amber-300" style={{ color: primaryColor }}>
+              ${formatUsd(product.unit_price_usd)}
+            </p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">
+              Bs. {formatVes(priceVes)}
+            </p>
+          </div>
+
+          <div>
+            {outOfStock ? (
+              <span className="text-xs text-slate-400">Agotado</span>
+            ) : cartItem ? (
+              <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/60 px-2 py-1 rounded-xl border border-amber-200 dark:border-amber-800">
+                <button onClick={onDecrease} className="text-xs text-amber-800 dark:text-amber-300 px-1 cursor-pointer">-</button>
+                <span className="text-xs font-bold text-amber-900 dark:text-amber-100">{cartItem.quantity}</span>
+                <button onClick={onIncrease} className="text-xs text-amber-800 dark:text-amber-300 px-1 cursor-pointer">+</button>
+              </div>
+            ) : (
+              <button
+                onClick={handleAdd}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white shadow-xs transition active:scale-95 cursor-pointer"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {justAdded ? '✓ Añadido' : 'Seleccionar'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ─── Express Row (Direct Wholesale / Supermarket Table-List Layout) ─────────────
+const ExpressRow = React.memo(function ExpressRow({
+  product,
+  exchangeRate,
+  tenantSlug,
+  cartItem,
+  onAdd,
+  onIncrease,
+  onDecrease,
+  primaryColor = '#059669',
+}: ProductCardProps & { primaryColor?: string }) {
+  const [justAdded, setJustAdded] = useState(false);
+  const priceVes = product.unit_price_usd * exchangeRate;
+  const outOfStock = product.stock_quantity === 0;
+  const productSlug = encodeURIComponent(product.sku || product.id);
+  const productHref = `/${tenantSlug}/p/${productSlug}`;
+
+  function handleAdd() {
+    onAdd();
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1200);
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 shadow-xs transition-all gap-3">
+      <div className="flex items-center gap-3.5 min-w-0">
+        <Link href={productHref} prefetch={true} className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 border border-slate-200 dark:border-slate-700">
+          {product.image_url ? (
+            <Image src={product.image_url} alt={product.name} fill unoptimized className="object-cover" />
+          ) : (
+            <Package className="w-6 h-6 m-auto text-slate-400 absolute inset-0" />
+          )}
+        </Link>
+        <div className="min-w-0 flex-1">
+          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+            {detectCategory(product.name, product.description)}
+          </span>
+          <Link href={productHref} prefetch={true}>
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate hover:underline mt-0.5">
+              {product.name}
+            </h3>
+          </Link>
+          <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
+            {product.sku && <span className="text-[10px] font-mono text-slate-400">SKU: {product.sku}</span>}
+            <span className={`h-1.5 w-1.5 rounded-full ${stockColor(product.stock_quantity)}`} />
+            <span className="text-[10px] text-slate-500 font-medium">{stockLabel(product.stock_quantity)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
+        <div className="text-left sm:text-right">
+          <p className="text-sm sm:text-base font-extrabold" style={{ color: primaryColor }}>
+            ${formatUsd(product.unit_price_usd)} <span className="text-[10px] font-normal text-slate-400">USD</span>
+          </p>
+          <p className="text-[11px] font-semibold text-slate-500">
+            Bs. {formatVes(priceVes)}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {outOfStock ? (
+            <span className="text-xs text-slate-400 font-bold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800">Agotado</span>
+          ) : cartItem ? (
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              <button onClick={onDecrease} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-700 dark:text-slate-300 cursor-pointer"><Minus className="w-3.5 h-3.5" /></button>
+              <span className="text-xs font-bold px-1.5 text-slate-900 dark:text-white">{cartItem.quantity}</span>
+              <button onClick={onIncrease} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-700 dark:text-slate-300 cursor-pointer"><Plus className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAdd}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+              style={{ backgroundColor: primaryColor }}
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>{justAdded ? '¡Listo!' : 'Agregar'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // ─── Main ProductGrid with Filters ─────────────────────────────────────────────
+import type { StorefrontTemplate } from '@/types/storefrontTheme';
+
 interface ProductGridProps {
   products: Product[];
   exchangeRate: number;
   tenantSlug: string;
+  template?: StorefrontTemplate;
+  primaryColor?: string;
 }
 
 export default function ProductGrid({
   products,
   exchangeRate,
   tenantSlug,
+  template = 'aurora',
+  primaryColor,
 }: ProductGridProps) {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -453,6 +817,98 @@ export default function ProductGrid({
           >
             Ver todos los productos
           </button>
+        </div>
+      ) : template === 'express' ? (
+        <div className="space-y-3">
+          {filtered.map((product) => {
+            const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
+            return (
+              <ExpressRow
+                key={product.id}
+                product={product}
+                exchangeRate={exchangeRate}
+                tenantSlug={tenantSlug}
+                cartItem={cartItem}
+                onAdd={() => handleAdd(product)}
+                onIncrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity + 1)
+                }
+                onDecrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity - 1)
+                }
+                primaryColor={primaryColor}
+              />
+            );
+          })}
+        </div>
+      ) : template === 'minimal' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-14">
+          {filtered.map((product) => {
+            const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
+            return (
+              <LookbookCard
+                key={product.id}
+                product={product}
+                exchangeRate={exchangeRate}
+                tenantSlug={tenantSlug}
+                cartItem={cartItem}
+                onAdd={() => handleAdd(product)}
+                onIncrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity + 1)
+                }
+                onDecrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity - 1)
+                }
+                primaryColor={primaryColor}
+              />
+            );
+          })}
+        </div>
+      ) : template === 'tech' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map((product) => {
+            const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
+            return (
+              <TechCard
+                key={product.id}
+                product={product}
+                exchangeRate={exchangeRate}
+                tenantSlug={tenantSlug}
+                cartItem={cartItem}
+                onAdd={() => handleAdd(product)}
+                onIncrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity + 1)
+                }
+                onDecrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity - 1)
+                }
+                primaryColor={primaryColor}
+              />
+            );
+          })}
+        </div>
+      ) : template === 'boutique' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-6">
+          {filtered.map((product) => {
+            const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
+            return (
+              <BoutiqueCard
+                key={product.id}
+                product={product}
+                exchangeRate={exchangeRate}
+                tenantSlug={tenantSlug}
+                cartItem={cartItem}
+                onAdd={() => handleAdd(product)}
+                onIncrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity + 1)
+                }
+                onDecrease={() =>
+                  cartItem && updateQuantity(product.id, cartItem.quantity - 1)
+                }
+                primaryColor={primaryColor}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-6">
