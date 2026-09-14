@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useMemo, useDeferredValue } from 'react';
-import { Search, Package, ShoppingCart, Plus, Minus, Check, Filter, ArrowUpDown, Eye } from 'lucide-react';
+import React, { useState, useMemo, useDeferredValue, useEffect } from 'react';
+import { Search, Package, ShoppingCart, Plus, Minus, Check, Filter, ArrowUpDown, Eye, LayoutGrid, List } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCart, type CartItem } from '@/contexts/CartContext';
@@ -633,6 +633,8 @@ interface ProductGridProps {
   tenantSlug: string;
   template?: StorefrontTemplate;
   primaryColor?: string;
+  showViewToggle?: boolean;
+  defaultViewMode?: 'grid' | 'list';
 }
 
 export default function ProductGrid({
@@ -641,13 +643,40 @@ export default function ProductGrid({
   tenantSlug,
   template = 'aurora',
   primaryColor,
+  showViewToggle = true,
+  defaultViewMode,
 }: ProductGridProps) {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'name'>('featured');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    if (defaultViewMode) return defaultViewMode;
+    return template === 'express' ? 'list' : 'grid';
+  });
   const { items, addItem, updateQuantity, itemCount, openCart } = useCart();
+
+  // Load persisted view mode preference from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('is_catalog_view_mode') as 'grid' | 'list' | null;
+      if (saved === 'grid' || saved === 'list') {
+        setViewMode(saved);
+      } else if (defaultViewMode) {
+        setViewMode(defaultViewMode);
+      } else if (template === 'express') {
+        setViewMode('list');
+      }
+    } catch {}
+  }, [defaultViewMode, template]);
+
+  const handleToggleView = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('is_catalog_view_mode', mode);
+    } catch {}
+  };
 
   // Extract all categories dynamically
   const categories = useMemo(() => {
@@ -733,33 +762,35 @@ export default function ProductGrid({
         </div>
 
         {/* Categorías (Pills con scroll horizontal) */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <span className="text-xs font-bold text-slate-400 flex items-center gap-1 pl-1">
-            <Filter className="w-3.5 h-3.5" />
-          </span>
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer ${
-                selectedCategory === cat
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
-                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              {cat === 'all' ? 'Todos los Productos' : cat}
-            </button>
-          ))}
-        </div>
+        {categories.length > 2 && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-xs font-bold text-slate-400 flex items-center gap-1 pl-1">
+              <Filter className="w-3.5 h-3.5" />
+            </span>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer ${
+                  selectedCategory === cat
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {cat === 'all' ? 'Todos los Productos' : cat}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {/* Filtro de Precio y Ordenamiento */}
+        {/* Filtro de Precio, Ordenamiento y Modo de Vista */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 font-medium">Precio:</span>
             <select
               value={priceRange}
               onChange={(e) => setPriceRange(e.target.value)}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 outline-none"
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
             >
               <option value="all">Cualquier precio</option>
               <option value="under-10">Menos de $10 USD</option>
@@ -768,20 +799,56 @@ export default function ProductGrid({
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-              <ArrowUpDown className="w-3 h-3" /> Ordenar:
-            </span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 outline-none"
-            >
-              <option value="featured">Destacados</option>
-              <option value="price-asc">Precio: Menor a Mayor</option>
-              <option value="price-desc">Precio: Mayor a Menor</option>
-              <option value="name">Alfabético A-Z</option>
-            </select>
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                <ArrowUpDown className="w-3 h-3" /> <span className="hidden sm:inline">Ordenar:</span>
+              </span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="featured">Destacados</option>
+                <option value="price-asc">Precio: Menor a Mayor</option>
+                <option value="price-desc">Precio: Mayor a Menor</option>
+                <option value="name">Alfabético A-Z</option>
+              </select>
+            </div>
+
+            {/* Selector de Vista: Cuadrícula / Lista */}
+            {showViewToggle && (
+              <div className="flex items-center p-0.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => handleToggleView('grid')}
+                  title="Vista en Cuadrícula"
+                  aria-label="Vista en Cuadrícula"
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                    viewMode === 'grid'
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Cuadrícula</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleView('list')}
+                  title="Vista en Lista"
+                  aria-label="Vista en Lista"
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                    viewMode === 'list'
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Lista</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -793,14 +860,21 @@ export default function ProductGrid({
             ? `${products.length} producto${products.length !== 1 ? 's' : ''} en catálogo`
             : `Mostrando ${filtered.length} de ${products.length} producto${products.length !== 1 ? 's' : ''}`}
         </p>
-        {(query || selectedCategory !== 'all' || priceRange !== 'all') && (
-          <button
-            onClick={() => { setQuery(''); setSelectedCategory('all'); setPriceRange('all'); setSortBy('featured') }}
-            className="text-blue-600 dark:text-blue-400 font-bold hover:underline text-xs"
-          >
-            Restablecer filtros
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {viewMode === 'list' ? (
+            <span className="text-[11px] font-semibold text-slate-400 hidden xs:inline">Modo Lista</span>
+          ) : (
+            <span className="text-[11px] font-semibold text-slate-400 hidden xs:inline">Modo Cuadrícula</span>
+          )}
+          {(query || selectedCategory !== 'all' || priceRange !== 'all') && (
+            <button
+              onClick={() => { setQuery(''); setSelectedCategory('all'); setPriceRange('all'); setSortBy('featured') }}
+              className="text-blue-600 dark:text-blue-400 font-bold hover:underline text-xs ml-2 cursor-pointer"
+            >
+              Restablecer filtros
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Grid */}
@@ -818,7 +892,7 @@ export default function ProductGrid({
             Ver todos los productos
           </button>
         </div>
-      ) : template === 'express' ? (
+      ) : viewMode === 'list' ? (
         <div className="space-y-3">
           {filtered.map((product) => {
             const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
