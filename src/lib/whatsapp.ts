@@ -13,6 +13,8 @@ export interface CartItem {
 export interface CustomerInfo {
   fullName: string;
   phone: string;
+  idNumber?: string;
+  address?: string;
   notes?: string;
   orderNumber?: string;
 }
@@ -76,7 +78,13 @@ export function generateWhatsAppMessage(
 
   // Customer info
   lines.push(`👤 *Cliente:* ${customer.fullName}`);
+  if (customer.idNumber && customer.idNumber.trim().length > 0) {
+    lines.push(`🆔 *Cédula / RIF:* ${customer.idNumber.trim()}`);
+  }
   lines.push(`📱 *WhatsApp:* ${customer.phone}`);
+  if (customer.address && customer.address.trim().length > 0) {
+    lines.push(`📍 *Dirección de Entrega:* ${customer.address.trim()}`);
+  }
   lines.push('');
 
   // Order detail

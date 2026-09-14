@@ -231,6 +231,7 @@ export default function LandingPage() {
 
           <Link
             href="/innovise"
+            prefetch={true}
             className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all duration-200 shadow-md active:scale-98"
           >
             <span>Ver Vitrina de Ejemplo</span>

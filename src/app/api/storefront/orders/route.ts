@@ -52,26 +52,53 @@ export async function POST(req: Request) {
     const tenantId = tenant.id
     const rate = Number(exchangeRate) || Number(tenant.currency_rate_bcv) || 91.5
     const cleanPhone = customer.phone.replace(/\D/g, '')
+    const cleanIdNumber = customer.idNumber ? customer.idNumber.trim().toUpperCase() : null
+    const cleanAddress = customer.address ? customer.address.trim() : null
 
-    // 2. Buscar o crear cliente en la tabla customers
+    // 2. Buscar o crear cliente en la tabla customers (priorizando Cédula/RIF)
     let customerId: string | null = null
-    const { data: existingCustomer } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .or(`phone.eq.${cleanPhone},phone.eq.${customer.phone}`)
-      .limit(1)
-      .maybeSingle()
+    let existingCustomer: any = null
+
+    if (cleanIdNumber) {
+      const { data: byId } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .ilike('id_number', cleanIdNumber)
+        .limit(1)
+        .maybeSingle()
+      existingCustomer = byId
+    }
+
+    if (!existingCustomer) {
+      const { data: byPhone } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .or(`phone.eq.${cleanPhone},phone.eq.${customer.phone}`)
+        .limit(1)
+        .maybeSingle()
+      existingCustomer = byPhone
+    }
 
     if (existingCustomer) {
       customerId = existingCustomer.id
+      // Actualizar datos si estaban vacíos (cédula o dirección)
+      const updateFields: Record<string, any> = {}
+      if (!existingCustomer.id_number && cleanIdNumber) updateFields.id_number = cleanIdNumber
+      if (!existingCustomer.address && cleanAddress) updateFields.address = cleanAddress
+      if (Object.keys(updateFields).length > 0) {
+        await supabase.from('customers').update(updateFields).eq('id', customerId)
+      }
     } else {
       const { data: newCustomer } = await supabase
         .from('customers')
         .insert({
           tenant_id: tenantId,
           full_name: customer.fullName.trim(),
+          id_number: cleanIdNumber,
           phone: customer.phone.trim(),
+          address: cleanAddress,
           notes: customer.notes ? `Pedido web: ${customer.notes.trim()}` : 'Registrado desde Vitrina Web',
         })
         .select('id')
@@ -93,7 +120,9 @@ export async function POST(req: Request) {
 
     const orderNotes = [
       `Cliente: ${customer.fullName.trim()}`,
+      cleanIdNumber ? `CI/RIF: ${cleanIdNumber}` : null,
       `WhatsApp: ${customer.phone.trim()}`,
+      cleanAddress ? `Dirección: ${cleanAddress}` : null,
       customer.notes?.trim() ? `Indicaciones: ${customer.notes.trim()}` : null,
       'Origen: Catálogo Web WhatsApp',
     ]

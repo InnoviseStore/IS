@@ -8,12 +8,14 @@ import type { Quotation, Product, Customer } from '@/types/database'
 import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { generateQuotationPdf } from '@/lib/pdfGenerator'
+import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 
 export default function QuotationsPage() {
   const router = useRouter()
   const { tenant, profile, exchangeRate } = useTenant()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
   const [search, setSearch] = useState('')
   const [isCreating, setIsCreating] = useState(false)
 
@@ -273,14 +275,17 @@ export default function QuotationsPage() {
                         </button>
                         <button
                           onClick={async () => {
+                            setGeneratingPdf(true)
                             try {
                               await generateQuotationPdf({ quotation: q, tenant, action: 'download' })
                             } catch (err) {
                               console.error('Error generating quotation PDF:', err)
                               alert('No se pudo generar el PDF del presupuesto.')
+                            } finally {
+                              setGeneratingPdf(false)
                             }
                           }}
-                          className="p-1 rounded-md text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
+                          className="p-1 rounded-md text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition cursor-pointer"
                           title="Descargar Presupuesto en PDF"
                         >
                           <FileDown className="w-3.5 h-3.5" />
@@ -483,6 +488,13 @@ export default function QuotationsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Carga de PDF */}
+      <PdfLoadingModal
+        isOpen={generatingPdf}
+        title="Generando Presupuesto en PDF"
+        message="Construyendo documento formal con logo, validez, productos y totales en USD y Bs. oficiales..."
+      />
     </div>
   )
 }

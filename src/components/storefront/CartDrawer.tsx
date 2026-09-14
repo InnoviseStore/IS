@@ -80,8 +80,26 @@ export default function CartDrawer({
   // Form state
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [idNumber, setIdNumber] = useState('');
+  const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<{ fullName?: string; phone?: string }>({});
+  const [errors, setErrors] = useState<{ fullName?: string; phone?: string; idNumber?: string }>({});
+
+  // Cargar datos guardados previamente del cliente para no tener que escribirlos cada vez
+  useEffect(() => {
+    try {
+      const savedCust = localStorage.getItem('is_saved_checkout_customer');
+      if (savedCust) {
+        const parsed = JSON.parse(savedCust);
+        if (parsed.fullName) setFullName(parsed.fullName);
+        if (parsed.phone) setPhone(parsed.phone);
+        if (parsed.idNumber) setIdNumber(parsed.idNumber);
+        if (parsed.address) setAddress(parsed.address);
+      }
+    } catch {
+      // Ignorar errores de localStorage
+    }
+  }, []);
 
   // Submission & Confirmation state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,6 +153,10 @@ export default function CartDrawer({
       nextErrors.phone = 'El número debe incluir código de área (ej. 04121234567).';
     }
 
+    if (!idNumber.trim()) {
+      nextErrors.idNumber = 'Indica tu cédula o RIF para facturación (ej. V-12345678).';
+    }
+
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
@@ -144,6 +166,21 @@ export default function CartDrawer({
     if (!validate()) return;
 
     setIsSubmitting(true);
+
+    // Guardar datos en localStorage para compras futuras del cliente
+    try {
+      localStorage.setItem(
+        'is_saved_checkout_customer',
+        JSON.stringify({
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          idNumber: idNumber.trim(),
+          address: address.trim(),
+        }),
+      );
+    } catch {
+      // Ignorar errores de localStorage
+    }
 
     try {
       let orderNumber: string | undefined = undefined;
@@ -158,6 +195,8 @@ export default function CartDrawer({
             customer: {
               fullName: fullName.trim(),
               phone: phone.trim(),
+              idNumber: idNumber.trim(),
+              address: address.trim(),
               notes: notes.trim(),
             },
             items,
@@ -182,6 +221,8 @@ export default function CartDrawer({
         customer: {
           fullName: fullName.trim(),
           phone: phone.trim(),
+          idNumber: idNumber.trim(),
+          address: address.trim(),
           notes: notes.trim(),
           orderNumber,
         },
@@ -415,30 +456,59 @@ export default function CartDrawer({
                 Datos de Entrega
               </span>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Nombre Completo *
-                </label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: undefined }));
-                  }}
-                  placeholder="Ej. Juan Pérez"
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.fullName
-                      ? 'border-rose-400 dark:border-rose-600'
-                      : 'border-slate-200 dark:border-slate-700'
-                  }`}
-                />
-                {errors.fullName && (
-                  <p className="flex items-center gap-1 text-xs text-rose-500 mt-1 font-medium">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.fullName}
-                  </p>
-                )}
+              {/* Nombre y Cédula en dos columnas o apilados */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Nombre Completo *
+                  </label>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => {
+                      setFullName(e.target.value);
+                      if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: undefined }));
+                    }}
+                    placeholder="Ej. Juan Pérez"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.fullName
+                        ? 'border-rose-400 dark:border-rose-600'
+                        : 'border-slate-200 dark:border-slate-700'
+                    }`}
+                  />
+                  {errors.fullName && (
+                    <p className="flex items-center gap-1 text-[11px] text-rose-500 mt-1 font-medium">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.fullName}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Cédula o RIF *
+                  </label>
+                  <input
+                    type="text"
+                    value={idNumber}
+                    onChange={(e) => {
+                      setIdNumber(e.target.value);
+                      if (errors.idNumber) setErrors((prev) => ({ ...prev, idNumber: undefined }));
+                    }}
+                    placeholder="V-12345678"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.idNumber
+                        ? 'border-rose-400 dark:border-rose-600'
+                        : 'border-slate-200 dark:border-slate-700'
+                    }`}
+                  />
+                  {errors.idNumber && (
+                    <p className="flex items-center gap-1 text-[11px] text-rose-500 mt-1 font-medium">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.idNumber}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -469,12 +539,25 @@ export default function CartDrawer({
 
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Dirección de Entrega (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Ej. Calle Principal, Urb. Los Mangos, Casa #12"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Notas Adicionales (Opcional)
                 </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Dirección de entrega, modelo exacto, etc."
+                  placeholder="Instrucciones para entrega, puntos de referencia, etc."
                   rows={2}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />

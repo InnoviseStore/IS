@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
+import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 
 interface OrderItem {
   id: string
@@ -37,8 +38,10 @@ interface OrderItem {
 interface OrderCustomer {
   id?: string
   full_name?: string
-  phone?: string
-  email?: string
+  id_number?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
 }
 
 interface OrderRecord {
@@ -70,6 +73,7 @@ export default function AdminOrdersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({})
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const loadOrders = useCallback(async (isRefresh = false) => {
@@ -186,27 +190,35 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // Extraer nombre de cliente y teléfono del string de notas o del objeto customer
+  // Extraer nombre de cliente, cédula, teléfono y dirección del objeto customer o de las notas
   const getCustomerDisplay = (o: OrderRecord) => {
-    if (o.customer?.full_name) {
-      return {
-        name: o.customer.full_name,
-        phone: o.customer.phone || '',
-      }
-    }
-    // Fallback: parsear de o.notes ("Cliente: X | WhatsApp: Y")
+    let name = o.customer?.full_name || ''
+    let phone = o.customer?.phone || ''
+    let idNumber = o.customer?.id_number || ''
+    let address = o.customer?.address || ''
+
+    // Fallback: parsear de o.notes ("Cliente: X | CI/RIF: Y | WhatsApp: Z | Dirección: W")
     if (o.notes) {
       const parts = o.notes.split('|').map((p) => p.trim())
-      let name = ''
-      let phone = ''
       parts.forEach((p) => {
-        if (p.toLowerCase().startsWith('cliente:')) name = p.replace(/cliente:/i, '').trim()
-        if (p.toLowerCase().startsWith('whatsapp:')) phone = p.replace(/whatsapp:/i, '').trim()
-        if (p.toLowerCase().startsWith('tel:')) phone = p.replace(/tel:/i, '').trim()
+        if (!name && p.toLowerCase().startsWith('cliente:')) name = p.replace(/cliente:/i, '').trim()
+        if (!idNumber && (p.toLowerCase().startsWith('ci/rif:') || p.toLowerCase().startsWith('cédula:') || p.toLowerCase().startsWith('cedula:') || p.toLowerCase().startsWith('rif:'))) {
+          idNumber = p.replace(/(ci\/rif|cédula|cedula|rif):/i, '').trim()
+        }
+        if (!phone && (p.toLowerCase().startsWith('whatsapp:') || p.toLowerCase().startsWith('tel:') || p.toLowerCase().startsWith('teléfono:'))) {
+          phone = p.replace(/(whatsapp|teléfono|telefono|tel):/i, '').trim()
+        }
+        if (!address && (p.toLowerCase().startsWith('dirección:') || p.toLowerCase().startsWith('direccion:'))) {
+          address = p.replace(/(dirección|direccion):/i, '').trim()
+        }
       })
-      if (name) return { name, phone }
     }
-    return { name: 'Cliente Web', phone: '' }
+    return {
+      name: name || 'Cliente Web',
+      phone,
+      idNumber,
+      address,
+    }
   }
 
   return (
@@ -471,11 +483,16 @@ export default function AdminOrdersPage() {
                 <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                   {/* Info del Cliente */}
                   <div className="space-y-1.5 max-w-md">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cliente:</span>
                       <strong className="text-sm font-extrabold text-slate-800 dark:text-slate-100">
                         {cust.name}
                       </strong>
+                      {cust.idNumber && (
+                        <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60">
+                          {cust.idNumber}
+                        </span>
+                      )}
                     </div>
 
                     {cust.phone && (
@@ -494,6 +511,13 @@ export default function AdminOrdersPage() {
                             <span>WhatsApp</span>
                           </a>
                         )}
+                      </div>
+                    )}
+
+                    {cust.address && (
+                      <div className="flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                        <span className="text-slate-400 font-semibold shrink-0">📍 Entrega:</span>
+                        <span className="line-clamp-2">{cust.address}</span>
                       </div>
                     )}
 
@@ -549,11 +573,14 @@ export default function AdminOrdersPage() {
                       <button
                         type="button"
                         onClick={async () => {
+                          setGeneratingPdf(true)
                           try {
                             await generateOrderPdf({ order, tenant, action: 'download' })
                           } catch (err) {
                             console.error('Error generating PDF:', err)
                             alert('No se pudo generar el PDF. Revisa la consola.')
+                          } finally {
+                            setGeneratingPdf(false)
                           }
                         }}
                         className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
@@ -628,6 +655,13 @@ export default function AdminOrdersPage() {
           })}
         </div>
       )}
+
+      {/* Ventana Emergente de Carga de PDF */}
+      <PdfLoadingModal
+        isOpen={generatingPdf}
+        title="Generando Factura en PDF"
+        message="Construyendo diseño formal con logo, datos fiscales del cliente y desglose en USD y Bs. oficiales..."
+      />
     </div>
   )
 }

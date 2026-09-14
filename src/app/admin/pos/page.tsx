@@ -104,18 +104,43 @@ function POSContent() {
           setMobileTab('ticket')
 
           let custName = 'Cliente Web'
-          if (order.customer?.full_name) {
+          let resolvedCustomer = order.customer || null
+
+          // Si la orden no tiene el objeto customer enlazado directamente, buscar coincidencia por CI/RIF o Teléfono en notes
+          if (!resolvedCustomer && order.notes) {
+            const parts = order.notes.split('|').map((p: string) => p.trim())
+            let ciRif = ''
+            let phone = ''
+            parts.forEach((p: string) => {
+              if (p.toLowerCase().startsWith('cliente:')) custName = p.replace(/cliente:/i, '').trim()
+              if (p.toLowerCase().startsWith('ci/rif:')) ciRif = p.replace(/ci\/rif:/i, '').trim()
+              if (p.toLowerCase().startsWith('whatsapp:')) phone = p.replace(/whatsapp:/i, '').trim()
+            })
+
+            if (ciRif || phone) {
+              const currentTenantId = order.tenant_id || tenant?.id
+              let query = supabase.from('customers').select('*').eq('tenant_id', currentTenantId)
+              if (ciRif) {
+                query = query.ilike('id_number', ciRif)
+              } else if (phone) {
+                const cleanPhone = phone.replace(/\D/g, '')
+                query = query.or(`phone.eq.${cleanPhone},phone.eq.${phone}`)
+              }
+              const { data: matchedCust } = await query.limit(1).maybeSingle()
+              if (matchedCust) {
+                resolvedCustomer = matchedCust
+                custName = matchedCust.full_name
+              }
+            }
+          } else if (order.customer?.full_name) {
             custName = order.customer.full_name
-          } else if (order.notes) {
-            const m = order.notes.match(/Cliente:\s*([^|]+)/i)
-            if (m && m[1]) custName = m[1].trim()
           }
 
           setWebOrderInfo({
             orderId: order.id,
             orderNumber: order.order_number,
             customerName: custName,
-            customer: order.customer || null,
+            customer: resolvedCustomer,
           })
         }
       } catch (err) {

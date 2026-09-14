@@ -10,6 +10,7 @@ import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
+import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 
 interface PaymentRow {
   id: string
@@ -406,7 +407,36 @@ export function SplitPaymentModal({
             </div>
 
             {customerType === 'registered' && (
-              <div className="space-y-2">
+              selectedCustomer ? (
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-xs animate-in fade-in duration-150">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <strong className="text-sm font-bold text-blue-900 dark:text-blue-100 truncate">
+                        {selectedCustomer.full_name}
+                      </strong>
+                      {selectedCustomer.id_number && (
+                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                          {selectedCustomer.id_number}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-600 dark:text-slate-300 text-[11px] truncate">
+                      {selectedCustomer.phone ? `📱 ${selectedCustomer.phone}` : 'Sin teléfono'}
+                      {selectedCustomer.address ? ` · 📍 ${selectedCustomer.address}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomer(null)
+                      setCustomerSearch('')
+                    }}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2 py-1 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition cursor-pointer"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ) : (
                 <div className="relative flex items-center gap-2">
                   <div className="relative flex-1">
                     <input
@@ -450,7 +480,7 @@ export function SplitPaymentModal({
                     <span className="hidden sm:inline">Nuevo</span>
                   </button>
                 </div>
-              </div>
+              )
             )}
 
             {/* OPCIÓN GENERAL DE VENTA A CRÉDITO */}
@@ -800,6 +830,13 @@ export function SplitPaymentModal({
           }}
         />
       )}
+
+      {/* Ventana de carga de PDF en facturación */}
+      <PdfLoadingModal
+        isOpen={generatingPdf}
+        title="Generando Factura en PDF"
+        message="Construyendo factura fiscal con logotipo, datos del cliente y desglose en USD y Bs. oficiales..."
+      />
     </div>
   )
 }

@@ -41,7 +41,7 @@ export async function fetchLiveBcvRate(): Promise<BcvRateResult> {
 function fetchFromBcvWebsite(): Promise<BcvRateResult> {
   return new Promise((resolve, reject) => {
     const agent = new https.Agent({ rejectUnauthorized: false })
-    const timeoutMs = 8000
+    const timeoutMs = 2500
 
     const req = https.get(
       'https://www.bcv.org.ve/',
