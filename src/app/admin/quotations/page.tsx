@@ -9,6 +9,7 @@ import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { generateQuotationPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
+import { ConfirmModal } from '@/components/common/ConfirmModal'
 
 export default function QuotationsPage() {
   const router = useRouter()
@@ -18,6 +19,8 @@ export default function QuotationsPage() {
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [search, setSearch] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [quotationToDelete, setQuotationToDelete] = useState<Quotation | null>(null)
+  const [deletingQuotation, setDeletingQuotation] = useState(false)
 
   // Form states for new quotation
   const [products, setProducts] = useState<Product[]>([])
@@ -146,14 +149,18 @@ export default function QuotationsPage() {
     }
   }
 
-  async function handleDeleteQuotation(id: string) {
-    if (!tenant) return
-    if (!confirm('¿Deseas eliminar este presupuesto?')) return
+  async function confirmDeleteQuotation() {
+    if (!tenant || !quotationToDelete) return
+    setDeletingQuotation(true)
     try {
-      await fetch(`/api/admin/quotations?id=${id}&tenant_id=${tenant.id}`, { method: 'DELETE' })
+      await fetch(`/api/admin/quotations?id=${quotationToDelete.id}&tenant_id=${tenant.id}`, { method: 'DELETE' })
+      setQuotationToDelete(null)
       loadQuotations()
     } catch (e) {
       console.error('Error al eliminar presupuesto:', e)
+      alert('No se pudo eliminar el presupuesto.')
+    } finally {
+      setDeletingQuotation(false)
     }
   }
 
@@ -297,8 +304,8 @@ export default function QuotationsPage() {
                           Ir al POS <ArrowRight className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleDeleteQuotation(q.id)}
-                          className="p-1 rounded-md text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                          onClick={() => setQuotationToDelete(q)}
+                          className="p-1 rounded-md text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
                           title="Eliminar cotización"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -494,6 +501,19 @@ export default function QuotationsPage() {
         isOpen={generatingPdf}
         title="Generando Presupuesto en PDF"
         message="Construyendo documento formal con logo, validez, productos y totales en USD y Bs. oficiales..."
+      />
+
+      {/* Modal de Confirmación para Eliminar Cotización */}
+      <ConfirmModal
+        isOpen={Boolean(quotationToDelete)}
+        title="¿Eliminar presupuesto?"
+        message={`¿Estás seguro de que deseas eliminar la cotización "${quotationToDelete?.quotation_number}" de ${quotationToDelete?.customer_name || 'Cliente General'} por un total de $${quotationToDelete?.total_usd?.toFixed(2)} USD?`}
+        confirmText="Sí, eliminar presupuesto"
+        cancelText="Cancelar"
+        isDestructive={true}
+        isLoading={deletingQuotation}
+        onConfirm={confirmDeleteQuotation}
+        onCancel={() => setQuotationToDelete(null)}
       />
     </div>
   )

@@ -7,12 +7,13 @@ import { useState } from 'react'
 import {
   LayoutDashboard, Package, ShoppingCart, Users,
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
-  RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList
+  RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
 import { EdithAssistantModal } from '@/components/admin/EdithAssistantModal'
 import { getPlanLabel } from '@/lib/formatters'
+import { useTheme } from '@/components/common/ThemeProvider'
 
 const baseNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -20,6 +21,7 @@ const baseNavItems = [
   { href: '/admin/inventory', label: 'Inventario', icon: Package },
   { href: '/admin/pos', label: 'Facturación / POS', icon: ShoppingCart },
   { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText },
+  { href: '/admin/storefront-builder', label: 'Catálogo Web', icon: Palette, proBadge: true },
   { href: '/admin/cash-closing', label: 'Cierre de Caja', icon: Vault },
   { href: '/admin/expenses', label: 'Gastos', icon: Receipt },
   { href: '/admin/customers', label: 'Clientes', icon: Users },
@@ -30,7 +32,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, setExchangeRate } = useTenant()
-  const [isDark, setIsDark] = useState(false)
+  const { theme, toggleTheme } = useTheme()
+  const isDark = theme === 'dark'
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [editingRate, setEditingRate] = useState(false)
   const [rateInput, setRateInput] = useState('')
@@ -42,13 +45,6 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       ? [{ href: '/admin/master', label: 'Panel Master', icon: Crown }]
       : []),
   ]
-
-  function toggleDark() {
-    setIsDark((d) => {
-      document.documentElement.classList.toggle('dark', !d)
-      return !d
-    })
-  }
 
   async function handleLogout() {
     const supabase = createClient()
@@ -110,21 +106,30 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
       {/* Nav */}
       <nav className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, label, icon: Icon, proBadge }) => {
           const active = pathname === href || (href !== '/admin' && pathname.startsWith(href))
           return (
             <Link
               key={href}
               href={href}
               onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                 active
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              {label}
+              <div className="flex items-center gap-3">
+                <Icon className="w-4 h-4" />
+                <span>{label}</span>
+              </div>
+              {proBadge && (
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
+                  active ? 'bg-white/20 text-white' : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
+                }`}>
+                  PRO
+                </span>
+              )}
             </Link>
           )
         })}
@@ -257,8 +262,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
             {/* Dark mode toggle */}
             <button
-              onClick={toggleDark}
-              className="p-2 rounded-xl hover:bg-white/60 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-300 transition"
+              onClick={toggleTheme}
+              className="p-2 rounded-xl hover:bg-white/60 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-300 transition cursor-pointer"
               aria-label="Cambiar tema"
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

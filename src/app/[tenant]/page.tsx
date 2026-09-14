@@ -9,6 +9,11 @@ import ProductGrid, { type Product } from '@/components/storefront/ProductGrid'
 import { ProductCarousel } from '@/components/storefront/ProductCarousel'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
 import { MessageCircle, Sparkles } from 'lucide-react'
+import {
+  StorefrontThemeConfig,
+  DEFAULT_THEME_CONFIG,
+  TEMPLATE_DEFINITIONS,
+} from '@/types/storefrontTheme'
 
 export const revalidate = 1800 // 30 minutes ISR
 
@@ -151,9 +156,28 @@ export default async function StorefrontPage({ params }: PageProps) {
 
   const { tenant, products, exchangeRate, rateDate, fechaValor } = data
   const settings = (tenant.settings || {}) as Record<string, unknown>
+  const themeConfig = (settings.storefront_theme as StorefrontThemeConfig | undefined) || DEFAULT_THEME_CONFIG
+  const templateId = themeConfig.template || 'aurora'
+  const templateDef = TEMPLATE_DEFINITIONS.find((t) => t.id === templateId) || TEMPLATE_DEFINITIONS[0]
+
+  // Reordenar productos para dar prioridad en el carrusel a los destacados seleccionados en el Builder
+  const featuredSet = new Set(themeConfig.featuredProductIds || [])
+  const featuredProds = products.filter((p) => featuredSet.has(p.id))
+  const otherProds = products.filter((p) => !featuredSet.has(p.id))
+  const carouselProducts = featuredProds.length > 0 ? [...featuredProds, ...otherProds] : products
 
   return (
-    <main className="min-h-[calc(100vh-16rem)]">
+    <main className={`min-h-[calc(100vh-16rem)] ${templateDef.previewClasses.container}`}>
+      {/* Barra de Anuncios Promocionales configurada en el Catálogo Web Builder */}
+      {themeConfig.showBanner && themeConfig.bannerText && (
+        <div
+          className="w-full py-2 px-4 text-center text-xs font-bold text-white shadow-xs"
+          style={{ backgroundColor: themeConfig.primaryColor || '#2563eb' }}
+        >
+          {themeConfig.bannerText}
+        </div>
+      )}
+
       {/* Exchange Rate Banner with direct link to BCV and official Fecha Valor */}
       <ExchangeRateBanner
         exchangeRate={exchangeRate}
@@ -164,7 +188,7 @@ export default async function StorefrontPage({ params }: PageProps) {
 
       {/* Hero / Store Banner with Logo and Official Badges */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2 animate-page-enter">
-        <div className="rounded-3xl bg-gradient-to-br from-blue-600/10 via-indigo-600/5 to-white/40 dark:to-slate-900/40 p-6 sm:p-8 border border-blue-200/60 dark:border-blue-900/30 backdrop-blur-md shadow-sm">
+        <div className={`rounded-3xl p-6 sm:p-8 border backdrop-blur-md shadow-sm transition-all ${templateDef.previewClasses.hero}`}>
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
             {/* Logo de la tienda: Prioriza Imagotipo si existe */}
             <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-md flex-shrink-0 flex items-center justify-center p-2">
@@ -188,6 +212,14 @@ export default async function StorefrontPage({ params }: PageProps) {
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300">
                   Tasa Oficial BCV
                 </span>
+                {templateId !== 'aurora' && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-xs"
+                    style={{ backgroundColor: themeConfig.primaryColor || '#2563eb' }}
+                  >
+                    {templateDef.badgeText}
+                  </span>
+                )}
               </div>
 
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -205,7 +237,7 @@ export default async function StorefrontPage({ params }: PageProps) {
       {/* Featured Products Carousel */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <ProductCarousel
-          products={products}
+          products={carouselProducts}
           exchangeRate={exchangeRate}
           tenantSlug={tenant.slug}
         />

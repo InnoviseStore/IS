@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Customer } from '@/types/database'
-import { Search, Users, MessageCircle, Plus, Pencil } from 'lucide-react'
+import { Search, Users, MessageCircle, Plus, Pencil, Trash2 } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal } from '@/components/admin/CreditCollectionModal'
+import { ConfirmModal } from '@/components/common/ConfirmModal'
 
 export default function CustomersPage() {
   const { tenant } = useTenant()
@@ -16,6 +17,8 @@ export default function CustomersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [collectionCustomer, setCollectionCustomer] = useState<Customer | null>(null)
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     if (!tenant) return
@@ -25,10 +28,31 @@ export default function CustomersPage() {
       .from('customers')
       .select('*')
       .eq('tenant_id', tenant.id)
+      .neq('is_active', false)
       .order('full_name')
     setCustomers(data ?? [])
     setLoading(false)
   }, [tenant])
+
+  async function handleDeleteCustomer() {
+    if (!tenant || !customerToDelete) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/customers?id=${customerToDelete.id}&tenant_id=${tenant.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || 'Error al eliminar cliente')
+      }
+      setCustomerToDelete(null)
+      load()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No se pudo eliminar el cliente')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -113,13 +137,20 @@ export default function CustomersPage() {
                           ${available.toFixed(2)}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-right flex items-center justify-end gap-2">
+                      <td className="px-4 py-3.5 text-right flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => openEdit(c)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                           title="Editar cliente"
                         >
                           <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setCustomerToDelete(c)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                          title="Eliminar cliente"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         {c.current_debt_usd > 0 ? (
                           <button
@@ -163,6 +194,24 @@ export default function CustomersPage() {
           onClose={() => setCollectionCustomer(null)}
         />
       )}
+
+      {/* Modal de Confirmación para Eliminar Cliente */}
+      <ConfirmModal
+        isOpen={Boolean(customerToDelete)}
+        title="¿Eliminar cliente?"
+        message={`¿Estás seguro de que deseas eliminar al cliente "${customerToDelete?.full_name}"?`}
+        warningText={
+          customerToDelete?.current_debt_usd && customerToDelete.current_debt_usd > 0
+            ? `Atención: Este cliente registra una deuda pendiente de $${customerToDelete.current_debt_usd.toFixed(2)} USD. Si lo eliminas, perderás el seguimiento activo de su cobro.`
+            : null
+        }
+        confirmText="Sí, eliminar cliente"
+        cancelText="Cancelar"
+        isDestructive={true}
+        isLoading={deleting}
+        onConfirm={handleDeleteCustomer}
+        onCancel={() => setCustomerToDelete(null)}
+      />
     </div>
   )
 }

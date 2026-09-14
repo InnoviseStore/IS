@@ -17,14 +17,37 @@ export const metadata: Metadata = {
     'Plataforma SaaS multi-tenant para la digitalización de comercios venezolanos. Gestión de inventario, facturación multimoneda USD/VES y tienda virtual con checkout por WhatsApp.',
 }
 
+import { ThemeProvider } from '@/components/common/ThemeProvider'
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
-    <html lang="es" className={inter.variable}>
-      <body className={inter.className}>{children}</body>
+    <html lang="es" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('is_theme');
+                  var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                  if (isDark) {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className={inter.className}>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   )
 }

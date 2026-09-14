@@ -10,6 +10,7 @@ export interface PlanFeatures {
   hasSplitPayments: boolean
   hasBulkImport: boolean
   hasQuotations: boolean
+  hasStorefrontBuilder: boolean
   maxUsers: number
   hasMultipleBranches: boolean
   hasCustomDomain: boolean
@@ -26,6 +27,7 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     hasSplitPayments: false,
     hasBulkImport: false,
     hasQuotations: true,
+    hasStorefrontBuilder: false,
     maxUsers: 1,
     hasMultipleBranches: false,
     hasCustomDomain: false,
@@ -40,6 +42,7 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     hasSplitPayments: true,
     hasBulkImport: true,
     hasQuotations: true,
+    hasStorefrontBuilder: true,
     maxUsers: 3,
     hasMultipleBranches: false,
     hasCustomDomain: false,
@@ -54,6 +57,7 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     hasSplitPayments: true,
     hasBulkImport: true,
     hasQuotations: true,
+    hasStorefrontBuilder: true,
     maxUsers: Infinity,
     hasMultipleBranches: true,
     hasCustomDomain: true,
