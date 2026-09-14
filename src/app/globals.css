@@ -3,13 +3,21 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Base */
-body {
-  @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased min-h-screen transition-colors duration-200;
+html {
+  scroll-behavior: smooth;
 }
 
-/* Aurora Background */
+body {
+  @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased min-h-screen transition-colors duration-200;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Aurora Background - Hardware Accelerated */
 .aurora-container {
   @apply fixed inset-0 pointer-events-none z-0 overflow-hidden;
+  contain: strict;
 }
 
 .aurora-blob-1 {
@@ -22,6 +30,9 @@ body {
   filter: blur(120px);
   background-color: rgb(147 197 253 / 0.35);
   animation: pulse-slow 9s ease-in-out infinite;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .dark .aurora-blob-1 {
   background-color: rgb(30 64 175 / 0.20);
@@ -37,6 +48,9 @@ body {
   filter: blur(130px);
   background-color: rgb(165 180 252 / 0.30);
   animation: float-slow 12s ease-in-out infinite;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .dark .aurora-blob-2 {
   background-color: rgb(49 46 129 / 0.18);
@@ -53,6 +67,9 @@ body {
   background-color: rgb(186 230 253 / 0.35);
   animation: pulse-slow 9s ease-in-out infinite;
   animation-delay: 2.5s;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .dark .aurora-blob-3 {
   background-color: rgb(8 47 73 / 0.20);

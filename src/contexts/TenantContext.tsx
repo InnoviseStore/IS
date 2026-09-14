@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Tenant, Profile } from '@/types/database'
 
@@ -148,21 +148,35 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const contextValue = useMemo(
+    () => ({
+      tenant,
+      profile,
+      exchangeRate,
+      bcvFechaValor,
+      isSyncingBcv,
+      setExchangeRate,
+      syncBcvRate,
+      switchTenant,
+      updateTenantSettings,
+      isLoading,
+    }),
+    [
+      tenant,
+      profile,
+      exchangeRate,
+      bcvFechaValor,
+      isSyncingBcv,
+      setExchangeRate,
+      syncBcvRate,
+      switchTenant,
+      updateTenantSettings,
+      isLoading,
+    ]
+  )
+
   return (
-    <TenantContext.Provider
-      value={{
-        tenant,
-        profile,
-        exchangeRate,
-        bcvFechaValor,
-        isSyncingBcv,
-        setExchangeRate,
-        syncBcvRate,
-        switchTenant,
-        updateTenantSettings,
-        isLoading,
-      }}
-    >
+    <TenantContext.Provider value={contextValue}>
       {children}
     </TenantContext.Provider>
   )

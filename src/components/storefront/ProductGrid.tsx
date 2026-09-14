@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
 import { Search, Package, ShoppingCart, Plus, Minus, Check, Filter, ArrowUpDown, Eye } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -96,7 +96,7 @@ interface ProductCardProps {
   onDecrease: () => void;
 }
 
-function ProductCard({
+const ProductCard = React.memo(function ProductCard({
   product,
   exchangeRate,
   tenantSlug,
@@ -264,7 +264,7 @@ function ProductCard({
       </div>
     </div>
   );
-}
+});
 
 // ─── Main ProductGrid with Filters ─────────────────────────────────────────────
 interface ProductGridProps {
@@ -279,6 +279,7 @@ export default function ProductGrid({
   tenantSlug,
 }: ProductGridProps) {
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'name'>('featured');
@@ -291,13 +292,13 @@ export default function ProductGrid({
     return ['all', ...Array.from(set)];
   }, [products]);
 
-  // Combined Filters and Sorting
+  // Combined Filters and Sorting with Deferred Search
   const filtered = useMemo(() => {
     let list = [...products];
 
-    // Search query
-    if (query.trim()) {
-      const q = query.toLowerCase().trim();
+    // Search query with deferred value for instant non-blocking typing
+    if (deferredQuery.trim()) {
+      const q = deferredQuery.toLowerCase().trim();
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
@@ -331,7 +332,7 @@ export default function ProductGrid({
     }
 
     return list;
-  }, [products, query, selectedCategory, priceRange, sortBy]);
+  }, [products, deferredQuery, selectedCategory, priceRange, sortBy]);
 
   function handleAdd(product: Product) {
     addItem({

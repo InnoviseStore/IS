@@ -200,12 +200,13 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // IA Categorización & Código
+  // IA Categorización & Código & Descripción
   const [aiSuggesting, setAiSuggesting] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState<{
     category: string
     suggestedSku: string
   } | null>(null)
+  const [generatingDescription, setGeneratingDescription] = useState(false)
 
   // Confirmación al salir para no perder datos
   const [showExitConfirm, setShowExitConfirm] = useState(false)
@@ -274,6 +275,43 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     if (!aiSuggestion) return
     setSku(aiSuggestion.suggestedSku)
     setAiSuggestion(null)
+  }
+
+  async function handleGenerateAiDescription() {
+    if (!name.trim()) {
+      setError('Escribe primero el nombre del producto para generar su descripción con IA.')
+      return
+    }
+    setGeneratingDescription(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/ai/generate-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          category: aiSuggestion?.category || apparelGarmentType,
+          apparelAttributes: {
+            garmentType: apparelGarmentType,
+            gender: apparelGender,
+            sizes: apparelSizes,
+          },
+          colors: colors.map((c) => ({ name: c.name })),
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success && data.description) {
+        setDescription(data.description)
+      } else {
+        setError(data.error || 'No se pudo generar la descripción con IA.')
+      }
+    } catch {
+      setError('Error al conectar con el generador de descripciones IA.')
+    } finally {
+      setGeneratingDescription(false)
+    }
   }
 
   async function handleFilesUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -632,16 +670,37 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 </div>
               )}
 
-              <div className="col-span-2">
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                  Descripción
-                </label>
+              <div className="col-span-2 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                    Descripción del Producto
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiDescription}
+                    disabled={generatingDescription || !name.trim()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/60 font-bold text-xs transition disabled:opacity-50 cursor-pointer border border-purple-200/80 dark:border-purple-800/60 shadow-xs"
+                    title="Generar una descripción comercial y atractiva con IA basada en el producto"
+                  >
+                    {generatingDescription ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600 dark:text-purple-400" />
+                        <span>Generando con IA…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>Generar Descripción con IA ✨</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea 
                   value={description} 
                   onChange={(e) => setDescription(e.target.value)} 
-                  rows={2}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
-                  placeholder="Detalles, especificaciones o compatibilidad…" 
+                  rows={4}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm resize-y leading-relaxed font-normal"
+                  placeholder="Detalles, especificaciones o redacta con IA…" 
                 />
               </div>
 

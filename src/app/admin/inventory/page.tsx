@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useDeferredValue } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { ProductModal } from '@/components/admin/ProductModal'
@@ -35,6 +35,7 @@ export default function InventoryPage() {
   const { tenant, exchangeRate } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -71,14 +72,18 @@ export default function InventoryPage() {
     return ['all', ...Array.from(set)]
   }, [products])
 
-  const filtered = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.sku ?? '').toLowerCase().includes(search.toLowerCase())
-    const cat = detectCategory(p.name, p.description)
-    const matchesCategory = selectedCategory === 'all' || cat === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+  const filtered = useMemo(() => {
+    const q = deferredSearch.toLowerCase().trim()
+    return products.filter((p) => {
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.sku ?? '').toLowerCase().includes(q)
+      const cat = detectCategory(p.name, p.description)
+      const matchesCategory = selectedCategory === 'all' || cat === selectedCategory
+      return matchesSearch && matchesCategory
+    })
+  }, [products, deferredSearch, selectedCategory])
 
   function openCreate() { setEditingProduct(null); setModalOpen(true) }
   function openEdit(p: Product) { setEditingProduct(p); setModalOpen(true) }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useReducer, useState, useEffect, useCallback } from 'react'
+import { useReducer, useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { SplitPaymentModal } from '@/components/admin/SplitPaymentModal'
@@ -34,6 +34,7 @@ export default function POSPage() {
   const { tenant, exchangeRate } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search)
   const [cart, dispatch] = useReducer(cartReducer, [])
   const [showPayment, setShowPayment] = useState(false)
   const [loadingProducts, setLoadingProducts] = useState(true)
@@ -56,13 +57,17 @@ export default function POSPage() {
 
   useEffect(() => { load() }, [load])
 
-  const filtered = products.filter(
-    (p) => p.name.toLowerCase().includes(search.toLowerCase()) || (p.sku ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = useMemo(() => {
+    const q = deferredSearch.toLowerCase().trim()
+    if (!q) return products
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q)
+    )
+  }, [products, deferredSearch])
 
-  const totalQuantity = cart.reduce((s, i) => s + i.quantity, 0)
-  const totalUsd = cart.reduce((s, i) => s + i.unit_price_usd * i.quantity, 0)
-  const totalVes = totalUsd * exchangeRate
+  const totalQuantity = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart])
+  const totalUsd = useMemo(() => cart.reduce((s, i) => s + i.unit_price_usd * i.quantity, 0), [cart])
+  const totalVes = useMemo(() => totalUsd * exchangeRate, [totalUsd, exchangeRate])
 
   return (
     <div className="h-full flex flex-col gap-4 pb-16 md:pb-0">

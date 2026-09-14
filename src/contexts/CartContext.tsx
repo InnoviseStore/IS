@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useState } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useMemo } from 'react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export interface CartItem {
@@ -174,23 +174,39 @@ export function CartProvider({
 
   const itemCount = state.items.reduce((sum, item) => sum + Number(item.quantity), 0)
 
+  const contextValue = useMemo(
+    () => ({
+      items: state.items,
+      addItem,
+      removeItem,
+      updateQuantity,
+      clearCart,
+      totalUsd,
+      totalVes,
+      itemCount,
+      isCartOpen,
+      setIsCartOpen,
+      openCart,
+      closeCart,
+    }),
+    [
+      state.items,
+      addItem,
+      removeItem,
+      updateQuantity,
+      clearCart,
+      totalUsd,
+      totalVes,
+      itemCount,
+      isCartOpen,
+      setIsCartOpen,
+      openCart,
+      closeCart,
+    ]
+  )
+
   return (
-    <CartContext.Provider
-      value={{
-        items: state.items,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        totalUsd,
-        totalVes,
-        itemCount,
-        isCartOpen,
-        setIsCartOpen,
-        openCart,
-        closeCart,
-      }}
-    >
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   )
