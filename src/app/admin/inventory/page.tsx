@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { ProductModal } from '@/components/admin/ProductModal'
 import { ImportProductsModal } from '@/components/admin/ImportProductsModal'
+import { StockRegisterModal } from '@/components/admin/StockRegisterModal'
 import type { Product } from '@/types/database'
 import { 
   Plus, 
@@ -19,7 +20,8 @@ import {
   X,
   Lock,
   Filter,
-  Tag
+  Tag,
+  Barcode
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
@@ -40,6 +42,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [stockRegisterOpen, setStockRegisterOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
 
   const features = getTenantFeatures(tenant)
@@ -122,7 +125,21 @@ export default function InventoryPage() {
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">Inventario</h1>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">{products.length} productos registrados</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* Botón Registrar Inv (Auditoría / Ajuste / IA) */}
+          <button
+            type="button"
+            onClick={() => setStockRegisterOpen(true)}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-extrabold shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer shrink-0"
+            title="Toma física de inventario: verificar y ajustar stock con código de barras o foto con IA"
+          >
+            <Barcode className="w-4 h-4 shrink-0" />
+            <span>Registrar Inv</span>
+            <span className="hidden sm:inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/20 text-white">
+              Cámara & IA
+            </span>
+          </button>
+
           <button
             onClick={() => {
               if (!features.hasBulkImport) {
@@ -342,6 +359,34 @@ export default function InventoryPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Botón flotante móvil para toma de inventario rápida */}
+      <div className="md:hidden fixed bottom-6 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setStockRegisterOpen(true)}
+          className="flex items-center gap-2 px-4 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs shadow-2xl shadow-emerald-600/50 active:scale-95 transition"
+        >
+          <Barcode className="w-5 h-5" />
+          <span>Registrar Inv</span>
+        </button>
+      </div>
+
+      {/* Modal Registrar Inv (Toma física, código de barras & foto con IA) */}
+      {tenant && (
+        <StockRegisterModal
+          isOpen={stockRegisterOpen}
+          onClose={() => setStockRegisterOpen(false)}
+          tenantId={tenant.id}
+          exchangeRate={exchangeRate}
+          allProducts={products}
+          onStockUpdated={(updated) => {
+            setProducts((prev) =>
+              prev.map((p) => (p.id === updated.id ? { ...p, stock: updated.stock } : p))
+            )
+          }}
+        />
       )}
 
       {/* Modal de Creación / Edición de Producto */}
