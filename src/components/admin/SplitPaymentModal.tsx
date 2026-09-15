@@ -41,6 +41,8 @@ const IGTF_RATE = 0.03 // 3% — Impuesto a las Grandes Transacciones Financiera
 interface Props {
   cartItems: CartItem[]
   totalUsd: number
+  rawSubtotalUsd?: number
+  discountAmountUsd?: number
   exchangeRate: number
   existingOrderId?: string | null
   initialCustomer?: Customer | null
@@ -51,6 +53,8 @@ interface Props {
 export function SplitPaymentModal({
   cartItems,
   totalUsd,
+  rawSubtotalUsd,
+  discountAmountUsd = 0,
   exchangeRate,
   existingOrderId,
   initialCustomer,
@@ -196,7 +200,8 @@ export function SplitPaymentModal({
         status: isCredit ? 'credit' : 'completed',
         payment_condition: isCredit ? 'credit_7d' : 'immediate',
         exchange_rate_at_sale: exchangeRate,
-        subtotal_usd: totalUsd,
+        subtotal_usd: rawSubtotalUsd || totalUsd,
+        discount_total_usd: discountAmountUsd,
         igtf_total: parseFloat(igtfTotal.toFixed(4)),
         total_usd: parseFloat(grandTotalUsd.toFixed(4)),
         total_ves: parseFloat(grandTotalVes.toFixed(2)),
@@ -204,13 +209,28 @@ export function SplitPaymentModal({
         created_by: profile.id,
         credit_amount_usd: isCredit ? creditAmountUsd : 0,
         due_date: isCredit ? dueDateObj.toISOString() : null,
-        items: cartItems.map((item) => ({
-          product_id: item.product_id,
-          product_name: item.name,
-          product_sku: item.sku ?? null,
-          unit_price_usd: item.unit_price_usd,
-          quantity: item.quantity,
-        })),
+        items: cartItems.map((item) => {
+          const lineOriginal = item.unit_price_usd * item.quantity
+          let itemDisc = 0
+          if (item.discount_usd !== undefined && item.discount_usd > 0) {
+            itemDisc = Math.min(lineOriginal, item.discount_usd)
+          } else if (item.discount_percent !== undefined && item.discount_percent > 0) {
+            itemDisc = Math.min(lineOriginal, (lineOriginal * item.discount_percent) / 100)
+          }
+          const netSubtotal = Math.max(0, lineOriginal - itemDisc)
+          const netUnitPrice = item.quantity > 0 ? netSubtotal / item.quantity : item.unit_price_usd
+
+          return {
+            product_id: item.product_id,
+            product_name: item.name,
+            product_sku: item.sku ?? null,
+            unit_price_usd: netUnitPrice,
+            original_unit_price_usd: item.unit_price_usd,
+            discount_usd: itemDisc,
+            subtotal_usd: netSubtotal,
+            quantity: item.quantity,
+          }
+        }),
         isCredit,
         existing_order_id: existingOrderId || undefined,
         customer: selectedCustomer
@@ -282,13 +302,25 @@ export function SplitPaymentModal({
           })),
           created_at: new Date().toISOString(),
           customer: selectedCustomer || null,
-          order_items: cartItems.map((i) => ({
-            product_name: i.name,
-            product_sku: i.sku || null,
-            quantity: i.quantity,
-            unit_price_usd: i.unit_price_usd,
-            subtotal_usd: i.unit_price_usd * i.quantity,
-          })),
+          order_items: cartItems.map((i) => {
+            const lineOriginal = i.unit_price_usd * i.quantity
+            let itemDisc = 0
+            if (i.discount_usd !== undefined && i.discount_usd > 0) {
+              itemDisc = Math.min(lineOriginal, i.discount_usd)
+            } else if (i.discount_percent !== undefined && i.discount_percent > 0) {
+              itemDisc = Math.min(lineOriginal, (lineOriginal * i.discount_percent) / 100)
+            }
+            const netSubtotal = Math.max(0, lineOriginal - itemDisc)
+            const netUnitPrice = i.quantity > 0 ? netSubtotal / i.quantity : i.unit_price_usd
+
+            return {
+              product_name: itemDisc > 0 ? `${i.name} (Desc: -$${itemDisc.toFixed(2)})` : i.name,
+              product_sku: i.sku || null,
+              quantity: i.quantity,
+              unit_price_usd: netUnitPrice,
+              subtotal_usd: netSubtotal,
+            }
+          }),
         } as any,
       })
     } catch (e) {
@@ -732,9 +764,27 @@ export function SplitPaymentModal({
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-4 space-y-2 font-medium">
             {/* Subtotal */}
             <div className="flex justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">Subtotal (productos):</span>
-              <span className="font-extrabold text-slate-900 dark:text-white">${totalUsd.toFixed(2)} USD</span>
+              <span className="text-slate-600 dark:text-slate-400">Subtotal base:</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">${(rawSubtotalUsd || totalUsd).toFixed(2)} USD</span>
             </div>
+
+            {/* Descuento si aplica */}
+            {discountAmountUsd > 0 && (
+              <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400 font-bold">
+                <span className="flex items-center gap-1">
+                  <span>🎉 Descuento aplicado:</span>
+                </span>
+                <span>-${discountAmountUsd.toFixed(2)} USD</span>
+              </div>
+            )}
+
+            {/* Subtotal neto después de descuento */}
+            {discountAmountUsd > 0 && (
+              <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Subtotal con descuento:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">${totalUsd.toFixed(2)} USD</span>
+              </div>
+            )}
 
             {/* IGTF line — solo si es agente y hay monto */}
             {isIgtfAgent && igtfTotal > 0 && (

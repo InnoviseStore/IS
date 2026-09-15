@@ -160,6 +160,8 @@ export interface CartItem {
   unit_price_usd: number
   quantity: number
   image_url: string | null
+  discount_percent?: number
+  discount_usd?: number
 }
 
 // ─── Supabase Database Types ───────────────────────────────────────────────────

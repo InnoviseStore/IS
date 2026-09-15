@@ -251,14 +251,6 @@ export default function AdminDashboard() {
                   <span>Inventario</span>
                 </Link>
                 <Link
-                  href="/admin/inventory?mode=register"
-                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
-                  title="Registrar Inv con escáner de barras o cámara IA"
-                >
-                  <Barcode className="w-3.5 h-3.5" />
-                  <span>Registrar Inv</span>
-                </Link>
-                <Link
                   href="/admin/orders"
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition active:scale-95"
                 >
@@ -411,11 +403,11 @@ export default function AdminDashboard() {
           icon={TrendingUp} color="bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300"
         />
         <StatCard
-          title="Stock Bajo" subtitle="Menos de 5 unidades (Clic para ajustar)"
+          title="Stock Bajo" subtitle="Menos de 5 unidades"
           value={String(lowStock)}
           icon={AlertTriangle}
           color={lowStock > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'}
-          href="/admin/inventory?mode=register"
+          href="/admin/inventory"
         />
         <StatCard
           title="Créditos Activos" subtitle="Cuentas por cobrar"
