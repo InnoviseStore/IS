@@ -10,6 +10,9 @@ export interface CartItem {
   image_url?: string | null;
 }
 
+export type DeliveryMethod = 'delivery_bqto' | 'envio_nacional' | 'retiro_sitio';
+export type ShippingAgency = 'Zoom' | 'Tealca' | 'MRW';
+
 export interface CustomerInfo {
   fullName: string;
   phone: string;
@@ -17,6 +20,10 @@ export interface CustomerInfo {
   address?: string;
   notes?: string;
   orderNumber?: string;
+  deliveryMethod?: DeliveryMethod;
+  deliveryCoords?: { lat: number; lng: number };
+  shippingAgency?: ShippingAgency;
+  agencyAddress?: string;
 }
 
 export interface WhatsAppConfig {
@@ -82,7 +89,27 @@ export function generateWhatsAppMessage(
     lines.push(`🆔 *Cédula / RIF:* ${customer.idNumber.trim()}`);
   }
   lines.push(`📱 *WhatsApp:* ${customer.phone}`);
-  if (customer.address && customer.address.trim().length > 0) {
+
+  // Método y datos de Entrega
+  if (customer.deliveryMethod === 'delivery_bqto') {
+    lines.push(`🛵 *Método de Entrega:* Delivery en Barquisimeto`);
+    if (customer.address && customer.address.trim().length > 0) {
+      lines.push(`📍 *Dirección exacta:* ${customer.address.trim()}`);
+    }
+    if (customer.deliveryCoords) {
+      lines.push(`🗺️ *Ubicación GPS:* https://maps.google.com/?q=${customer.deliveryCoords.lat},${customer.deliveryCoords.lng}`);
+    }
+  } else if (customer.deliveryMethod === 'envio_nacional') {
+    lines.push(`📦 *Método de Entrega:* Envío Nacional (Cobro a Destino)`);
+    if (customer.shippingAgency) {
+      lines.push(`🏢 *Agencia de Envío:* ${customer.shippingAgency}`);
+    }
+    if (customer.agencyAddress && customer.agencyAddress.trim().length > 0) {
+      lines.push(`📍 *Dirección de Agencia:* ${customer.agencyAddress.trim()}`);
+    }
+  } else if (customer.deliveryMethod === 'retiro_sitio') {
+    lines.push(`🏪 *Método de Entrega:* Retiro en Sitio (Acordar con el vendedor)`);
+  } else if (customer.address && customer.address.trim().length > 0) {
     lines.push(`📍 *Dirección de Entrega:* ${customer.address.trim()}`);
   }
   lines.push('');

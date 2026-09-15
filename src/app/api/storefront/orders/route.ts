@@ -100,6 +100,12 @@ export async function POST(req: Request) {
     const cleanIdNumber = customer.idNumber ? sanitizeText(customer.idNumber).toUpperCase() : null
     const cleanAddress = customer.address ? sanitizeText(customer.address) : null
     const cleanCustomerNotes = customer.notes ? sanitizeText(customer.notes) : ''
+    const deliveryMethod = customer.deliveryMethod || 'delivery_bqto'
+    const shippingAgency = customer.shippingAgency ? sanitizeText(customer.shippingAgency) : null
+    const cleanAgencyAddress = customer.agencyAddress ? sanitizeText(customer.agencyAddress) : null
+    const deliveryCoords = customer.deliveryCoords && typeof customer.deliveryCoords.lat === 'number' && typeof customer.deliveryCoords.lng === 'number'
+      ? { lat: customer.deliveryCoords.lat, lng: customer.deliveryCoords.lng }
+      : null
 
     if (!cleanFullName || !cleanPhone) {
       return NextResponse.json({ error: 'Nombre y teléfono válidos son requeridos.' }, { status: 400 })
@@ -168,11 +174,18 @@ export async function POST(req: Request) {
     const finalTotalUsd = Number(totalUsd) || 0
     const finalTotalVes = Number(totalVes) || finalTotalUsd * rate
 
+    let deliverySummary = 'Entrega: Retiro en Sitio'
+    if (deliveryMethod === 'delivery_bqto') {
+      deliverySummary = `Entrega: Delivery Barquisimeto | Dirección: ${cleanAddress || 'No especificada'}${deliveryCoords ? ` | GPS: https://maps.google.com/?q=${deliveryCoords.lat},${deliveryCoords.lng}` : ''}`
+    } else if (deliveryMethod === 'envio_nacional') {
+      deliverySummary = `Entrega: Envío Nacional (Cobro Destino) | Agencia: ${shippingAgency || 'No especificada'} | Dirección Agencia: ${cleanAgencyAddress || 'No especificada'}`
+    }
+
     const orderNotes = [
       `Cliente: ${cleanFullName}`,
       cleanIdNumber ? `CI/RIF: ${cleanIdNumber}` : null,
       `WhatsApp: ${cleanPhone}`,
-      cleanAddress ? `Dirección: ${cleanAddress}` : null,
+      deliverySummary,
       cleanCustomerNotes ? `Indicaciones: ${cleanCustomerNotes}` : null,
       'Origen: Catálogo Web WhatsApp',
     ]

@@ -12,10 +12,19 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Bike,
+  Truck,
+  Store,
+  MapPin,
+  Navigation,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useCart } from '@/contexts/CartContext';
-import { buildWhatsAppCheckoutUrl } from '@/lib/whatsapp';
+import {
+  buildWhatsAppCheckoutUrl,
+  type DeliveryMethod,
+  type ShippingAgency,
+} from '@/lib/whatsapp';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function formatUsd(n: number) {
@@ -83,7 +92,47 @@ export default function CartDrawer({
   const [idNumber, setIdNumber] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<{ fullName?: string; phone?: string; idNumber?: string }>({});
+
+  // Delivery options state (Excluyentes: solo una activa a la vez)
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery_bqto');
+  const [shippingAgency, setShippingAgency] = useState<ShippingAgency>('Zoom');
+  const [agencyAddress, setAgencyAddress] = useState('');
+  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationSuccess, setLocationSuccess] = useState(false);
+
+  const [errors, setErrors] = useState<{
+    fullName?: string;
+    phone?: string;
+    idNumber?: string;
+    address?: string;
+    agencyAddress?: string;
+  }>({});
+
+  // Geolocalización del usuario para Delivery Bqto
+  function handleGetLocation() {
+    if (!navigator.geolocation) {
+      alert('Tu navegador no soporta geolocalización.');
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setDeliveryCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setLocationSuccess(true);
+        setIsLocating(false);
+      },
+      (error) => {
+        console.warn('Error al obtener ubicación:', error);
+        alert('No se pudo obtener tu ubicación precisa. Puedes ingresar tu dirección escrita.');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    );
+  }
 
   // Cargar datos guardados previamente del cliente para no tener que escribirlos cada vez
   useEffect(() => {
@@ -157,6 +206,14 @@ export default function CartDrawer({
       nextErrors.idNumber = 'Indica tu cédula o RIF para facturación (ej. V-12345678).';
     }
 
+    if (deliveryMethod === 'delivery_bqto' && !address.trim()) {
+      nextErrors.address = 'Por favor ingresa tu dirección exacta en Barquisimeto.';
+    }
+
+    if (deliveryMethod === 'envio_nacional' && !agencyAddress.trim()) {
+      nextErrors.agencyAddress = 'Ingresa la dirección o sede de la agencia de envío.';
+    }
+
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
@@ -198,6 +255,10 @@ export default function CartDrawer({
               idNumber: idNumber.trim(),
               address: address.trim(),
               notes: notes.trim(),
+              deliveryMethod,
+              shippingAgency: deliveryMethod === 'envio_nacional' ? shippingAgency : undefined,
+              agencyAddress: deliveryMethod === 'envio_nacional' ? agencyAddress.trim() : undefined,
+              deliveryCoords: deliveryMethod === 'delivery_bqto' && deliveryCoords ? deliveryCoords : undefined,
             },
             items,
             totalUsd,
@@ -215,7 +276,7 @@ export default function CartDrawer({
         console.warn('Advertencia al registrar en BD, continuando por WhatsApp:', dbErr);
       }
 
-      // 2. Generar el enlace de WhatsApp con el número de orden oficial
+      // 2. Generar el enlace de WhatsApp con el número de orden oficial y método de entrega
       const url = buildWhatsAppCheckoutUrl({
         items,
         customer: {
@@ -225,6 +286,10 @@ export default function CartDrawer({
           address: address.trim(),
           notes: notes.trim(),
           orderNumber,
+          deliveryMethod,
+          shippingAgency: deliveryMethod === 'envio_nacional' ? shippingAgency : undefined,
+          agencyAddress: deliveryMethod === 'envio_nacional' ? agencyAddress.trim() : undefined,
+          deliveryCoords: deliveryMethod === 'delivery_bqto' && deliveryCoords ? deliveryCoords : undefined,
         },
         totalUsd,
         totalVes,
@@ -537,17 +602,215 @@ export default function CartDrawer({
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Dirección de Entrega (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Ej. Calle Principal, Urb. Los Mangos, Casa #12"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              {/* ─── Opciones de Entrega (Mutuamente Excluyentes) ─── */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Método de Entrega *
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Selecciona 1 opción
+                  </span>
+                </div>
+
+                {/* 3 Selector Tabs / Radio Cards */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryMethod('delivery_bqto');
+                      if (errors.agencyAddress) setErrors((prev) => ({ ...prev, agencyAddress: undefined }));
+                    }}
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                      deliveryMethod === 'delivery_bqto'
+                        ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 text-blue-600 dark:text-blue-400 shadow-sm ring-2 ring-blue-500/20 font-bold'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <Bike className={`h-5 w-5 mb-1 ${deliveryMethod === 'delivery_bqto' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+                    <span className="text-xs font-semibold leading-tight">Delivery en Bqto</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryMethod('envio_nacional');
+                      if (errors.address) setErrors((prev) => ({ ...prev, address: undefined }));
+                    }}
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                      deliveryMethod === 'envio_nacional'
+                        ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-600 dark:text-indigo-400 shadow-sm ring-2 ring-indigo-500/20 font-bold'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <Truck className={`h-5 w-5 mb-1 ${deliveryMethod === 'envio_nacional' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                    <span className="text-xs font-semibold leading-tight">Envío Nacional</span>
+                    <span className="text-[10px] opacity-75 font-normal">Cobro Destino</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryMethod('retiro_sitio');
+                      if (errors.address) setErrors((prev) => ({ ...prev, address: undefined }));
+                      if (errors.agencyAddress) setErrors((prev) => ({ ...prev, agencyAddress: undefined }));
+                    }}
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                      deliveryMethod === 'retiro_sitio'
+                        ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-sm ring-2 ring-emerald-500/20 font-bold'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <Store className={`h-5 w-5 mb-1 ${deliveryMethod === 'retiro_sitio' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
+                    <span className="text-xs font-semibold leading-tight">Retiro en Sitio</span>
+                    <span className="text-[10px] opacity-75 font-normal">Acordar</span>
+                  </button>
+                </div>
+
+                {/* OPCIÓN 1: DELIVERY EN BARQUISIMETO */}
+                {deliveryMethod === 'delivery_bqto' && (
+                  <div className="p-3.5 rounded-2xl bg-blue-50/40 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-800/50 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-blue-800 dark:text-blue-300 font-bold text-xs">
+                        <MapPin className="h-4 w-4 text-blue-600" />
+                        <span>Dirección en Barquisimeto *</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleGetLocation}
+                        disabled={isLocating}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-bold shadow-xs transition cursor-pointer"
+                        title="Usar GPS de mi teléfono o navegador"
+                      >
+                        {isLocating ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Navigation className="h-3 w-3" />
+                        )}
+                        <span>{locationSuccess ? 'GPS Fijado ✓' : 'Usar mi GPS'}</span>
+                      </button>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => {
+                        setAddress(e.target.value);
+                        if (errors.address) setErrors((prev) => ({ ...prev, address: undefined }));
+                      }}
+                      placeholder="Ej. Urb. El Parral, Calle 3 con Av. Los Leones, Casa #45"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.address
+                          ? 'border-rose-400 dark:border-rose-600'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                    />
+                    {errors.address && (
+                      <p className="flex items-center gap-1 text-[11px] text-rose-500 font-medium">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.address}
+                      </p>
+                    )}
+
+                    {/* Mini Mapa de Google Maps Interactivo Barquisimeto */}
+                    <div className="rounded-xl overflow-hidden border border-blue-200/80 dark:border-blue-800/80 shadow-xs relative">
+                      <iframe
+                        title="Mapa de Ubicación Barquisimeto"
+                        src={
+                          deliveryCoords
+                            ? `https://maps.google.com/maps?q=${deliveryCoords.lat},${deliveryCoords.lng}&z=16&output=embed`
+                            : address.trim().length > 3
+                            ? `https://maps.google.com/maps?q=${encodeURIComponent(address.trim() + ', Barquisimeto, Venezuela')}&z=15&output=embed`
+                            : 'https://maps.google.com/maps?q=Barquisimeto,+Lara,+Venezuela&z=13&output=embed'
+                        }
+                        className="w-full h-36 border-0"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                      <div className="bg-slate-900/80 backdrop-blur-xs text-white text-[10px] px-2.5 py-1 flex items-center justify-between">
+                        <span>
+                          {deliveryCoords
+                            ? `📍 Ubicación GPS: ${deliveryCoords.lat.toFixed(4)}, ${deliveryCoords.lng.toFixed(4)}`
+                            : address.trim()
+                            ? `📍 ${address.slice(0, 32)}...`
+                            : '📍 Barquisimeto, Edo. Lara'}
+                        </span>
+                        {deliveryCoords && (
+                          <span className="text-emerald-400 font-bold">Coordenadas listas</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* OPCIÓN 2: ENVÍO NACIONAL COBRO A DESTINO */}
+                {deliveryMethod === 'envio_nacional' && (
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-800/50 space-y-3 animate-in fade-in duration-200">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                        Agencia de Envío *
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['Zoom', 'Tealca', 'MRW'] as ShippingAgency[]).map((agency) => (
+                          <button
+                            key={agency}
+                            type="button"
+                            onClick={() => setShippingAgency(agency)}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                              shippingAgency === agency
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            {agency}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        Dirección exacta de la Agencia ({shippingAgency}) *
+                      </label>
+                      <input
+                        type="text"
+                        value={agencyAddress}
+                        onChange={(e) => {
+                          setAgencyAddress(e.target.value);
+                          if (errors.agencyAddress) setErrors((prev) => ({ ...prev, agencyAddress: undefined }));
+                        }}
+                        placeholder={`Ej. Agencia ${shippingAgency} Centro Comercial Sambil Caracas, Nivel Feria`}
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                          errors.agencyAddress
+                            ? 'border-rose-400 dark:border-rose-600'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      />
+                      {errors.agencyAddress && (
+                        <p className="flex items-center gap-1 text-[11px] text-rose-500 mt-1 font-medium">
+                          <AlertCircle className="h-3 w-3" />
+                          {errors.agencyAddress}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                      El flete se cancela al retirar el paquete en la agencia seleccionada (Cobro a Destino).
+                    </p>
+                  </div>
+                )}
+
+                {/* OPCIÓN 3: RETIRO EN SITIO */}
+                {deliveryMethod === 'retiro_sitio' && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/50 space-y-1.5 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                      <Store className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Retiro en Sitio (Acordar con el Vendedor)</span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Coordinarás la entrega directa o punto de encuentro con el vendedor al confirmar tu pedido por WhatsApp. No genera costos adicionales de envío.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -557,7 +820,7 @@ export default function CartDrawer({
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Instrucciones para entrega, puntos de referencia, etc."
+                  placeholder="Instrucciones especiales, punto de referencia, etc."
                   rows={2}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
