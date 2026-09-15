@@ -4,8 +4,14 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
-import { TrendingUp, AlertTriangle, Clock, DollarSign, Vault, PieChart, Wallet, Trash2, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react'
+import {
+  TrendingUp, AlertTriangle, Clock, DollarSign, Vault, PieChart, Wallet,
+  Trash2, ShieldAlert, Loader2, CheckCircle2, Crown, Store, Plus,
+  Settings, ExternalLink, RefreshCw, ShoppingCart, Package, ClipboardList,
+  ArrowRight, ChevronRight, Check
+} from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
+import { CreateTenantModal } from '@/components/admin/CreateTenantModal'
 
 function StatCard({
   title, subtitle, value, sub, icon: Icon, color,
@@ -33,7 +39,19 @@ function StatCard({
 }
 
 export default function AdminDashboard() {
-  const { tenant, exchangeRate } = useTenant()
+  const {
+    tenant,
+    exchangeRate,
+    profile,
+    allTenants,
+    switchTenantById,
+    refreshTenants,
+    syncBcvRate,
+    isSyncingBcv,
+  } = useTenant()
+
+  const isSuperAdmin = profile?.role === 'superadmin'
+  const [isCreateTenantModalOpen, setIsCreateTenantModalOpen] = useState(false)
   const [salesToday, setSalesToday] = useState(0)
   const [salesMonth, setSalesMonth] = useState(0)
   const [expensesMonth, setExpensesMonth] = useState(0)
@@ -139,9 +157,230 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">Resumen del día — {tenant?.name}</p>
+      {/* 👑 OPCIONES PRINCIPALES DEL SÚPER ADMINISTRADOR */}
+      {isSuperAdmin && (
+        <section className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-indigo-500/10 to-blue-500/10 border-2 border-amber-300/80 dark:border-amber-700/60 shadow-xl space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0">
+                <Crown className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                    Opciones Principales - Súper Administrador
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500 text-white shadow-xs">
+                    Multi-Tienda SaaS
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-0.5">
+                  Centro de control global: entra a una tienda, crea nuevos comercios o ajusta la configuración del sistema.
+                </p>
+              </div>
+            </div>
+
+            <Link
+              href="/admin/master"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/20 active:scale-95 transition shrink-0"
+            >
+              <Crown className="w-4 h-4" />
+              <span>Directorio Master &gt;</span>
+            </Link>
+          </div>
+
+          {/* LAS 3 OPCIONES PRINCIPALES */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* OPCIÓN 1: ENTRAR A UNA TIENDA */}
+            <div className="glass-card p-5 border-2 border-blue-200 dark:border-blue-800/80 bg-white/95 dark:bg-slate-900/90 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-blue-400 transition">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
+                      1. Entrar a una Tienda
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                      Selecciona y opera en cualquier comercio
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Tienda Activa Actual:
+                  </label>
+                  <select
+                    value={tenant?.id || ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        switchTenantById(e.target.value)
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition cursor-pointer"
+                  >
+                    {allTenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} (/{t.slug}) {t.id === tenant?.id ? '★ Activa' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Link
+                  href="/admin/pos"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
+                >
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  <span>Ir al POS</span>
+                </Link>
+                <Link
+                  href="/admin/inventory"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition active:scale-95"
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>Inventario</span>
+                </Link>
+                <Link
+                  href="/admin/orders"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition active:scale-95"
+                >
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  <span>Pedidos Web</span>
+                </Link>
+                {tenant?.slug && (
+                  <a
+                    href={`/${tenant.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-blue-600 dark:text-blue-400 font-bold text-xs transition active:scale-95"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Ver Vitrina</span>
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* OPCIÓN 2: CREAR UNA TIENDA */}
+            <div className="glass-card p-5 border-2 border-emerald-200 dark:border-emerald-800/80 bg-white/95 dark:bg-slate-900/90 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-emerald-400 transition">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
+                      2. Crear una Tienda
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                      Onboarding guiado en 3 pasos
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 pt-1">
+                  Registra un nuevo comercio cliente con su logo, rubro comercial, tasa de cambio BCV, colores y usuario dueño inicial.
+                </p>
+
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold border border-emerald-200 dark:border-emerald-900/60">
+                  <span>{allTenants.length} tiendas creadas</span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateTenantModalOpen(true)}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Crear Nueva Tienda Ahora</span>
+                </button>
+              </div>
+            </div>
+
+            {/* OPCIÓN 3: CONFIGURACIÓN GENERAL */}
+            <div className="glass-card p-5 border-2 border-purple-200 dark:border-purple-800/80 bg-white/95 dark:bg-slate-900/90 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-purple-400 transition">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/70 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
+                      3. Configuración General
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                      Tasa BCV, soporte y preferencias
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 pt-1">
+                  Administra la tasa oficial de cambio en vivo, contacto de WhatsApp de soporte y configuraciones operativas de la plataforma.
+                </p>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-purple-900 dark:text-purple-200 text-xs font-bold">
+                  <span>Tasa BCV: <strong>Bs. {exchangeRate.toFixed(2)}</strong></span>
+                  <button
+                    onClick={() => syncBcvRate()}
+                    disabled={isSyncingBcv}
+                    className="p-1 hover:bg-purple-200 dark:hover:bg-purple-900 rounded-md transition text-purple-700 dark:text-purple-300"
+                    title="Sincronizar con BCV"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBcv ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Link
+                  href="/admin/settings"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-600/20 active:scale-95 transition"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Abrir Configuración General</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Modal para Crear Nueva Tienda (Directo en Dashboard) */}
+      <CreateTenantModal
+        isOpen={isCreateTenantModalOpen}
+        onClose={() => setIsCreateTenantModalOpen(false)}
+        onSuccess={() => {
+          setIsCreateTenantModalOpen(false)
+          refreshTenants()
+        }}
+      />
+
+      <div className="pt-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              {isSuperAdmin ? `Métricas de la Tienda Activa: ${tenant?.name || 'Innovise Store'}` : 'Dashboard'}
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+              Resumen operativo del día — {tenant?.name}
+            </p>
+          </div>
+          {isSuperAdmin && (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 text-xs font-bold">
+                <Store className="w-3.5 h-3.5" />
+                <span>Tienda activa: {tenant?.name}</span>
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {deleteSuccessMsg && (

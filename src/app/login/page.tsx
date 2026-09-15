@@ -35,14 +35,13 @@ export default function LoginPage() {
         .single()
 
       if (prof?.role === 'superadmin') {
-        router.push('/admin/master')
+        window.location.href = '/admin'
       } else {
-        router.push('/admin')
+        window.location.href = '/admin'
       }
     } else {
-      router.push('/admin')
+      window.location.href = '/admin'
     }
-    router.refresh()
   }
 
   return (
