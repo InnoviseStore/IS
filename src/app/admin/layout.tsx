@@ -438,6 +438,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
+            {/* Acceso Directo a Registrar Inventario con Cámara / IA */}
+            <Link
+              href="/admin/inventory?mode=register"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 hover:bg-emerald-200 dark:hover:bg-emerald-900 text-xs font-black transition shadow-xs"
+              title="Registrar / Ajustar Inventario con Código de Barras o Foto con IA"
+            >
+              <Barcode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="font-extrabold text-[11px]">Registrar Inv</span>
+            </Link>
+
             {/* Ver Tienda Pública */}
             {tenant?.slug && (
               <a
