@@ -3,29 +3,42 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   LayoutDashboard, Package, ShoppingCart, Users,
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
-  RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette
+  RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette,
+  UserCheck, ShieldCheck, Loader2
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
 import { EdithAssistantModal } from '@/components/admin/EdithAssistantModal'
 import { getPlanLabel } from '@/lib/formatters'
 import { useTheme } from '@/components/common/ThemeProvider'
+import { getRoleLabel, type UserRole } from '@/types/database'
 
-const baseNavItems = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/orders', label: 'Pedidos Web', icon: ClipboardList },
-  { href: '/admin/inventory', label: 'Inventario', icon: Package },
-  { href: '/admin/pos', label: 'Facturación / POS', icon: ShoppingCart },
-  { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText },
-  { href: '/admin/storefront-builder', label: 'Catálogo Web', icon: Palette, proBadge: true },
-  { href: '/admin/cash-closing', label: 'Cierre de Caja', icon: Vault },
-  { href: '/admin/expenses', label: 'Gastos', icon: Receipt },
-  { href: '/admin/customers', label: 'Clientes', icon: Users },
-  { href: '/admin/settings', label: 'Configuración', icon: Settings },
+// Mapeo exhaustivo de módulos y permisos por rol (RBAC)
+interface NavItemConfig {
+  href: string
+  label: string
+  icon: any
+  proBadge?: boolean
+  roles: UserRole[]
+}
+
+const ALL_NAV_ITEMS: NavItemConfig[] = [
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, roles: ['superadmin', 'owner', 'admin'] },
+  { href: '/admin/orders', label: 'Pedidos Web', icon: ClipboardList, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'almacen', 'vendedor'] },
+  { href: '/admin/pos', label: 'Facturación / POS', icon: ShoppingCart, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'vendedor'] },
+  { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText, roles: ['superadmin', 'owner', 'admin', 'vendedor'] },
+  { href: '/admin/inventory', label: 'Inventario', icon: Package, roles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor'] },
+  { href: '/admin/cash-closing', label: 'Cierre de Caja', icon: Vault, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier'] },
+  { href: '/admin/expenses', label: 'Gastos', icon: Receipt, roles: ['superadmin', 'owner', 'admin'] },
+  { href: '/admin/customers', label: 'Clientes', icon: Users, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'vendedor'] },
+  { href: '/admin/storefront-builder', label: 'Catálogo Web', icon: Palette, proBadge: true, roles: ['superadmin', 'owner', 'admin'] },
+  { href: '/admin/users', label: 'Equipo & Usuarios', icon: UserCheck, roles: ['superadmin', 'owner', 'admin'] },
+  { href: '/admin/settings', label: 'Configuración', icon: Settings, roles: ['superadmin', 'owner', 'admin'] },
+  { href: '/admin/master', label: 'Panel Master', icon: Crown, roles: ['superadmin'] },
 ]
 
 function AdminShell({ children }: { children: React.ReactNode }) {
@@ -37,19 +50,46 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [editingRate, setEditingRate] = useState(false)
   const [rateInput, setRateInput] = useState('')
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
-  const isSuperAdmin = profile?.role === 'superadmin'
-  const navItems = [
-    ...baseNavItems,
-    ...(isSuperAdmin
-      ? [{ href: '/admin/master', label: 'Panel Master', icon: Crown }]
-      : []),
-  ]
+  const userRole = (profile?.role || 'admin') as UserRole
+  const isSuperAdmin = userRole === 'superadmin'
+
+  // Filtrar elementos de navegación según el rol del usuario
+  const navItems = useMemo(() => {
+    return ALL_NAV_ITEMS.filter((item) => {
+      if (item.href === '/admin/master') return isSuperAdmin
+      return item.roles.includes(userRole)
+    })
+  }, [userRole, isSuperAdmin])
+
+  // Page Guard: Protección de rutas según rol (redirige si no tiene permiso)
+  useEffect(() => {
+    if (!profile) return
+    const allowedHrefs = navItems.map((n) => n.href)
+    const isCurrentAllowed = allowedHrefs.some(
+      (href) => pathname === href || (href !== '/admin' && pathname.startsWith(href))
+    )
+    if (!isCurrentAllowed && navItems.length > 0) {
+      // Redirigir al primer módulo disponible para su rol (ej. POS para cajero, Inventario para almacén)
+      router.replace(navItems[0].href)
+    }
+  }, [pathname, profile, navItems, router])
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
+    if (isLoggingOut) return
+    setIsLoggingOut(true)
+    try {
+      const supabase = createClient()
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise((resolve) => setTimeout(resolve, 750)),
+      ])
+    } catch (e) {
+      console.warn('Logout notice:', e)
+    } finally {
+      window.location.href = '/login'
+    }
   }
 
   function startEditRate() {
@@ -104,6 +144,35 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
+      {/* Current logged-in user profile pill */}
+      {profile && (
+        <div className="px-3 py-2.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center text-slate-800 dark:text-slate-100 font-bold text-xs shadow-2xs flex-shrink-0">
+              {profile.full_name ? profile.full_name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate leading-tight">
+                {profile.full_name || profile.email?.split('@')[0] || 'Usuario'}
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`inline-block text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                  userRole === 'superadmin' || userRole === 'owner' || userRole === 'admin'
+                    ? 'text-purple-700 dark:text-purple-300 bg-purple-100/90 dark:bg-purple-950/70 border border-purple-200 dark:border-purple-800/60'
+                    : userRole === 'cajero' || userRole === 'cashier'
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800/60'
+                    : userRole === 'almacen'
+                    ? 'text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800/60'
+                    : 'text-blue-700 dark:text-blue-300 bg-blue-100/90 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/60'
+                }`}>
+                  {getRoleLabel(userRole)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Nav */}
       <nav className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
         {navItems.map(({ href, label, icon: Icon, proBadge }) => {
@@ -137,11 +206,17 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
       {/* Logout */}
       <button
+        type="button"
+        disabled={isLoggingOut}
         onClick={handleLogout}
-        className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
+        className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 cursor-pointer disabled:opacity-50"
       >
-        <LogOut className="w-4 h-4" />
-        Cerrar sesión
+        {isLoggingOut ? (
+          <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+        ) : (
+          <LogOut className="w-4 h-4" />
+        )}
+        <span>{isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}</span>
       </button>
     </aside>
   )
@@ -278,6 +353,22 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* Asistente IA Edith */}
         <EdithAssistantModal />
+
+        {/* Full-screen animated overlay on logout */}
+        {isLoggingOut && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-4 animate-in fade-in duration-200 text-white">
+            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 p-0.5 shadow-2xl shadow-blue-500/40 animate-pulse">
+              <div className="w-full h-full bg-slate-900 rounded-2xl flex items-center justify-center">
+                <Store className="w-8 h-8 text-blue-400" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 text-sm font-bold text-slate-100">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+              <span>Cerrando sesión de forma segura...</span>
+            </div>
+            <p className="text-xs text-slate-400">Guardando sesión y redirigiendo...</p>
+          </div>
+        )}
       </div>
     </div>
   )

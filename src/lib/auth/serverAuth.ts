@@ -1,13 +1,13 @@
-﻿import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import type { Profile } from '@/types/database'
+import type { Profile, UserRole } from '@/types/database'
 
 export interface AuthenticatedUser {
   userId: string
   email?: string
   tenantId: string
-  role: 'superadmin' | 'owner' | 'admin' | 'cashier'
+  role: UserRole
   isSuperAdmin: boolean
   profile: Profile
 }
@@ -18,7 +18,7 @@ export interface AuthValidationResult {
 }
 
 interface AuthOptions {
-  requiredRoles?: ('superadmin' | 'owner' | 'admin' | 'cashier')[]
+  requiredRoles?: UserRole[]
   targetTenantId?: string | null
   targetTenantSlug?: string | null
 }
@@ -73,7 +73,7 @@ export async function authenticateApiRequest(
       }
     }
 
-    const role = (profile.role || 'cashier') as 'superadmin' | 'owner' | 'admin' | 'cashier'
+    const role = (profile.role || 'cajero') as UserRole
     const isSuperAdmin = role === 'superadmin'
     const userTenantId = profile.tenant_id
 

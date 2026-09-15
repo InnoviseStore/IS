@@ -31,14 +31,43 @@ export interface Tenant {
   created_at: string
 }
 
-// ─── Profile ──────────────────────────────────────────────────────────────────
+// ─── Profile & Team Roles ──────────────────────────────────────────────────
+export type UserRole =
+  | 'superadmin'
+  | 'owner'
+  | 'admin'
+  | 'cashier'
+  | 'cajero'
+  | 'almacen'
+  | 'vendedor'
+
 export interface Profile {
   id: string
   tenant_id: string
   full_name: string | null
   email: string | null
-  role: 'superadmin' | 'owner' | 'admin' | 'cashier'
+  role: UserRole
   created_at: string
+}
+
+export function getRoleLabel(role?: string | null): string {
+  switch (role) {
+    case 'superadmin':
+      return 'Super Administrador'
+    case 'owner':
+      return 'Propietario'
+    case 'admin':
+      return 'Administrador'
+    case 'cajero':
+    case 'cashier':
+      return 'Cajero'
+    case 'almacen':
+      return 'Almacén & Stock'
+    case 'vendedor':
+      return 'Vendedor'
+    default:
+      return 'Colaborador'
+  }
 }
 
 // ─── Product ──────────────────────────────────────────────────────────────────
