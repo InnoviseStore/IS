@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, useDeferredValue } from 'react'
+import { useEffect, useState, useCallback, useMemo, useDeferredValue, Suspense } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { ProductModal } from '@/components/admin/ProductModal'
@@ -33,7 +34,11 @@ function StockBadge({ stock }: { stock: number }) {
   return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 whitespace-nowrap">OK ({stock})</span>
 }
 
-export default function InventoryPage() {
+function InventoryContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const isRegisterParam = searchParams.get('mode') === 'register' || searchParams.get('tab') === 'register'
+
   const { tenant, exchangeRate } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
@@ -44,6 +49,12 @@ export default function InventoryPage() {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [stockRegisterOpen, setStockRegisterOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+
+  useEffect(() => {
+    if (isRegisterParam) {
+      setStockRegisterOpen(true)
+    }
+  }, [isRegisterParam])
 
   const features = getTenantFeatures(tenant)
 
@@ -163,6 +174,41 @@ export default function InventoryPage() {
             <span>Agregar</span>
           </button>
         </div>
+      </div>
+
+      {/* Sub-menú de Navegación de Inventario (Tabs) */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 w-full sm:w-fit overflow-x-auto shadow-xs">
+        <button
+          type="button"
+          onClick={() => {
+            setStockRegisterOpen(false)
+            router.push('/admin/inventory')
+          }}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition cursor-pointer whitespace-nowrap ${
+            !stockRegisterOpen
+              ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          <span>Catálogo de Productos ({products.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStockRegisterOpen(true)}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition cursor-pointer whitespace-nowrap ${
+            stockRegisterOpen
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/20'
+              : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+          }`}
+        >
+          <Barcode className="w-4 h-4" />
+          <span>Registrar Inv (Toma & Auditoría)</span>
+          <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500 text-white shadow-xs">
+            NUEVO
+          </span>
+        </button>
       </div>
 
       {/* Alerta de Éxito al Eliminar */}
@@ -486,5 +532,13 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm font-medium">Cargando módulo de inventario…</div>}>
+      <InventoryContent />
+    </Suspense>
   )
 }

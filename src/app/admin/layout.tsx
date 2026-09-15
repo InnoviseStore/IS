@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users,
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
   RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette,
-  UserCheck, ShieldCheck, Loader2, ChevronDown
+  UserCheck, ShieldCheck, Loader2, ChevronDown, Barcode
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
@@ -23,6 +23,7 @@ interface NavItemConfig {
   label: string
   icon: any
   proBadge?: boolean
+  scanBadge?: boolean
   roles: UserRole[]
 }
 
@@ -33,6 +34,7 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
   { href: '/admin/pos', label: 'Facturación / POS', icon: ShoppingCart, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'vendedor'] },
   { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText, roles: ['superadmin', 'owner', 'admin', 'vendedor'] },
   { href: '/admin/inventory', label: 'Inventario', icon: Package, roles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor'] },
+  { href: '/admin/inventory?mode=register', label: 'Registrar Inv', icon: Barcode, scanBadge: true, roles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor'] },
   { href: '/admin/cash-closing', label: 'Cierre de Caja', icon: Vault, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier'] },
   { href: '/admin/expenses', label: 'Gastos', icon: Receipt, roles: ['superadmin', 'owner', 'admin'] },
   { href: '/admin/customers', label: 'Clientes', icon: Users, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'vendedor'] },
@@ -67,7 +69,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   // Page Guard: Protección de rutas según rol (redirige si no tiene permiso)
   useEffect(() => {
     if (!profile) return
-    const allowedHrefs = navItems.map((n) => n.href)
+    const allowedHrefs = navItems.map((n) => n.href.split('?')[0])
     const isCurrentAllowed = allowedHrefs.some(
       (href) => pathname === href || (href !== '/admin' && pathname.startsWith(href))
     )
@@ -265,9 +267,13 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
       {/* Nav */}
       <nav className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
-        {navItems.map(({ href, label, icon: Icon, proBadge }) => {
-          const active = pathname === href || (href !== '/admin' && pathname.startsWith(href))
+        {navItems.map(({ href, label, icon: Icon, proBadge, scanBadge }) => {
+          const isRegister = href.includes('mode=register')
           const isMaster = href === '/admin/master'
+          const active = isRegister
+            ? pathname === '/admin/inventory' && typeof window !== 'undefined' && window.location.search.includes('mode=register')
+            : (pathname === href || (href !== '/admin' && !href.includes('?') && pathname.startsWith(href)))
+
           return (
             <Link
               key={href}
@@ -277,14 +283,18 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 active
                   ? isMaster
                     ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
+                    : isRegister
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
                     : 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                   : isMaster
                   ? 'text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/40 border border-amber-300/70 dark:border-amber-800/60 font-bold hover:bg-amber-200 dark:hover:bg-amber-900/60'
+                  : isRegister
+                  ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-bold'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Icon className={`w-4 h-4 ${isMaster && !active ? 'text-amber-600 dark:text-amber-400' : ''}`} />
+                <Icon className={`w-4 h-4 ${isMaster && !active ? 'text-amber-600 dark:text-amber-400' : isRegister && !active ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
                 <span>{label}</span>
               </div>
               {isMaster ? (
@@ -292,6 +302,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                   active ? 'bg-white/25 text-white' : 'bg-amber-500 text-white shadow-xs'
                 }`}>
                   MASTER
+                </span>
+              ) : isRegister || scanBadge ? (
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                  active ? 'bg-white/25 text-white' : 'bg-emerald-600 text-white shadow-xs'
+                }`}>
+                  IA / SCAN
                 </span>
               ) : proBadge ? (
                 <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
