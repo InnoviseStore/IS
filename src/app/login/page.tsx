@@ -26,7 +26,22 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/admin')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (prof?.role === 'superadmin') {
+        router.push('/admin/master')
+      } else {
+        router.push('/admin')
+      }
+    } else {
+      router.push('/admin')
+    }
     router.refresh()
   }
 

@@ -10,9 +10,12 @@ interface TenantContextValue {
   exchangeRate: number
   bcvFechaValor: string | null
   isSyncingBcv: boolean
+  allTenants: Tenant[]
   setExchangeRate: (rate: number) => void
   syncBcvRate: () => Promise<{ rate?: number; fechaValor?: string; error?: string }>
   switchTenant: (newTenant: Tenant) => void
+  switchTenantById: (tenantId: string) => void
+  refreshTenants: () => Promise<void>
   updateTenantSettings: (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; about?: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
   isLoading: boolean
 }
@@ -23,9 +26,12 @@ const TenantContext = createContext<TenantContextValue>({
   exchangeRate: 91.5,
   bcvFechaValor: null,
   isSyncingBcv: false,
+  allTenants: [],
   setExchangeRate: () => {},
   syncBcvRate: async () => ({}),
   switchTenant: () => {},
+  switchTenantById: () => {},
+  refreshTenants: async () => {},
   updateTenantSettings: async () => ({ success: false }),
   isLoading: true,
 })
@@ -96,6 +102,20 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const [allTenants, setAllTenants] = useState<Tenant[]>([])
+
+  const refreshTenants = useCallback(async () => {
+    try {
+      const supabase = createClient()
+      const { data } = await supabase.from('tenants').select('*').order('name', { ascending: true })
+      if (data && data.length > 0) {
+        setAllTenants(data as Tenant[])
+      }
+    } catch (e) {
+      console.warn('Error fetching all tenants:', e)
+    }
+  }, [])
+
   useEffect(() => {
     async function load() {
       const supabase = createClient()
@@ -110,11 +130,37 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
       if (profileData) {
         setProfile(profileData)
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('id', profileData.tenant_id)
-          .single()
+
+        // Si es superadmin o tiene acceso, cargar todas las tiendas disponibles
+        let loadedAllTenants: Tenant[] = []
+        try {
+          const { data: list } = await supabase.from('tenants').select('*').order('name', { ascending: true })
+          if (list && list.length > 0) {
+            loadedAllTenants = list as Tenant[]
+            setAllTenants(loadedAllTenants)
+          }
+        } catch (e) {
+          console.warn('Error loading tenants list:', e)
+        }
+
+        // Determinar tienda activa (usar localStorage si es superadmin y seleccionó previamente)
+        let activeTenantId = profileData.tenant_id
+        if (profileData.role === 'superadmin' && typeof window !== 'undefined') {
+          const savedTenantId = localStorage.getItem('is_active_tenant_id')
+          if (savedTenantId && loadedAllTenants.some(t => t.id === savedTenantId)) {
+            activeTenantId = savedTenantId
+          }
+        }
+
+        let tenantData = loadedAllTenants.find(t => t.id === activeTenantId)
+        if (!tenantData && activeTenantId) {
+          const { data: singleTenant } = await supabase
+            .from('tenants')
+            .select('*')
+            .eq('id', activeTenantId)
+            .single()
+          if (singleTenant) tenantData = singleTenant
+        }
 
         if (tenantData) {
           setTenant(tenantData)
@@ -141,12 +187,22 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   const switchTenant = useCallback((newTenant: Tenant) => {
     setTenant(newTenant)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('is_active_tenant_id', newTenant.id)
+    }
     setExchangeRateState(Number(newTenant.currency_rate_bcv) || 91.5)
     const settings = (newTenant.settings || {}) as Record<string, unknown>
     if (settings.bcv_fecha_valor) {
       setBcvFechaValor(settings.bcv_fecha_valor as string)
     }
   }, [])
+
+  const switchTenantById = useCallback((tenantId: string) => {
+    const target = allTenants.find(t => t.id === tenantId)
+    if (target) {
+      switchTenant(target)
+    }
+  }, [allTenants, switchTenant])
 
   const contextValue = useMemo(
     () => ({
@@ -155,9 +211,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       exchangeRate,
       bcvFechaValor,
       isSyncingBcv,
+      allTenants,
       setExchangeRate,
       syncBcvRate,
       switchTenant,
+      switchTenantById,
+      refreshTenants,
       updateTenantSettings,
       isLoading,
     }),
@@ -167,9 +226,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       exchangeRate,
       bcvFechaValor,
       isSyncingBcv,
+      allTenants,
       setExchangeRate,
       syncBcvRate,
       switchTenant,
+      switchTenantById,
+      refreshTenants,
       updateTenantSettings,
       isLoading,
     ]
