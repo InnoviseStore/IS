@@ -13,18 +13,26 @@ import {
   Building2, 
   Truck, 
   BadgePercent, 
-  Headphones 
+  Headphones,
+  KeyRound,
+  ShieldCheck,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
 
 export default function SettingsPage() {
-  const { tenant, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
+  const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
   const [rate, setRate] = useState(exchangeRate.toString())
   const [phone, setPhone] = useState(tenant?.phone_whatsapp ?? '')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [adminSecurityPin, setAdminSecurityPin] = useState('')
+  const [showPin, setShowPin] = useState(false)
+
+  const isOwnerOrAdmin = profile?.role === 'owner' || profile?.role === 'admin' || profile?.role === 'superadmin'
 
   // Estados para la página 'Nosotros'
   const [aboutTitle, setAboutTitle] = useState('')
@@ -46,6 +54,7 @@ export default function SettingsPage() {
       }
       const settings = (tenant.settings || {}) as Record<string, unknown>
       const about = (settings.about || {}) as Record<string, string>
+      setAdminSecurityPin((settings.admin_security_pin as string) || '1234')
 
       setAboutTitle(about.title || `Sobre ${tenant.name}`)
       setAboutDescription(
@@ -84,6 +93,7 @@ export default function SettingsPage() {
       phone_whatsapp?: string
       currency_rate_bcv?: number
       about?: Record<string, unknown>
+      admin_security_pin?: string
     } = {
       phone_whatsapp: phone.trim(),
       about: {
@@ -96,6 +106,10 @@ export default function SettingsPage() {
         supportText: aboutSupportText.trim(),
         supportSubtext: aboutSupportSubtext.trim(),
       },
+    }
+
+    if (isOwnerOrAdmin && adminSecurityPin) {
+      payload.admin_security_pin = adminSecurityPin.trim()
     }
 
     if (!isNaN(r) && r > 0) {
@@ -221,12 +235,60 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* SECCIÓN 2: PÁGINA "NOSOTROS" EDITABLE */}
+          {/* SECCIÓN DE SEGURIDAD: CLAVE ADMIN (SOLO OWNER / ADMIN) */}
+          {isOwnerOrAdmin && (
+            <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span>2. Clave de Administrador (Seguridad y Autorizaciones)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Clave exclusiva para autorizar la edición de facturas emitidas y operaciones sensibles de tu tienda.
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Solo Admin</span>
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                  Clave de la Tienda
+                </label>
+                <div className="relative max-w-sm">
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    value={adminSecurityPin}
+                    onChange={(e) => setAdminSecurityPin(e.target.value)}
+                    placeholder="Mínimo 4 caracteres (ej. 1234)"
+                    minLength={4}
+                    className="w-full px-4 pr-11 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                    title={showPin ? 'Ocultar clave' : 'Mostrar clave'}
+                  >
+                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
+                  Esta clave es configurable por tienda y únicamente visible/editable por administradores y dueños.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* SECCIÓN 3: PÁGINA "NOSOTROS" EDITABLE */}
           <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>📖 2. Página Pública &quot;Nosotros&quot;</span>
+                  <span>📖 3. Página Pública &quot;Nosotros&quot;</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Personaliza lo que ofrece tu comercio a los visitantes del catálogo.
@@ -372,6 +434,49 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
+
+          {/* Seguridad y Clave de Administrador para Edición de Facturas (Solo Owner / Admin) */}
+          {isOwnerOrAdmin && (
+            <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-amber-500" /> Clave de Administrador de la Tienda
+                </label>
+                <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                  Exclusivo Administrador / Propietario
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 space-y-3">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Esta clave es obligatoria para <strong>editar facturas ya emitidas</strong> o autorizar operaciones restringidas. Los cajeros no tienen acceso a verla ni modificarla.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <div className="relative w-full sm:w-64">
+                    <input
+                      type={showPin ? 'text' : 'password'}
+                      value={adminSecurityPin}
+                      onChange={(e) => setAdminSecurityPin(e.target.value)}
+                      placeholder="Ej: 1234 o clave segura"
+                      minLength={4}
+                      className="w-full pl-4 pr-10 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white tracking-widest outline-none focus:ring-2 focus:ring-amber-500/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPin(!showPin)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Mínimo 4 dígitos o caracteres (predeterminada: <code>1234</code>). Recuerda presionar &quot;Guardar Configuración&quot;.
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {errorMessage && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">

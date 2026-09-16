@@ -16,7 +16,7 @@ function getAdminClient() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { tenant_id, phone_whatsapp, currency_rate_bcv, name, plan, about } = body
+    const { tenant_id, phone_whatsapp, currency_rate_bcv, name, plan, about, admin_security_pin } = body
 
     if (!tenant_id) {
       return NextResponse.json(
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       updateData.name = name.trim()
     }
 
-    if (plan !== undefined || about !== undefined) {
+    if (plan !== undefined || about !== undefined || admin_security_pin !== undefined) {
       const { data: currentTenant } = await supabase
         .from('tenants')
         .select('settings')
@@ -72,6 +72,16 @@ export async function POST(req: Request) {
       const newSettings = { ...prevSettings }
       if (plan !== undefined) newSettings.plan = plan
       if (about !== undefined) newSettings.about = about
+      if (admin_security_pin !== undefined) {
+        const cleanPin = String(admin_security_pin).trim()
+        if (cleanPin.length < 4) {
+          return NextResponse.json(
+            { error: 'La clave de administrador debe tener al menos 4 caracteres o dígitos.' },
+            { status: 400 }
+          )
+        }
+        newSettings.admin_security_pin = cleanPin
+      }
       updateData.settings = newSettings
     }
 

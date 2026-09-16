@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTenant } from '@/contexts/TenantContext'
-import { formatDateTime } from '@/lib/formatters'
+import { formatDateTime, formatDate } from '@/lib/formatters'
 import {
   ClipboardList,
   Search,
@@ -23,11 +23,13 @@ import {
   FileText,
   DollarSign,
   CreditCard,
+  Pencil,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
+import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
 
 interface OrderItem {
   id: string
@@ -58,6 +60,7 @@ interface OrderRecord {
   total_usd: number
   total_ves: number
   payment_breakdown: any[]
+  due_date?: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -79,6 +82,7 @@ export default function AdminOrdersPage() {
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [abonoOrder, setAbonoOrder] = useState<OrderRecord | null>(null)
+  const [authOrderForEdit, setAuthOrderForEdit] = useState<OrderRecord | null>(null)
 
   const loadOrders = useCallback(async (isRefresh = false) => {
     if (!tenant) return
@@ -470,6 +474,12 @@ export default function AdminOrdersPage() {
             const isCreditSale = order.status === 'credit' || order.payment_condition === 'credit_7d'
             const canAbonar = isCreditSale || (order.status !== 'cancelled' && saldoPendienteUsd > 0.01)
 
+            let creditDaysCount = 7
+            if (order.due_date && order.created_at) {
+              const diffMs = new Date(order.due_date).getTime() - new Date(order.created_at).getTime()
+              creditDaysCount = Math.max(1, Math.round(diffMs / 86400000))
+            }
+
             return (
               <div
                 key={order.id}
@@ -498,7 +508,7 @@ export default function AdminOrdersPage() {
                     {isCreditSale && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60">
                         <CreditCard className="w-3 h-3" />
-                        <span>A Crédito (7 días)</span>
+                        <span>A Crédito ({creditDaysCount} días)</span>
                       </span>
                     )}
 
@@ -517,8 +527,13 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
 
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    <span>{formatDateTime(order.created_at)}</span>
+                  <div className="text-right flex flex-col sm:items-end">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{formatDateTime(order.created_at)}</span>
+                    {isCreditSale && order.due_date && (
+                      <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400">
+                        Vence: {formatDate(order.due_date)}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -606,6 +621,18 @@ export default function AdminOrdersPage() {
                         >
                           <DollarSign className="w-4 h-4" />
                           <span>Abonar</span>
+                        </button>
+                      )}
+
+                      {(order.status === 'completed' || order.status === 'credit') && (
+                        <button
+                          type="button"
+                          onClick={() => setAuthOrderForEdit(order)}
+                          className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-amber-50 dark:bg-slate-800 dark:hover:bg-amber-950/40 text-slate-700 dark:text-slate-200 hover:text-amber-700 dark:hover:text-amber-300 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 hover:border-amber-300"
+                          title="Editar factura (Requiere Clave Admin)"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>Editar</span>
                         </button>
                       )}
 
@@ -735,6 +762,21 @@ export default function AdminOrdersPage() {
           exchangeRate={exchangeRate}
           onAbonoSuccess={() => {
             loadOrders(true)
+          }}
+        />
+      )}
+
+      {/* Modal de Autorización por Clave Admin para Editar Factura */}
+      {authOrderForEdit && (
+        <AdminAuthPinModal
+          isOpen={Boolean(authOrderForEdit)}
+          onClose={() => setAuthOrderForEdit(null)}
+          title={`Editar Factura #${authOrderForEdit.order_number}`}
+          description={`Para modificar productos, precios, cliente o pagos de la factura #${authOrderForEdit.order_number}, ingresa la Clave de Administrador de la tienda.`}
+          onSuccess={(pin) => {
+            const editId = authOrderForEdit.id
+            setAuthOrderForEdit(null)
+            router.push(`/admin/pos?editOrder=${editId}&authPin=${encodeURIComponent(pin)}`)
           }}
         />
       )}

@@ -17,7 +17,7 @@ const METHOD_LABELS: Record<PaymentMethodType, string> = {
   cash_ves: '💴 Efectivo VES',
   transfer_ves: '🏛️ Transferencia VES',
   debit_ves: '💳 Punto / Débito',
-  credit_7d: '⏳ Crédito (7 días)',
+  credit_7d: '⏳ Venta a Crédito',
 }
 
 const VES_METHODS: PaymentMethodType[] = ['pago_movil', 'cash_ves', 'transfer_ves', 'debit_ves']

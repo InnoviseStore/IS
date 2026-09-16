@@ -207,10 +207,15 @@ export async function generateOrderPdf({
   }
 
   // Condition Badge (Contado / Crédito)
-  const conditionText =
-    order.payment_condition === 'credit_7d'
-      ? 'Condición: Crédito'
-      : 'Condición: De Contado'
+  let creditDays = 0
+  if (order.due_date && order.created_at) {
+    const diffMs = new Date(order.due_date).getTime() - new Date(order.created_at).getTime()
+    creditDays = Math.max(1, Math.round(diffMs / 86400000))
+  }
+  const isCreditOrder = order.payment_condition === 'credit_7d' || order.status === 'credit'
+  const conditionText = isCreditOrder
+    ? `Condición: Crédito (${creditDays > 0 ? `${creditDays} días` : 'Pendiente'})`
+    : 'Condición: De Contado'
   const statusBadge =
     order.status === 'completed'
       ? 'PAGADA'
@@ -221,10 +226,19 @@ export async function generateOrderPdf({
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
   doc.setTextColor(37, 99, 235)
-  doc.text(conditionText, 192, currentY + 7.5, { align: 'right' })
+  doc.text(conditionText, 192, currentY + 6.5, { align: 'right' })
 
+  if (isCreditOrder && order.due_date) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(180, 83, 9)
+    doc.text(`Vence: ${new Date(order.due_date).toLocaleDateString('es-VE')}`, 192, currentY + 11.5, { align: 'right' })
+  }
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
   doc.setTextColor(order.status === 'completed' ? 16 : 217, order.status === 'completed' ? 185 : 119, order.status === 'completed' ? 129 : 6)
-  doc.text(`Estado: ${statusBadge}`, 192, currentY + 13.5, { align: 'right' })
+  doc.text(`Estado: ${statusBadge}`, 192, currentY + (isCreditOrder && order.due_date ? 16.5 : 13.5), { align: 'right' })
 
   currentY += 26
 

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { SplitPaymentModal } from '@/components/admin/SplitPaymentModal'
 import type { Product, CartItem, Customer } from '@/types/database'
-import { Search, Plus, Minus, Trash2, ShoppingCart, Package, ArrowRight, Globe, X, Percent, Tag } from 'lucide-react'
+import { Search, Plus, Minus, Trash2, ShoppingCart, Package, ArrowRight, Globe, X, Percent, Tag, Pencil } from 'lucide-react'
 
 // ─── Cart Reducer ─────────────────────────────────────────────────────────────
 type CartAction =
@@ -47,12 +47,21 @@ interface WebOrderInfo {
   orderNumber: string
   customerName: string
   customer: Customer | null
+  isEditMode?: boolean
+  authPin?: string
+  paymentBreakdown?: any[]
+  dueDate?: string | null
+  creditDays?: number
 }
 
 function POSContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromOrderId = searchParams.get('fromOrder')
+  const editOrderId = searchParams.get('editOrder')
+  const authPin = searchParams.get('authPin')
+  const targetOrderId = editOrderId || fromOrderId
+  const isEditMode = Boolean(editOrderId)
 
   const { tenant, exchangeRate } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
@@ -81,21 +90,21 @@ function POSContent() {
 
   useEffect(() => { load() }, [load])
 
-  // Cargar orden web si viene el parámetro fromOrder
+  // Cargar orden (web o para edición de factura existente)
   useEffect(() => {
-    if (!fromOrderId || !tenant) return
+    if (!targetOrderId || !tenant) return
 
-    async function loadWebOrder() {
+    async function loadTargetOrder() {
       try {
         const supabase = createClient()
         const { data: order, error } = await supabase
           .from('orders')
           .select('*, customer:customers(*), order_items(*)')
-          .eq('id', fromOrderId)
+          .eq('id', targetOrderId)
           .single()
 
         if (error || !order) {
-          console.warn('No se pudo cargar la orden web:', error)
+          console.warn('No se pudo cargar la orden:', error)
           return
         }
 
@@ -112,7 +121,7 @@ function POSContent() {
           dispatch({ type: 'SET_CART', items: loadedItems })
           setMobileTab('ticket')
 
-          let custName = 'Cliente Web'
+          let custName = isEditMode ? 'Cliente' : 'Cliente Web'
           let resolvedCustomer = order.customer || null
 
           // Si la orden no tiene el objeto customer enlazado directamente, buscar coincidencia por CI/RIF o Teléfono en notes
@@ -145,20 +154,31 @@ function POSContent() {
             custName = order.customer.full_name
           }
 
+          let days = 7
+          if (order.due_date && order.created_at) {
+            const diffMs = new Date(order.due_date).getTime() - new Date(order.created_at).getTime()
+            days = Math.max(1, Math.round(diffMs / 86400000))
+          }
+
           setWebOrderInfo({
             orderId: order.id,
             orderNumber: order.order_number,
             customerName: custName,
             customer: resolvedCustomer,
+            isEditMode,
+            authPin: authPin || undefined,
+            paymentBreakdown: order.payment_breakdown,
+            dueDate: order.due_date,
+            creditDays: days,
           })
         }
       } catch (err) {
-        console.error('Error al cargar orden web en POS:', err)
+        console.error('Error al cargar orden en POS:', err)
       }
     }
 
-    loadWebOrder()
-  }, [fromOrderId, tenant])
+    loadTargetOrder()
+  }, [targetOrderId, tenant, isEditMode, authPin])
 
   const filtered = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim()
@@ -329,19 +349,28 @@ function POSContent() {
 
         {/* PANEL DERECHO: Cart/Ticket */}
         <div className={`md:col-span-5 lg:col-span-5 xl:col-span-4 glass-card flex flex-col p-4 sm:p-5 gap-3.5 min-h-0 border border-slate-200/80 dark:border-slate-800/80 ${mobileTab === 'ticket' ? 'flex' : 'hidden md:flex'}`}>
-          {/* Banner de Pedido Web */}
+          {/* Banner de Pedido Web o Modo Edición */}
           {webOrderInfo && (
-            <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-between gap-2 flex-shrink-0 animate-in fade-in duration-200">
+            <div className={`p-3 rounded-2xl border flex items-center justify-between gap-2 flex-shrink-0 animate-in fade-in duration-200 ${
+              webOrderInfo.isEditMode
+                ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800'
+                : 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800'
+            }`}>
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Globe className="w-4 h-4" />
+                <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center shrink-0 shadow-xs ${
+                  webOrderInfo.isEditMode ? 'bg-amber-600' : 'bg-blue-600'
+                }`}>
+                  {webOrderInfo.isEditMode ? <Pencil className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-black text-blue-800 dark:text-blue-200 truncate">
-                    Pedido Web #{webOrderInfo.orderNumber}
+                  <p className={`text-xs font-black truncate ${
+                    webOrderInfo.isEditMode ? 'text-amber-800 dark:text-amber-200' : 'text-blue-800 dark:text-blue-200'
+                  }`}>
+                    {webOrderInfo.isEditMode ? `Modo Edición: Factura #${webOrderInfo.orderNumber}` : `Pedido Web #${webOrderInfo.orderNumber}`}
                   </p>
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
                     Cliente: <strong>{webOrderInfo.customerName}</strong>
+                    {webOrderInfo.isEditMode && ' • Clave autorizada'}
                   </p>
                 </div>
               </div>
@@ -353,7 +382,7 @@ function POSContent() {
                   router.replace('/admin/pos')
                 }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition cursor-pointer"
-                title="Desvincular orden web y empezar ticket limpio"
+                title={webOrderInfo.isEditMode ? "Cancelar edición y volver a ticket limpio" : "Desvincular orden web y empezar ticket limpio"}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -727,14 +756,23 @@ function POSContent() {
           exchangeRate={exchangeRate}
           existingOrderId={webOrderInfo?.orderId}
           initialCustomer={webOrderInfo?.customer}
+          isEditMode={webOrderInfo?.isEditMode}
+          adminPin={webOrderInfo?.authPin}
+          initialPayments={webOrderInfo?.paymentBreakdown}
+          initialCreditDays={webOrderInfo?.creditDays}
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             setShowPayment(false)
             dispatch({ type: 'CLEAR' })
+            const wasEditing = webOrderInfo?.isEditMode
             setWebOrderInfo(null)
-            router.replace('/admin/pos')
-            setMobileTab('catalog')
-            load()
+            if (wasEditing) {
+              router.replace('/admin/orders')
+            } else {
+              router.replace('/admin/pos')
+              setMobileTab('catalog')
+              load()
+            }
           }}
         />
       )}

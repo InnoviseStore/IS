@@ -75,6 +75,12 @@ export async function POST(req: Request) {
       isCredit,
       customer,
       existing_order_id,
+      is_edit,
+      admin_pin,
+      due_date: incomingDueDate,
+      credit_days,
+      discount_total_usd,
+      notes: incomingNotes,
     } = body
 
     if (!tenant_id || !Array.isArray(items) || items.length === 0) {
@@ -83,7 +89,7 @@ export async function POST(req: Request) {
 
     // 1. Validar autenticación y pertenencia de tenant
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero'],
       targetTenantId: tenant_id,
     })
     if (errorResponse || !auth) {
@@ -91,22 +97,126 @@ export async function POST(req: Request) {
     }
 
     const supabase = getAdminClient()
+
+    // 1B. Si es modo edición, verificar la clave de administrador de la tienda
+    if (is_edit) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('settings')
+        .eq('id', tenant_id)
+        .single()
+
+      const tenantSettings = (tenantData?.settings || {}) as Record<string, any>
+      const configuredPin = tenantSettings.admin_security_pin || '1234'
+
+      if (!admin_pin || String(admin_pin).trim() !== String(configuredPin).trim()) {
+        return NextResponse.json(
+          { error: 'Clave de Administrador incorrecta. No tienes autorización para editar esta factura.' },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Calcular fecha de vencimiento dinámica
+    let finalDueDate: string | null = null
+    if (isCredit || payment_condition === 'credit_7d' || status === 'credit') {
+      if (incomingDueDate) {
+        finalDueDate = new Date(incomingDueDate).toISOString()
+      } else if (credit_days) {
+        finalDueDate = new Date(Date.now() + Number(credit_days) * 86400000).toISOString()
+      } else {
+        finalDueDate = new Date(Date.now() + 7 * 86400000).toISOString()
+      }
+    }
+
     let order: any = null
 
     if (existing_order_id) {
-      // 1A. Si viene de una orden pendiente web, la actualizamos a 'completed'
+      // Obtener la orden previa completa para conciliar stock y deudas si fue completada
+      const { data: previousOrder } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('id', existing_order_id)
+        .single()
+
+      if (is_edit && previousOrder) {
+        // A. Si la factura anterior ya había descontado stock (completed o credit), devolver el stock anterior
+        if (previousOrder.status === 'completed' || previousOrder.status === 'credit') {
+          for (const oldItem of previousOrder.order_items || []) {
+            if (oldItem.product_id) {
+              const oldQty = parseInt(oldItem.quantity, 10) || 1
+              const { data: prod } = await supabase
+                .from('products')
+                .select('stock')
+                .eq('id', oldItem.product_id)
+                .single()
+
+              if (prod) {
+                await supabase
+                  .from('products')
+                  .update({ stock: (prod.stock || 0) + oldQty })
+                  .eq('id', oldItem.product_id)
+
+                await supabase.from('inventory_logs').insert({
+                  tenant_id,
+                  product_id: oldItem.product_id,
+                  change_type: 'adjustment',
+                  quantity: oldQty,
+                  reference_id: previousOrder.id,
+                  notes: `Reversión por edición de factura #${previousOrder.order_number}`,
+                  created_by: created_by || null,
+                })
+              }
+            }
+          }
+        }
+
+        // B. Si la factura anterior tenía crédito, revertir la deuda previa del cliente
+        if (
+          (previousOrder.status === 'credit' || previousOrder.payment_condition === 'credit_7d') &&
+          previousOrder.customer_id
+        ) {
+          const oldBreakdown = Array.isArray(previousOrder.payment_breakdown) ? previousOrder.payment_breakdown : []
+          const oldCreditRow = oldBreakdown.find((p: any) => p.method === 'credit_7d')
+          const oldCreditAmount = oldCreditRow ? Number(oldCreditRow.amount_usd) : Number(previousOrder.total_usd)
+
+          const { data: oldCust } = await supabase
+            .from('customers')
+            .select('current_debt_usd')
+            .eq('id', previousOrder.customer_id)
+            .single()
+
+          if (oldCust) {
+            const revertedDebt = Math.max(0, (Number(oldCust.current_debt_usd) || 0) - oldCreditAmount)
+            await supabase
+              .from('customers')
+              .update({ current_debt_usd: revertedDebt })
+              .eq('id', previousOrder.customer_id)
+          }
+        }
+      }
+
+      const auditNote = is_edit
+        ? `[Factura editada por Admin el ${new Date().toLocaleDateString('es-VE')} a las ${new Date().toLocaleTimeString('es-VE')}]`
+        : null
+
+      const finalNotes = auditNote
+        ? (previousOrder?.notes ? `${previousOrder.notes}\n${auditNote}` : auditNote)
+        : (incomingNotes || previousOrder?.notes || null)
+
       const { data: updatedOrder, error: updateError } = await supabase
         .from('orders')
         .update({
           customer_id: customer_id || null,
-          status: status || 'completed',
-          payment_condition: payment_condition || 'immediate',
+          status: status || (isCredit ? 'credit' : 'completed'),
+          payment_condition: payment_condition || (isCredit ? 'credit_7d' : 'immediate'),
           exchange_rate_at_sale: Number(exchange_rate_at_sale) || 91.5,
           subtotal_usd: Number(subtotal_usd) || 0,
           total_usd: Number(total_usd) || 0,
           total_ves: Number(total_ves) || 0,
           payment_breakdown: payment_breakdown || [],
-          due_date: payment_condition === 'credit_7d' ? new Date(Date.now() + 7 * 86400000).toISOString() : null,
+          due_date: finalDueDate,
+          notes: finalNotes,
           created_by: created_by || null,
           updated_at: new Date().toISOString(),
         })
@@ -132,7 +242,7 @@ export async function POST(req: Request) {
       }))
       await supabase.from('order_items').insert(orderItemsPayload)
     } else {
-      // 1B. Generar order_number seguro para nueva venta POS directa
+      // 1C. Generar order_number seguro para nueva venta POS directa
       const now = new Date()
       const year = now.getFullYear()
       const randSeq = Math.floor(1000 + Math.random() * 9000)
@@ -142,14 +252,15 @@ export async function POST(req: Request) {
         tenant_id,
         customer_id: customer_id || null,
         order_number: fallbackOrderNumber,
-        status: status || 'completed',
-        payment_condition: payment_condition || 'immediate',
+        status: status || (isCredit ? 'credit' : 'completed'),
+        payment_condition: payment_condition || (isCredit ? 'credit_7d' : 'immediate'),
         exchange_rate_at_sale: Number(exchange_rate_at_sale) || 91.5,
         subtotal_usd: Number(subtotal_usd) || 0,
         total_usd: Number(total_usd) || 0,
         total_ves: Number(total_ves) || 0,
         payment_breakdown: payment_breakdown || [],
-        due_date: payment_condition === 'credit_7d' ? new Date(Date.now() + 7 * 86400000).toISOString() : null,
+        due_date: finalDueDate,
+        notes: incomingNotes || null,
         created_by: created_by || null,
       }
 

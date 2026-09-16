@@ -46,6 +46,10 @@ interface Props {
   exchangeRate: number
   existingOrderId?: string | null
   initialCustomer?: Customer | null
+  isEditMode?: boolean
+  adminPin?: string
+  initialPayments?: any[]
+  initialCreditDays?: number
   onClose: () => void
   onSuccess: () => void
 }
@@ -58,6 +62,10 @@ export function SplitPaymentModal({
   exchangeRate,
   existingOrderId,
   initialCustomer,
+  isEditMode,
+  adminPin,
+  initialPayments,
+  initialCreditDays,
   onClose,
   onSuccess,
 }: Props) {
@@ -67,7 +75,7 @@ export function SplitPaymentModal({
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
 
-  // Si se pasa un cliente inicial desde el pedido web
+  // Si se pasa un cliente inicial desde el pedido web o modo edición
   useEffect(() => {
     if (initialCustomer) {
       setSelectedCustomer(initialCustomer)
@@ -75,13 +83,43 @@ export function SplitPaymentModal({
     }
   }, [initialCustomer])
   const [isCredit, setIsCredit] = useState(false)
-  const [creditDays, setCreditDays] = useState<number>(7)
+  const [creditDays, setCreditDays] = useState<number>(initialCreditDays || 7)
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false)
   const [showCollectionModal, setShowCollectionModal] = useState(false)
   const [registeredSaleData, setRegisteredSaleData] = useState<InitialCreditSaleInfo | null>(null)
   const [payments, setPayments] = useState<PaymentRow[]>([
     { id: '1', method: 'zelle', amount: '', reference: '' }
   ])
+
+  // Precargar pagos previos y estado de crédito si viene en modo edición
+  useEffect(() => {
+    if (initialCreditDays) {
+      setCreditDays(initialCreditDays)
+    }
+    if (initialPayments && Array.isArray(initialPayments) && initialPayments.length > 0) {
+      const hasCredit = initialPayments.some((p: any) => p.method === 'credit_7d')
+      if (hasCredit) {
+        setIsCredit(true)
+      }
+      const realRows = initialPayments
+        .filter((p: any) => p.method !== 'credit_7d')
+        .map((p: any, idx: number) => {
+          const isVes = VES_METHODS.includes(p.method)
+          return {
+            id: String(idx + 1),
+            method: p.method,
+            amount: isVes
+              ? (p.amount_ves ? String(p.amount_ves) : String(((Number(p.amount_usd) || 0) * exchangeRate).toFixed(2)))
+              : String(p.amount_usd || ''),
+            reference: p.reference || '',
+          }
+        })
+      if (realRows.length > 0) {
+        setPayments(realRows)
+      }
+    }
+  }, [initialPayments, initialCreditDays, exchangeRate])
+
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -232,7 +270,10 @@ export function SplitPaymentModal({
           }
         }),
         isCredit,
+        credit_days: isCredit ? creditDays : undefined,
         existing_order_id: existingOrderId || undefined,
+        is_edit: Boolean(isEditMode),
+        admin_pin: adminPin || undefined,
         customer: selectedCustomer
           ? {
               id: selectedCustomer.id,

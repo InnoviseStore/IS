@@ -16,7 +16,7 @@ interface TenantContextValue {
   switchTenant: (newTenant: Tenant) => void
   switchTenantById: (tenantId: string) => void
   refreshTenants: () => Promise<void>
-  updateTenantSettings: (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; about?: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
+  updateTenantSettings: (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; plan?: string; about?: Record<string, unknown>; admin_security_pin?: string }) => Promise<{ success: boolean; error?: string }>
   isLoading: boolean
 }
 
@@ -44,7 +44,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [isSyncingBcv, setIsSyncingBcv] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  const updateTenantSettings = useCallback(async (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; plan?: string; about?: Record<string, unknown> }) => {
+  const updateTenantSettings = useCallback(async (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; plan?: string; about?: Record<string, unknown>; admin_security_pin?: string }) => {
     if (!tenant) return { success: false, error: 'No hay tienda activa' }
     try {
       const res = await fetch('/api/admin/settings', {
