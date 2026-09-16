@@ -34,6 +34,7 @@ interface PaymentAbonoModalProps {
 
 const PAYMENT_METHODS = [
   { id: 'pago_movil', label: 'Pago Móvil (VES)', currency: 'VES' },
+  { id: 'binance_pay', label: 'Binance Pay (USDT)', currency: 'USD' },
   { id: 'zelle', label: 'Zelle (USD)', currency: 'USD' },
   { id: 'cash_usd', label: 'Efectivo Divisas (USD)', currency: 'USD' },
   { id: 'cash_ves', label: 'Efectivo Bolívares (VES)', currency: 'VES' },

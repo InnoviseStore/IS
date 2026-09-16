@@ -20,6 +20,7 @@ interface PaymentRow {
 }
 
 const METHOD_LABELS: Record<PaymentMethodType, string> = {
+  binance_pay: '🟡 Binance Pay (USDT / USD)',
   zelle: '🏦 Zelle (USD)',
   pago_movil: '📱 Pago Móvil (VES)',
   cash_usd: '💵 Efectivo USD',
@@ -29,12 +30,12 @@ const METHOD_LABELS: Record<PaymentMethodType, string> = {
   credit_7d: '⏳ Crédito',
 }
 
-const SELECTABLE_METHODS: PaymentMethodType[] = ['zelle', 'pago_movil', 'cash_usd', 'cash_ves', 'transfer_ves', 'debit_ves']
+const SELECTABLE_METHODS: PaymentMethodType[] = ['binance_pay', 'zelle', 'pago_movil', 'cash_usd', 'cash_ves', 'transfer_ves', 'debit_ves']
 
 // Métodos que se ingresan en VES
 const VES_METHODS: PaymentMethodType[] = ['pago_movil', 'cash_ves', 'transfer_ves', 'debit_ves']
-// Métodos que generan IGTF (divisas)
-const USD_METHODS: PaymentMethodType[] = ['zelle', 'cash_usd']
+// Métodos que generan IGTF (divisas tradicionales en efectivo o Zelle; Binance Pay en crypto)
+const USD_METHODS: PaymentMethodType[] = ['zelle', 'cash_usd', 'binance_pay']
 
 const IGTF_RATE = 0.03 // 3% — Impuesto a las Grandes Transacciones Financieras
 

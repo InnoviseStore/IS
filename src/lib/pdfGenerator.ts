@@ -336,7 +336,9 @@ export async function generateOrderPdf({
 
     payments.forEach((p: any) => {
       const methodLabel =
-        p.method === 'pago_movil'
+        p.method === 'binance_pay'
+          ? 'Binance Pay (USDT)'
+          : p.method === 'pago_movil'
           ? 'Pago Móvil'
           : p.method === 'zelle'
           ? 'Zelle (USD)'

@@ -7,6 +7,7 @@ export type PaymentMethodType =
   | 'transfer_ves'
   | 'debit_ves'
   | 'credit_7d'
+  | 'binance_pay'
 
 export interface PaymentMethod {
   method: PaymentMethodType

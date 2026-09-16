@@ -11,6 +11,7 @@ import {
 import { formatDate, formatDateTime } from '@/lib/formatters'
 
 const METHOD_LABELS: Record<PaymentMethodType, string> = {
+  binance_pay: '🟡 Binance Pay (USDT)',
   zelle: '🏦 Zelle (USD)',
   pago_movil: '📱 Pago Móvil',
   cash_usd: '💵 Efectivo USD',
