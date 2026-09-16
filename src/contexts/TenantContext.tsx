@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Tenant, Profile } from '@/types/database'
+import type { Tenant, Profile, UserRole } from '@/types/database'
 
 interface TenantContextValue {
   tenant: Tenant | null
@@ -129,7 +129,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         .single()
 
       if (profileData) {
-        setProfile(profileData)
+        const effectiveRole = ((user.user_metadata?.role as UserRole) || profileData.role) as UserRole
+        setProfile({
+          ...profileData,
+          role: effectiveRole,
+        })
 
         // Si es superadmin o tiene acceso, cargar todas las tiendas disponibles
         let loadedAllTenants: Tenant[] = []

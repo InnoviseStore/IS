@@ -55,12 +55,27 @@ export async function GET(req: Request) {
 
     if (teamErr) throw new Error(teamErr.message)
 
+    // Enriquecer roles con user_metadata si en profiles está en 'cashier'/'admin' por compatibilidad con check constraint
+    let enrichedTeam = team || []
+    try {
+      const { data: authData } = await supabase.auth.admin.listUsers()
+      if (authData?.users) {
+        const metaMap = new Map(authData.users.map((u) => [u.id, u.user_metadata?.role as UserRole]))
+        enrichedTeam = enrichedTeam.map((m) => {
+          const metaRole = metaMap.get(m.id)
+          return metaRole ? { ...m, role: metaRole } : m
+        })
+      }
+    } catch {
+      // Ignorar si falla el enriquecimiento y usar los de profiles
+    }
+
     const isEnterprise = features.planId === 'enterprise'
     const isUnlimited = isEnterprise || features.maxUsers === Infinity
 
     return NextResponse.json({
       success: true,
-      team: team || [],
+      team: enrichedTeam,
       currentCount: (team || []).length,
       maxUsers: isUnlimited ? -1 : features.maxUsers,
       isUnlimited,
@@ -170,7 +185,8 @@ export async function POST(req: Request) {
     }
 
     // 3. Crear o actualizar perfil en la tabla profiles
-    const { data: profile, error: profileErr } = await supabase
+    let savedProfile = null
+    let { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .upsert(
         {
@@ -187,17 +203,49 @@ export async function POST(req: Request) {
       .single()
 
     if (profileErr) {
-      console.warn('Error upserting profile, attempting fallback insert:', profileErr.message)
+      // Si la base de datos no tiene la restricción ampliada (profiles_role_check), fallback a rol compatible
+      if (profileErr.code === '23514' || profileErr.message.includes('profiles_role_check')) {
+        const fallbackRole = (role === 'vendedor' || role === 'cajero') ? 'cashier' : 'admin'
+        const { data: fallbackData, error: fallbackErr } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: authUser.user.id,
+              tenant_id: targetTenantId,
+              full_name: cleanFullName,
+              email: cleanEmail,
+              role: fallbackRole,
+              created_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          )
+          .select()
+          .single()
+
+        if (fallbackErr) {
+          await supabase.auth.admin.deleteUser(authUser.user.id)
+          return NextResponse.json(
+            { error: `Error al crear el perfil del colaborador: ${fallbackErr.message}` },
+            { status: 500 }
+          )
+        }
+        savedProfile = fallbackData
+      } else {
+        await supabase.auth.admin.deleteUser(authUser.user.id)
+        return NextResponse.json(
+          { error: `Error al crear el perfil del colaborador: ${profileErr.message}` },
+          { status: 500 }
+        )
+      }
+    } else {
+      savedProfile = profile
     }
 
     return NextResponse.json({
       success: true,
-      user: profile || {
-        id: authUser.user.id,
-        tenant_id: targetTenantId,
-        full_name: cleanFullName,
-        email: cleanEmail,
-        role,
+      user: {
+        ...(savedProfile || {}),
+        role: role, // Mantener el rol granular seleccionado por el usuario
       },
       message: 'Colaborador creado exitosamente.',
     })
@@ -275,6 +323,13 @@ export async function PATCH(req: Request) {
       }
     }
 
+    // Si viene role, actualizar los metadatos en Supabase Auth
+    if (role) {
+      await supabase.auth.admin.updateUserById(userId, {
+        user_metadata: { role },
+      })
+    }
+
     const updatePayload: Record<string, unknown> = {}
     if (role) updatePayload.role = role
     if (full_name) updatePayload.full_name = full_name.trim()
@@ -288,8 +343,24 @@ export async function PATCH(req: Request) {
         .select()
         .single()
 
-      if (updateErr) throw new Error(updateErr.message)
-      updated = updatedProfile
+      if (updateErr) {
+        if (updateErr.code === '23514' || updateErr.message.includes('profiles_role_check')) {
+          const fallbackRole = (role === 'vendedor' || role === 'cajero') ? 'cashier' : 'admin'
+          const { data: fallbackProfile, error: fallbackErr } = await supabase
+            .from('profiles')
+            .update({ ...updatePayload, role: fallbackRole })
+            .eq('id', userId)
+            .select()
+            .single()
+
+          if (fallbackErr) throw new Error(fallbackErr.message)
+          updated = fallbackProfile ? { ...fallbackProfile, role } : updatedProfile
+        } else {
+          throw new Error(updateErr.message)
+        }
+      } else {
+        updated = updatedProfile
+      }
     }
 
     return NextResponse.json({

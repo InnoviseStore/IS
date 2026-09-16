@@ -73,8 +73,9 @@ export async function authenticateApiRequest(
       }
     }
 
-    const role = (profile.role || 'cajero') as UserRole
-    const isSuperAdmin = role === 'superadmin'
+    const metaRole = (user.user_metadata?.role as UserRole) || undefined
+    const role = (metaRole || profile.role || 'cajero') as UserRole
+    const isSuperAdmin = role === 'superadmin' || profile.role === 'superadmin'
     const userTenantId = profile.tenant_id
 
     // 1. Verificación de Roles requeridos
