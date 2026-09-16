@@ -134,3 +134,19 @@ body {
 .zoom-container:hover .zoom-image {
   transform: scale(1.65);
 }
+
+@keyframes loginProgress {
+  0% {
+    width: 0%;
+  }
+  50% {
+    width: 65%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-login-progress {
+  animation: loginProgress 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
