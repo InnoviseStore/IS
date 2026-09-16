@@ -16,6 +16,26 @@ export interface PaymentMethod {
   igtf_amount?: number // IGTF (3%) aplicado a pagos en divisas cuando el comercio es agente especial
 }
 
+// ─── Storefront Checkout & Payment Accounts ─────────────────────────────────
+export type StorefrontPaymentType = 'pago_movil' | 'transferencia' | 'zelle' | 'binance_pay'
+
+export type CheckoutMode = 'whatsapp_only' | 'direct_payment'
+
+export interface StorefrontPaymentAccount {
+  id: string
+  method: StorefrontPaymentType
+  enabled: boolean
+  label: string
+  bank_name?: string
+  account_holder?: string
+  id_number?: string
+  phone?: string
+  account_number?: string
+  email?: string
+  qr_image_url?: string
+  instructions?: string
+}
+
 // ─── Tenant ────────────────────────────────────────────────────────────────────
 export interface Tenant {
   id: string

@@ -44,7 +44,16 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [isSyncingBcv, setIsSyncingBcv] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  const updateTenantSettings = useCallback(async (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; plan?: string; about?: Record<string, unknown>; admin_security_pin?: string }) => {
+  const updateTenantSettings = useCallback(async (params: { 
+    phone_whatsapp?: string; 
+    currency_rate_bcv?: number; 
+    name?: string; 
+    plan?: string; 
+    about?: Record<string, unknown>; 
+    admin_security_pin?: string;
+    checkout_mode?: string;
+    payment_accounts?: any[];
+  }) => {
     if (!tenant) return { success: false, error: 'No hay tienda activa' }
     try {
       const res = await fetch('/api/admin/settings', {

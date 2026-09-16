@@ -47,6 +47,7 @@ export default async function StorefrontLayout({
     slogan: (settings.slogan as string) || null,
     primary_color: themeObj.primaryColor || null,
     accent_color: themeObj.accentColor || null,
+    checkout_mode: (settings.checkout_mode as 'whatsapp_only' | 'direct_payment') || 'direct_payment',
   }
 
   const exchangeRate = Number(tenant.currency_rate_bcv) || 91.5

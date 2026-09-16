@@ -38,6 +38,7 @@ export interface StoreData {
   slogan?: string | null
   primary_color?: string | null
   accent_color?: string | null
+  checkout_mode?: 'whatsapp_only' | 'direct_payment'
 }
 
 export interface StoreCategory {
@@ -619,6 +620,7 @@ function StorefrontShell({
         exchangeRate={exchangeRate}
         storePhone={store.phone_whatsapp || '584121234567'}
         storeName={store.name}
+        checkoutMode={store.checkout_mode || 'direct_payment'}
       />
     </div>
   )

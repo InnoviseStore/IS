@@ -14,6 +14,8 @@ export interface PlanFeatures {
   maxUsers: number
   hasMultipleBranches: boolean
   hasCustomDomain: boolean
+  hasDirectCheckout: boolean
+  maxPaymentMethods: number
 }
 
 export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
@@ -31,6 +33,8 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     maxUsers: 1,
     hasMultipleBranches: false,
     hasCustomDomain: false,
+    hasDirectCheckout: false,
+    maxPaymentMethods: 0,
   },
   pro: {
     planId: 'pro',
@@ -46,6 +50,8 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     maxUsers: 3,
     hasMultipleBranches: false,
     hasCustomDomain: false,
+    hasDirectCheckout: true,
+    maxPaymentMethods: 2,
   },
   enterprise: {
     planId: 'enterprise',
@@ -61,6 +67,8 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     maxUsers: Infinity,
     hasMultipleBranches: true,
     hasCustomDomain: true,
+    hasDirectCheckout: true,
+    maxPaymentMethods: Infinity,
   },
 }
 

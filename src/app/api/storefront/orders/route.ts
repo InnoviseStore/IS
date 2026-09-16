@@ -100,12 +100,15 @@ export async function POST(req: Request) {
     const cleanIdNumber = customer.idNumber ? sanitizeText(customer.idNumber).toUpperCase() : null
     const cleanAddress = customer.address ? sanitizeText(customer.address) : null
     const cleanCustomerNotes = customer.notes ? sanitizeText(customer.notes) : ''
-    const deliveryMethod = customer.deliveryMethod || 'delivery_bqto'
-    const shippingAgency = customer.shippingAgency ? sanitizeText(customer.shippingAgency) : null
-    const cleanAgencyAddress = customer.agencyAddress ? sanitizeText(customer.agencyAddress) : null
+    const deliveryMethod = body.delivery_method || customer.deliveryMethod || 'delivery_bqto'
+    const shippingAgency = body.shipping_agency ? sanitizeText(body.shipping_agency) : (customer.shippingAgency ? sanitizeText(customer.shippingAgency) : null)
+    const cleanAgencyAddress = body.agency_address ? sanitizeText(body.agency_address) : (customer.agencyAddress ? sanitizeText(customer.agencyAddress) : null)
     const deliveryCoords = customer.deliveryCoords && typeof customer.deliveryCoords.lat === 'number' && typeof customer.deliveryCoords.lng === 'number'
       ? { lat: customer.deliveryCoords.lat, lng: customer.deliveryCoords.lng }
       : null
+
+    const paymentMethod = body.payment_method ? sanitizeText(body.payment_method) : null
+    const paymentReference = body.payment_reference ? sanitizeText(body.payment_reference) : null
 
     if (!cleanFullName || !cleanPhone) {
       return NextResponse.json({ error: 'Nombre y teléfono válidos son requeridos.' }, { status: 400 })
@@ -175,8 +178,8 @@ export async function POST(req: Request) {
     const finalTotalVes = Number(totalVes) || finalTotalUsd * rate
 
     let deliverySummary = 'Entrega: Retiro en Sitio'
-    if (deliveryMethod === 'delivery_bqto') {
-      deliverySummary = `Entrega: Delivery Barquisimeto | Dirección: ${cleanAddress || 'No especificada'}${deliveryCoords ? ` | GPS: https://maps.google.com/?q=${deliveryCoords.lat},${deliveryCoords.lng}` : ''}`
+    if (deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local') {
+      deliverySummary = `Entrega: Delivery Local | Dirección: ${cleanAddress || 'No especificada'}${deliveryCoords ? ` | GPS: https://maps.google.com/?q=${deliveryCoords.lat},${deliveryCoords.lng}` : ''}`
     } else if (deliveryMethod === 'envio_nacional') {
       deliverySummary = `Entrega: Envío Nacional (Cobro Destino) | Agencia: ${shippingAgency || 'No especificada'} | Dirección Agencia: ${cleanAgencyAddress || 'No especificada'}`
     }
@@ -186,26 +189,38 @@ export async function POST(req: Request) {
       cleanIdNumber ? `CI/RIF: ${cleanIdNumber}` : null,
       `WhatsApp: ${cleanPhone}`,
       deliverySummary,
+      paymentMethod ? `Método de Pago: ${paymentMethod.toUpperCase()}` : null,
+      paymentReference ? `Ref: ${paymentReference}` : null,
       cleanCustomerNotes ? `Indicaciones: ${cleanCustomerNotes}` : null,
-      'Origen: Catálogo Web WhatsApp',
+      paymentReference ? 'Origen: Catálogo Web (Pago Directo)' : 'Origen: Catálogo Web WhatsApp',
     ]
       .filter(Boolean)
       .join(' | ')
 
-    // 4. Crear orden con estado 'pending' (sin descontar stock todavía)
+    // Preparar payment_breakdown si se proporcionó método de pago y referencia
+    const paymentBreakdown = paymentMethod ? [
+      {
+        method: paymentMethod,
+        amount_usd: finalTotalUsd,
+        amount_ves: finalTotalVes,
+        reference: paymentReference || undefined,
+      }
+    ] : []
+
+    // 4. Crear orden con estado 'pending' o 'pending_review'
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .insert({
         tenant_id: tenantId,
         customer_id: customerId,
         order_number: orderNumber,
-        status: 'pending',
+        status: paymentReference ? 'pending' : 'pending',
         payment_condition: 'immediate',
         exchange_rate_at_sale: rate,
         subtotal_usd: finalTotalUsd,
         total_usd: finalTotalUsd,
         total_ves: finalTotalVes,
-        payment_breakdown: [],
+        payment_breakdown: paymentBreakdown,
         notes: orderNotes,
       })
       .select()

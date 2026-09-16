@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   X,
   ShoppingBag,
@@ -17,6 +18,8 @@ import {
   Store,
   MapPin,
   Navigation,
+  ArrowRight,
+  CreditCard,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useCart } from '@/contexts/CartContext';
@@ -47,6 +50,7 @@ interface CartDrawerProps {
   exchangeRate: number;
   storePhone: string;
   storeName: string;
+  checkoutMode?: 'whatsapp_only' | 'direct_payment';
 }
 
 // ─── Empty state illustration ─────────────────────────────────────────────────
@@ -73,7 +77,9 @@ export default function CartDrawer({
   exchangeRate,
   storePhone,
   storeName,
+  checkoutMode = 'direct_payment',
 }: CartDrawerProps) {
+  const router = useRouter();
   const {
     items,
     removeItem,
@@ -846,23 +852,64 @@ export default function CartDrawer({
               </div>
 
               {/* Submit CTA */}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.98] text-white font-extrabold text-sm shadow-lg shadow-emerald-500/20 disabled:opacity-60 transition-all cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Preparando pedido…</span>
-                  </>
-                ) : (
-                  <>
-                    <MessageCircle className="h-5 w-5" />
-                    <span>Enviar Pedido por WhatsApp</span>
-                  </>
-                )}
-              </button>
+              {checkoutMode === 'direct_payment' ? (
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCartOpen(false);
+                      router.push(`/${tenantSlug}/checkout`);
+                    }}
+                    className="w-full flex items-center justify-center gap-2.5 py-4 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 active:scale-[0.98] text-white font-black text-sm shadow-xl shadow-blue-500/25 transition-all cursor-pointer"
+                  >
+                    <CreditCard className="h-5 w-5" />
+                    <span>Completar Compra Directa</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+
+                  <div className="flex items-center gap-2 my-1">
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">o también</span>
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/30 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold text-xs active:scale-[0.98] disabled:opacity-60 transition-all cursor-pointer"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Preparando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Pedir directamente por WhatsApp</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.98] text-white font-extrabold text-sm shadow-lg shadow-emerald-500/20 disabled:opacity-60 transition-all cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Preparando pedido…</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="h-5 w-5" />
+                      <span>Enviar Pedido por WhatsApp</span>
+                    </>
+                  )}
+                </button>
+              )}
             </form>
           </div>
         )}

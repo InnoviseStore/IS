@@ -18,6 +18,14 @@ import {
   ShieldCheck,
   Eye,
   EyeOff,
+  CreditCard,
+  Wallet,
+  Smartphone,
+  Landmark,
+  QrCode,
+  Plus,
+  Trash2,
+  Globe,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
@@ -44,6 +52,10 @@ export default function SettingsPage() {
   const [aboutSupportText, setAboutSupportText] = useState('SOPORTE POSVENTA')
   const [aboutSupportSubtext, setAboutSupportSubtext] = useState('')
 
+  // Estados de Métodos de Pago y Checkout del Catálogo
+  const [checkoutMode, setCheckoutMode] = useState<'whatsapp_only' | 'direct_payment'>('direct_payment')
+  const [paymentAccounts, setPaymentAccounts] = useState<any[]>([])
+
   const features = getTenantFeatures(tenant)
 
   // Sincronizar inputs cuando cargue el tenant
@@ -55,6 +67,47 @@ export default function SettingsPage() {
       const settings = (tenant.settings || {}) as Record<string, unknown>
       const about = (settings.about || {}) as Record<string, string>
       setAdminSecurityPin((settings.admin_security_pin as string) || '1234')
+
+      if (settings.checkout_mode) {
+        setCheckoutMode(settings.checkout_mode as 'whatsapp_only' | 'direct_payment')
+      }
+
+      if (Array.isArray(settings.payment_accounts) && settings.payment_accounts.length > 0) {
+        setPaymentAccounts(settings.payment_accounts)
+      } else {
+        // Inicializar con métodos por defecto si no existen
+        setPaymentAccounts([
+          {
+            id: 'pago_movil_1',
+            method: 'pago_movil',
+            enabled: true,
+            label: 'Pago Móvil Provincial',
+            bank_name: 'Banco Provincial (0108)',
+            phone: '0426-2485369',
+            id_number: 'V-27.250.266',
+            instructions: 'Enviar comprobante o últimos 6 dígitos de la referencia.',
+          },
+          {
+            id: 'transfer_1',
+            method: 'transferencia',
+            enabled: true,
+            label: 'Transferencia Bancaria Provincial',
+            bank_name: 'Banco Provincial',
+            account_holder: 'Yiovanner Miguel Parra Ceballos',
+            id_number: 'V-27.250.266',
+            account_number: '01080119250100684672',
+            instructions: 'Transferencias del mismo banco o interbancarias inmediatas.',
+          },
+          {
+            id: 'binance_1',
+            method: 'binance_pay',
+            enabled: true,
+            label: 'Binance Pay (USDT)',
+            qr_image_url: 'https://lh3.googleusercontent.com/pw/AP1GczMGJg-gOgVpO57ohIPRF8YtHT-4eQSDOB_K6ggCifrqW794_xmHC4ztcuSQCix5TiNCOThVWJ11gXZ_oVdAnATlAJEvU9BJvPScxhQg2o6dQRHfIZfmb9iCPQ7oO1d4zNtbwaoLh3oBlJap13aSqJH4LA=w288-h340-s-no-gm',
+            instructions: 'Escanea el código QR desde tu app de Binance y paga en USDT.',
+          },
+        ])
+      }
 
       setAboutTitle(about.title || `Sobre ${tenant.name}`)
       setAboutDescription(
@@ -94,8 +147,12 @@ export default function SettingsPage() {
       currency_rate_bcv?: number
       about?: Record<string, unknown>
       admin_security_pin?: string
+      checkout_mode?: string
+      payment_accounts?: any[]
     } = {
       phone_whatsapp: phone.trim(),
+      checkout_mode: checkoutMode,
+      payment_accounts: paymentAccounts,
       about: {
         title: aboutTitle.trim(),
         description: aboutDescription.trim(),
@@ -401,6 +458,375 @@ export default function SettingsPage() {
                   placeholder="Garantía, atención por WhatsApp o cambios..."
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Módulo de Gestión de Pagos del Catálogo (Storefront Checkout) */}
+          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Módulo de Pagos y Checkout del Catálogo
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Define cómo tus clientes completan sus compras en la vitrina virtual y qué datos de pago ven en pantalla.
+                </p>
+              </div>
+              <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                Plan Pro / Enterprise
+              </span>
+            </div>
+
+            {/* Selector de Modo de Checkout */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-slate-800/40 dark:to-indigo-950/20 border border-blue-200/60 dark:border-indigo-900/40 space-y-3">
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                Modo de Compra de la Vitrina:
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div
+                  onClick={() => setCheckoutMode('direct_payment')}
+                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                    checkoutMode === 'direct_payment'
+                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md shadow-blue-500/10'
+                      : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-extrabold text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4" /> Pago Directo en Catálogo
+                    </span>
+                    {checkoutMode === 'direct_payment' && (
+                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    El cliente ve el botón <strong>&quot;Completar Compra&quot;</strong>, ingresa sus datos, elige entrega, ve tus cuentas bancarias y reporta su referencia de pago.
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => setCheckoutMode('whatsapp_only')}
+                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                    checkoutMode === 'whatsapp_only'
+                      ? 'border-emerald-600 bg-white dark:bg-slate-800 shadow-md shadow-emerald-500/10'
+                      : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                      <Globe className="w-4 h-4" /> Solo WhatsApp
+                    </span>
+                    {checkoutMode === 'whatsapp_only' && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    El cliente arma su carrito y envía el pedido directamente por mensaje estructurado a tu WhatsApp oficial.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Listado de Cuentas Receptoras */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Cuentas Receptoras Configuradas ({paymentAccounts.filter(a => a.enabled).length} activas):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = 'acc_' + Date.now()
+                    setPaymentAccounts([
+                      ...paymentAccounts,
+                      {
+                        id: newId,
+                        method: 'pago_movil',
+                        enabled: true,
+                        label: 'Nueva Cuenta / Pago Móvil',
+                        bank_name: '',
+                        phone: '',
+                        id_number: '',
+                        instructions: '',
+                      },
+                    ])
+                  }}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-xs font-bold transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar Método
+                </button>
+              </div>
+
+              {paymentAccounts.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 text-center">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    No tienes métodos de pago configurados para el checkout. Haz clic en &quot;Agregar Método&quot; para añadir Pago Móvil, Transferencia, Zelle o Binance Pay.
+                  </p>
+                </div>
+              ) : (
+                paymentAccounts.map((account, index) => (
+                  <div
+                    key={account.id || index}
+                    className={`p-4 rounded-2xl border transition-all ${
+                      account.enabled
+                        ? 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-sm'
+                        : 'bg-slate-50/60 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700/60 mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400">
+                          {account.method === 'pago_movil' && <Smartphone className="w-4 h-4" />}
+                          {account.method === 'transferencia' && <Landmark className="w-4 h-4" />}
+                          {account.method === 'binance_pay' && <QrCode className="w-4 h-4" />}
+                          {account.method === 'zelle' && <Wallet className="w-4 h-4" />}
+                        </span>
+                        <input
+                          type="text"
+                          value={account.label || ''}
+                          onChange={(e) => {
+                            const updated = [...paymentAccounts]
+                            updated[index].label = e.target.value
+                            setPaymentAccounts(updated)
+                          }}
+                          placeholder="Etiqueta visible (ej. Pago Móvil Provincial)"
+                          className="font-bold text-xs text-slate-900 dark:text-white bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none px-1 py-0.5"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-600 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={account.enabled}
+                            onChange={(e) => {
+                              const updated = [...paymentAccounts]
+                              updated[index].enabled = e.target.checked
+                              setPaymentAccounts(updated)
+                            }}
+                            className="rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{account.enabled ? 'Activo' : 'Pausado'}</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentAccounts(paymentAccounts.filter((_, i) => i !== index))
+                          }}
+                          className="text-slate-400 hover:text-rose-500 p-1 transition"
+                          title="Eliminar método"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                          Tipo de Método
+                        </label>
+                        <select
+                          value={account.method}
+                          onChange={(e) => {
+                            const updated = [...paymentAccounts]
+                            updated[index].method = e.target.value
+                            setPaymentAccounts(updated)
+                          }}
+                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                        >
+                          <option value="pago_movil">Pago Móvil (Bolívares)</option>
+                          <option value="transferencia">Transferencia Bancaria (Bolívares)</option>
+                          <option value="binance_pay">Binance Pay QR (USDT)</option>
+                          <option value="zelle">Zelle (USD)</option>
+                        </select>
+                      </div>
+
+                      {account.method !== 'binance_pay' && account.method !== 'zelle' && (
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                            Banco
+                          </label>
+                          <input
+                            type="text"
+                            value={account.bank_name || ''}
+                            onChange={(e) => {
+                              const updated = [...paymentAccounts]
+                              updated[index].bank_name = e.target.value
+                              setPaymentAccounts(updated)
+                            }}
+                            placeholder="Ej. Banco Provincial (0108)"
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                          />
+                        </div>
+                      )}
+
+                      {account.method === 'pago_movil' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Teléfono Afiliado
+                            </label>
+                            <input
+                              type="text"
+                              value={account.phone || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].phone = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="0426-2485369"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Cédula / RIF del Titular
+                            </label>
+                            <input
+                              type="text"
+                              value={account.id_number || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].id_number = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="V-27.250.266"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {account.method === 'transferencia' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Número de Cuenta (20 dígitos)
+                            </label>
+                            <input
+                              type="text"
+                              value={account.account_number || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].account_number = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="01080119250100684672"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Titular de la Cuenta
+                            </label>
+                            <input
+                              type="text"
+                              value={account.account_holder || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].account_holder = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="Yiovanner Miguel Parra Ceballos"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Cédula / RIF
+                            </label>
+                            <input
+                              type="text"
+                              value={account.id_number || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].id_number = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="V-27.250.266"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {account.method === 'binance_pay' && (
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                            URL de Imagen del Código QR Binance
+                          </label>
+                          <input
+                            type="text"
+                            value={account.qr_image_url || ''}
+                            onChange={(e) => {
+                              const updated = [...paymentAccounts]
+                              updated[index].qr_image_url = e.target.value
+                              setPaymentAccounts(updated)
+                            }}
+                            placeholder="https://lh3.googleusercontent.com/... o enlace de tu QR"
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono"
+                          />
+                        </div>
+                      )}
+
+                      {account.method === 'zelle' && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Correo Electrónico de Zelle
+                            </label>
+                            <input
+                              type="email"
+                              value={account.email || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].email = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="tu-correo-zelle@ejemplo.com"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Nombre del Titular Zelle
+                            </label>
+                            <input
+                              type="text"
+                              value={account.account_holder || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].account_holder = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="Nombre y Apellido"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                          Instrucciones adicionales para el comprador
+                        </label>
+                        <input
+                          type="text"
+                          value={account.instructions || ''}
+                          onChange={(e) => {
+                            const updated = [...paymentAccounts]
+                            updated[index].instructions = e.target.value
+                            setPaymentAccounts(updated)
+                          }}
+                          placeholder="Ej. Colocar en concepto número de orden. Enviar captura por WhatsApp."
+                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
