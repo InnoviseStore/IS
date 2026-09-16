@@ -52,6 +52,7 @@ interface WebOrderInfo {
   paymentBreakdown?: any[]
   dueDate?: string | null
   creditDays?: number
+  initialCreditAmount?: number
 }
 
 function POSContent() {
@@ -160,6 +161,18 @@ function POSContent() {
             days = Math.max(1, Math.round(diffMs / 86400000))
           }
 
+          let prevCredit = 0
+          if (Array.isArray(order.payment_breakdown)) {
+            const cr = order.payment_breakdown.find((p: any) => p.method === 'credit_7d')
+            if (cr) prevCredit = Number(cr.amount_usd) || 0
+          }
+          if (prevCredit === 0 && (order.status === 'credit' || order.payment_condition === 'credit_7d')) {
+            const nonCreditPaid = Array.isArray(order.payment_breakdown)
+              ? order.payment_breakdown.reduce((s: number, p: any) => p.method !== 'credit_7d' ? s + (Number(p.amount_usd) || 0) : s, 0)
+              : 0
+            prevCredit = Math.max(0, (Number(order.total_usd) || 0) - nonCreditPaid)
+          }
+
           setWebOrderInfo({
             orderId: order.id,
             orderNumber: order.order_number,
@@ -170,6 +183,7 @@ function POSContent() {
             paymentBreakdown: order.payment_breakdown,
             dueDate: order.due_date,
             creditDays: days,
+            initialCreditAmount: prevCredit,
           })
         }
       } catch (err) {
@@ -760,6 +774,7 @@ function POSContent() {
           adminPin={webOrderInfo?.authPin}
           initialPayments={webOrderInfo?.paymentBreakdown}
           initialCreditDays={webOrderInfo?.creditDays}
+          initialCreditAmount={webOrderInfo?.initialCreditAmount}
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             setShowPayment(false)

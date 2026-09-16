@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
-import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock, FileDown, Printer } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock, FileDown, Printer, Pencil, ShoppingCart } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
 import { formatDate, formatDateTime } from '@/lib/formatters'
@@ -50,6 +50,7 @@ interface Props {
   adminPin?: string
   initialPayments?: any[]
   initialCreditDays?: number
+  initialCreditAmount?: number
   onClose: () => void
   onSuccess: () => void
 }
@@ -66,6 +67,7 @@ export function SplitPaymentModal({
   adminPin,
   initialPayments,
   initialCreditDays,
+  initialCreditAmount,
   onClose,
   onSuccess,
 }: Props) {
@@ -187,8 +189,27 @@ export function SplitPaymentModal({
 
   const dueDateObj = new Date(Date.now() + (creditDays || 7) * 24 * 60 * 60 * 1000)
   const dueDate = formatDate(dueDateObj)
+
+  // En modo edición de la misma factura, la deuda previa a crédito de ESTA factura
+  // se deduce porque el backend la revierte automáticamente antes de aplicar la nueva.
+  const previousCredit = useMemo(() => {
+    if (!isEditMode) return 0
+    if (initialCreditAmount !== undefined && initialCreditAmount > 0) {
+      return initialCreditAmount
+    }
+    if (Array.isArray(initialPayments)) {
+      const cr = initialPayments.find((p: any) => p.method === 'credit_7d')
+      if (cr) return Number(cr.amount_usd) || 0
+    }
+    return 0
+  }, [isEditMode, initialCreditAmount, initialPayments])
+
+  const effectiveCurrentDebt = selectedCustomer
+    ? Math.max(0, Number(selectedCustomer.current_debt_usd) - previousCredit)
+    : 0
+
   const availableCredit = selectedCustomer
-    ? Number(selectedCustomer.credit_limit_usd) - Number(selectedCustomer.current_debt_usd)
+    ? Math.max(0, Number(selectedCustomer.credit_limit_usd) - effectiveCurrentDebt)
     : 0
 
   const creditAmountUsd = isCredit ? Math.max(0, parseFloat((grandTotalUsd - paidUsd).toFixed(4))) : 0
@@ -381,7 +402,9 @@ export function SplitPaymentModal({
             <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
           </div>
           <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">
-            {isCredit ? '¡Venta a Crédito Registrada!' : '¡Venta Registrada!'}
+            {isEditMode
+              ? '¡Factura Actualizada con Éxito!'
+              : (isCredit ? '¡Venta a Crédito Registrada!' : '¡Venta Registrada!')}
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-300 mb-1 font-medium">
             Orden: <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{success}</span>
@@ -434,7 +457,7 @@ export function SplitPaymentModal({
           )}
 
           <button onClick={onSuccess} className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition cursor-pointer">
-            Nueva Venta
+            {isEditMode ? 'Listo, Volver a Facturas' : 'Nueva Venta'}
           </button>
         </div>
 
@@ -450,17 +473,53 @@ export function SplitPaymentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-2xl glass-card p-6 sm:p-8 my-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Cobrar Venta</h2>
-          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden">
+      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-5xl max-h-[94vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* MODAL HEADER FIJO */}
+        <div className="flex-shrink-0 px-5 sm:px-7 py-3.5 sm:py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/70 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+              isEditMode
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300/80'
+                : 'bg-blue-100 text-blue-600 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200/80'
+            }`}>
+              {isEditMode ? <Pencil className="w-5 h-5" /> : <ShoppingCart className="w-5 h-5" />}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  {isEditMode ? 'Modificar Factura Emitida' : 'Cobrar Venta'}
+                </h2>
+                {isEditMode && (
+                  <span className="text-[11px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-300">
+                    Modo Edición
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {isEditMode
+                  ? 'Reajusta productos, clientes y pagos con autorización administrativa'
+                  : 'Desglose multimoneda, pagos divididos y financiamiento a crédito'
+                }
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            title="Cerrar ventana"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="space-y-6">
+        {/* MODAL BODY SCROLLABLE CON 2 COLUMNAS EN DESKTOP */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 sm:px-7">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* COLUMNA IZQUIERDA (7 cols): Cliente y Métodos de Pago */}
+            <div className="lg:col-span-7 space-y-6">
           {/* SECTION 1: Customer */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-3">1. Cliente</h3>
@@ -665,11 +724,22 @@ export function SplitPaymentModal({
                         <span className="font-bold text-slate-800 dark:text-slate-200">${selectedCustomer.credit_limit_usd.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-600 dark:text-slate-400">Deuda actual:</span>
-                        <span className="font-bold text-amber-700 dark:text-amber-400">${selectedCustomer.current_debt_usd.toFixed(2)}</span>
+                        <span className="text-slate-600 dark:text-slate-400">Deuda actual registrada:</span>
+                        <div className="text-right">
+                          <span className="font-bold text-amber-700 dark:text-amber-400">
+                            ${Number(selectedCustomer.current_debt_usd).toFixed(2)}
+                          </span>
+                          {isEditMode && previousCredit > 0 && (
+                            <span className="block text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                              (Incluye ${previousCredit.toFixed(2)} de esta nota que se reajustarán)
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-600 dark:text-slate-400">Disponible:</span>
+                        <span className="text-slate-600 dark:text-slate-400">
+                          {isEditMode && previousCredit > 0 ? 'Disponible para esta factura:' : 'Disponible:'}
+                        </span>
                         <span className={`font-extrabold ${availableCredit >= creditAmountUsd ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                           ${availableCredit.toFixed(2)}
                         </span>
@@ -801,9 +871,18 @@ export function SplitPaymentModal({
               </p>
             )}
           </div>
+        </div>
 
-          {/* SECTION 3: Balance */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 p-4 space-y-2 font-medium">
+        {/* COLUMNA DERECHA: RESUMEN DE COBRO, BALANCE Y BOTONES DE CONFIRMACIÓN */}
+        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-0">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-4 sm:p-5 space-y-3.5 shadow-xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 border-b border-slate-200/80 dark:border-slate-700/80 pb-2 flex items-center justify-between">
+              <span>Resumen de Cobro</span>
+              <span className="text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400">
+                Tasa: Bs. {exchangeRate.toFixed(2)}
+              </span>
+            </h3>
+
             {/* Subtotal */}
             <div className="flex justify-between text-sm">
               <span className="text-slate-600 dark:text-slate-400">Subtotal base:</span>
@@ -837,28 +916,30 @@ export function SplitPaymentModal({
             )}
 
             {/* Grand total */}
-            <div className="flex justify-between text-sm border-t border-slate-200 dark:border-slate-700 pt-2">
-              <span className="font-bold text-slate-800 dark:text-slate-200">Total a cobrar:</span>
+            <div className="flex justify-between items-baseline text-sm border-t border-slate-200 dark:border-slate-700 pt-2.5">
+              <span className="font-extrabold text-slate-800 dark:text-slate-200">Total a cobrar:</span>
               <div className="text-right">
-                <p className="font-extrabold text-slate-900 dark:text-white">${grandTotalUsd.toFixed(2)} USD</p>
-                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">Bs. {grandTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-xl font-black text-slate-900 dark:text-white">${grandTotalUsd.toFixed(2)} USD</p>
+                <p className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                  Bs. {grandTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
             </div>
 
-            {/* Payment status */}
+            {/* Payment status / Balance */}
             {!isCredit ? (
-              <>
+              <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-700 pt-2.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Total cubierto:</span>
                   <span className="font-extrabold text-emerald-600 dark:text-emerald-400">${paidUsd.toFixed(2)} USD</span>
                 </div>
-                <div className={`flex justify-between text-sm font-extrabold border-t border-slate-200 dark:border-slate-700 pt-2 ${Math.abs(remainingUsd) < 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                <div className={`flex justify-between text-sm font-extrabold border-t border-slate-200/60 dark:border-slate-700/60 pt-2 ${Math.abs(remainingUsd) < 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                   <span>Restante por cobrar:</span>
                   <span>{Math.abs(remainingUsd) < 0.01 ? '✓ Cubierto' : `$${remainingUsd.toFixed(2)} USD`}</span>
                 </div>
-              </>
+              </div>
             ) : (
-              <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-700 pt-2">
+              <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-700 pt-2.5">
                 {paidUsd > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-600 dark:text-slate-400">Abono inicial recibido hoy:</span>
@@ -870,46 +951,56 @@ export function SplitPaymentModal({
                   <span className="font-extrabold text-amber-700 dark:text-amber-400">${creditAmountUsd.toFixed(2)} USD</span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span>Crédito restante tras la venta:</span>
+                  <span>Disponible tras venta:</span>
                   <span className={`font-bold ${availableCredit >= creditAmountUsd ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     ${(availableCredit - creditAmountUsd).toFixed(2)} USD
                   </span>
                 </div>
                 {exceedsLimit && (
-                  <p className="text-xs text-rose-600 dark:text-rose-400 font-bold mt-1 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-900">
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-bold mt-1 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900">
                     ⚠️ El monto a crédito (${creditAmountUsd.toFixed(2)}) excede el límite disponible del cliente (${availableCredit.toFixed(2)}).
                   </p>
                 )}
               </div>
             )}
-          </div>
 
-          {error && (
-            <p className="text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl px-4 py-2.5 font-medium">
-              {error}
-            </p>
-          )}
+            {error && (
+              <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl p-2.5 font-medium">
+                {error}
+              </p>
+            )}
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-            <button onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-              Cancelar
-            </button>
-            <button onClick={handleConfirm} disabled={!canConfirm || loading}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-500/20 active:scale-[0.98]">
-              {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" />Registrando…</>
-              ) : isCredit ? (
-                paidUsd > 0
-                  ? `Confirmar: Abono $${paidUsd.toFixed(2)} + Crédito $${creditAmountUsd.toFixed(2)}`
-                  : `Confirmar Venta a Crédito ($${creditAmountUsd.toFixed(2)})`
-              ) : (
-                `Confirmar — $${grandTotalUsd.toFixed(2)}`
-              )}
-            </button>
+            {/* Botones de Acción */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-700/80 flex flex-col gap-2">
+              <button
+                onClick={handleConfirm}
+                disabled={!canConfirm || loading}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-500/20 active:scale-[0.98] cursor-pointer"
+              >
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" />Guardando…</>
+                ) : isCredit ? (
+                  paidUsd > 0
+                    ? `Confirmar: Abono $${paidUsd.toFixed(2)} + Crédito $${creditAmountUsd.toFixed(2)}`
+                    : `Confirmar Venta a Crédito ($${creditAmountUsd.toFixed(2)})`
+                ) : (
+                  `Confirmar Cobro — $${grandTotalUsd.toFixed(2)}`
+                )}
+              </button>
+
+              <button
+                onClick={onClose}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer text-center"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
+
       </div>
+    </div>
+  </div>
 
       {showNewCustomerModal && tenant && (
         <CustomerModal
