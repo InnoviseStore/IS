@@ -213,6 +213,7 @@ export default function CheckoutPage() {
       const selectedAccount = paymentAccounts.find(a => a.id === payment.method)
 
       const payload = {
+        tenantSlug: tenantSlug,
         tenant_slug: tenantSlug,
         items: items.map(i => ({
           product_id: i.product_id,

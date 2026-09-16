@@ -60,19 +60,29 @@ export async function POST(req: Request) {
 
     const body = await req.json()
     const {
-      tenantSlug,
+      tenantSlug: slugFromCamel,
+      tenant_slug: slugFromSnake,
       customer,
       items,
       totalUsd,
+      total_usd,
       totalVes,
+      total_ves,
       exchangeRate,
+      exchange_rate,
     } = body
+
+    const tenantSlug = slugFromCamel || slugFromSnake
 
     if (!tenantSlug) {
       return NextResponse.json({ error: 'Falta el identificador de la tienda (slug).' }, { status: 400 })
     }
 
-    if (!customer?.fullName || !customer?.phone) {
+    const customerFullName = customer?.fullName || customer?.full_name
+    const customerPhone = customer?.phone
+    const customerIdNumber = customer?.idNumber || customer?.id_number
+
+    if (!customerFullName || !customerPhone) {
       return NextResponse.json({ error: 'Nombre y teléfono son requeridos.' }, { status: 400 })
     }
 
@@ -94,13 +104,13 @@ export async function POST(req: Request) {
     }
 
     const tenantId = tenant.id
-    const rate = Number(exchangeRate) || Number(tenant.currency_rate_bcv) || 91.5
-    const cleanFullName = sanitizeText(customer.fullName)
-    const cleanPhone = customer.phone.replace(/\D/g, '')
-    const cleanIdNumber = customer.idNumber ? sanitizeText(customer.idNumber).toUpperCase() : null
+    const rate = Number(exchangeRate) || Number(exchange_rate) || Number(tenant.currency_rate_bcv) || 91.5
+    const cleanFullName = sanitizeText(customerFullName)
+    const cleanPhone = String(customerPhone).replace(/\D/g, '')
+    const cleanIdNumber = customerIdNumber ? sanitizeText(customerIdNumber).toUpperCase() : null
     const cleanAddress = customer.address ? sanitizeText(customer.address) : null
     const cleanCustomerNotes = customer.notes ? sanitizeText(customer.notes) : ''
-    const deliveryMethod = body.delivery_method || customer.deliveryMethod || 'delivery_bqto'
+    const deliveryMethod = body.delivery_method || customer.deliveryMethod || customer.delivery_method || 'delivery_bqto'
     const shippingAgency = body.shipping_agency ? sanitizeText(body.shipping_agency) : (customer.shippingAgency ? sanitizeText(customer.shippingAgency) : null)
     const cleanAgencyAddress = body.agency_address ? sanitizeText(body.agency_address) : (customer.agencyAddress ? sanitizeText(customer.agencyAddress) : null)
     const deliveryCoords = customer.deliveryCoords && typeof customer.deliveryCoords.lat === 'number' && typeof customer.deliveryCoords.lng === 'number'
