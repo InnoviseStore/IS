@@ -151,14 +151,20 @@ export default function QuotationsPage() {
 
   async function confirmDeleteQuotation() {
     if (!tenant || !quotationToDelete) return
+    const toDeleteId = quotationToDelete.id
     setDeletingQuotation(true)
     try {
-      await fetch(`/api/admin/quotations?id=${quotationToDelete.id}&tenant_id=${tenant.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/admin/quotations?id=${toDeleteId}&tenant_id=${tenant.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'No se pudo eliminar el presupuesto.')
+      }
+      setQuotations((prev) => prev.filter((q) => q.id !== toDeleteId))
       setQuotationToDelete(null)
-      loadQuotations()
+      await loadQuotations()
     } catch (e) {
       console.error('Error al eliminar presupuesto:', e)
-      alert('No se pudo eliminar el presupuesto.')
+      alert(e instanceof Error ? e.message : 'No se pudo eliminar el presupuesto.')
     } finally {
       setDeletingQuotation(false)
     }

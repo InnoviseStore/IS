@@ -53,20 +53,20 @@ export interface Profile {
 export function getRoleLabel(role?: string | null): string {
   switch (role) {
     case 'superadmin':
-      return 'Super Administrador'
+      return 'Super Administrador (SaaS Global)'
     case 'owner':
-      return 'Propietario'
+      return 'Propietario / Dueño de Tienda'
     case 'admin':
-      return 'Administrador'
-    case 'cajero':
+      return 'Administrador de Tienda'
     case 'cashier':
-      return 'Cajero'
+    case 'cajero':
+      return 'Cajero / Facturación'
     case 'almacen':
-      return 'Almacén & Stock'
+      return 'Almacén / Logística'
     case 'vendedor':
-      return 'Vendedor'
+      return 'Vendedor / Asesor'
     default:
-      return 'Colaborador'
+      return role || 'Colaborador'
   }
 }
 

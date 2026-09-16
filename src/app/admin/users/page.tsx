@@ -105,7 +105,8 @@ export default function AdminUsersPage() {
     try {
       setIsLoading(true)
       setError(null)
-      const res = await fetch('/api/admin/team')
+      const url = tenant?.id ? `/api/admin/team?tenant_id=${tenant.id}` : '/api/admin/team'
+      const res = await fetch(url)
       const data = await res.json()
       if (!res.ok) {
         throw new Error(data.error || 'Error al cargar el equipo.')
@@ -118,7 +119,7 @@ export default function AdminUsersPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [tenant?.id])
 
   useEffect(() => {
     fetchTeam()
@@ -150,7 +151,10 @@ export default function AdminUsersPage() {
       const res = await fetch('/api/admin/team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(addForm),
+        body: JSON.stringify({
+          ...addForm,
+          tenant_id: tenant?.id,
+        }),
       })
       const data = await res.json()
 
@@ -180,6 +184,7 @@ export default function AdminUsersPage() {
         body: JSON.stringify({
           userId: roleModalUser.id,
           role: selectedNewRole,
+          tenant_id: tenant?.id,
         }),
       })
       const data = await res.json()
@@ -215,6 +220,7 @@ export default function AdminUsersPage() {
         body: JSON.stringify({
           userId: pwdModalUser.id,
           password: newPassword,
+          tenant_id: tenant?.id,
         }),
       })
       const data = await res.json()
@@ -236,7 +242,10 @@ export default function AdminUsersPage() {
     if (!deleteModalUser) return
     try {
       setIsSubmittingDelete(true)
-      const res = await fetch(`/api/admin/team?id=${deleteModalUser.id}`, {
+      const url = tenant?.id
+        ? `/api/admin/team?id=${deleteModalUser.id}&tenant_id=${tenant.id}`
+        : `/api/admin/team?id=${deleteModalUser.id}`
+      const res = await fetch(url, {
         method: 'DELETE',
       })
       const data = await res.json()
@@ -475,7 +484,7 @@ export default function AdminUsersPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {team.map((user) => {
-                  const isOwner = user.role === 'owner' || user.role === 'superadmin'
+                  const isOwner = user.role === 'owner'
                   const isSelf = user.id === currentProfile?.id
                   const userRole = (user.role || 'cajero') as UserRole
 

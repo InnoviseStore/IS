@@ -45,11 +45,12 @@ export async function GET(req: Request) {
 
     const features = getTenantFeatures(tenant)
 
-    // 2. Obtener miembros del equipo
+    // 2. Obtener miembros del equipo (excluyendo superadmin global que no pertenece a una tienda específica)
     const { data: team, error: teamErr } = await supabase
       .from('profiles')
       .select('*')
       .eq('tenant_id', targetTenantId)
+      .neq('role', 'superadmin')
       .order('created_at', { ascending: true })
 
     if (teamErr) throw new Error(teamErr.message)
@@ -126,6 +127,7 @@ export async function POST(req: Request) {
       .from('profiles')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', targetTenantId)
+      .neq('role', 'superadmin')
 
     if (!countErr && features.maxUsers !== Infinity && (currentCount ?? 0) >= features.maxUsers) {
       return NextResponse.json(
@@ -234,6 +236,14 @@ export async function PATCH(req: Request) {
       )
     }
 
+    // No permitir modificar superadmin si no eres superadmin
+    if (targetProfile.role === 'superadmin' && !auth.isSuperAdmin) {
+      return NextResponse.json(
+        { error: 'No se puede modificar una cuenta de Super Administrador global.' },
+        { status: 403 }
+      )
+    }
+
     // No permitir cambiar el rol del owner si no eres superadmin
     if (targetProfile.role === 'owner' && !auth.isSuperAdmin && role && role !== 'owner') {
       return NextResponse.json(
@@ -326,6 +336,13 @@ export async function DELETE(req: Request) {
     if (!auth.isSuperAdmin && targetProfile.tenant_id !== auth.tenantId) {
       return NextResponse.json(
         { error: 'Acceso denegado: este usuario no pertenece a tu comercio.' },
+        { status: 403 }
+      )
+    }
+
+    if (targetProfile.role === 'superadmin') {
+      return NextResponse.json(
+        { error: 'No se puede eliminar la cuenta de un Super Administrador global de la plataforma.' },
         { status: 403 }
       )
     }

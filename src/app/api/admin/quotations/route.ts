@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
     // 1. Validar autenticación y pertenencia de tenant
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero', 'vendedor'],
       targetTenantId: tenantId,
     })
     if (errorResponse || !auth) {
@@ -34,14 +34,18 @@ export async function GET(req: Request) {
 
     const supabase = getAdminClient()
 
-    // 1. Consultar tabla 'quotations'
+    // 1. Consultar tabla 'quotations' (fuente de verdad)
     const { data: dbQuotations, error: dbError } = await supabase
       .from('quotations')
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
 
-    // 2. Consultar también fallback de settings para no perder ninguna cotización previa
+    if (!dbError && dbQuotations) {
+      return NextResponse.json({ success: true, quotations: dbQuotations })
+    }
+
+    // 2. Fallback solo si la tabla quotations falla o no existe
     const { data: tenantData } = await supabase
       .from('tenants')
       .select('settings')
@@ -50,55 +54,6 @@ export async function GET(req: Request) {
 
     const settings = (tenantData?.settings || {}) as Record<string, unknown>
     const fallbackList = Array.isArray(settings.quotations) ? settings.quotations : []
-    const tableList = (!dbError && dbQuotations) ? dbQuotations : []
-    const existingNumbers = new Set(tableList.map((q: { quotation_number?: string }) => q.quotation_number))
-
-    // Identificar cotizaciones en fallback que no estén en la tabla
-    const missingInTable = fallbackList.filter(
-      (q: { quotation_number?: string }) => q.quotation_number && !existingNumbers.has(q.quotation_number)
-    )
-
-    // Si hay cotizaciones atrapadas en fallback, sincronizarlas a la tabla
-    if (missingInTable.length > 0 && !dbError) {
-      for (const m of missingInTable) {
-        try {
-          await supabase.from('quotations').insert({
-            tenant_id: tenantId,
-            quotation_number: m.quotation_number,
-            customer_name: m.customer_name || 'Cliente General',
-            customer_phone: m.customer_phone || null,
-            customer_email: m.customer_email || null,
-            customer_id_number: m.customer_id_number || null,
-            status: m.status || 'draft',
-            items: m.items || [],
-            subtotal_usd: Number(m.subtotal_usd) || 0,
-            total_usd: Number(m.total_usd) || 0,
-            total_ves: Number(m.total_ves) || 0,
-            exchange_rate: Number(m.exchange_rate) || 91.5,
-            valid_until: m.valid_until || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
-            notes: m.notes || null,
-            created_by: m.created_by || null,
-            created_at: m.created_at || new Date().toISOString(),
-          })
-        } catch {
-          // ignore individual sync error
-        }
-      }
-
-      const { data: refreshedTable } = await supabase
-        .from('quotations')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false })
-
-      if (refreshedTable) {
-        return NextResponse.json({ success: true, quotations: refreshedTable })
-      }
-    }
-
-    if (tableList.length > 0) {
-      return NextResponse.json({ success: true, quotations: tableList })
-    }
 
     return NextResponse.json({
       success: true,
@@ -143,7 +98,7 @@ export async function POST(req: Request) {
 
     // 1. Validar autenticación y pertenencia de tenant
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero', 'vendedor'],
       targetTenantId: tenant_id,
     })
     if (errorResponse || !auth) {
@@ -252,7 +207,7 @@ export async function DELETE(req: Request) {
 
     // 1. Validar autenticación y pertenencia de tenant
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero', 'vendedor'],
       targetTenantId: tenantId,
     })
     if (errorResponse || !auth) {
@@ -261,10 +216,28 @@ export async function DELETE(req: Request) {
 
     const supabase = getAdminClient()
 
-    // 1. Intentar borrar en tabla 'quotations'
-    await supabase.from('quotations').delete().eq('id', id)
+    // 1. Obtener número de cotización antes de borrar (para limpiar fallback por número si aplica)
+    const { data: existingQuote } = await supabase
+      .from('quotations')
+      .select('id, quotation_number')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
 
-    // 2. Si estaba en settings, actualizar settings
+    const quoteNumber = existingQuote?.quotation_number
+
+    // 2. Borrar en tabla 'quotations'
+    const { error: delErr } = await supabase
+      .from('quotations')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+
+    if (delErr) {
+      throw new Error(`Error al eliminar de la base de datos: ${delErr.message}`)
+    }
+
+    // 3. Limpiar también de settings si quedó alguna entrada en el fallback antiguo
     if (tenantId) {
       const { data: tenantData } = await supabase
         .from('tenants')
@@ -274,7 +247,10 @@ export async function DELETE(req: Request) {
 
       const currentSettings = ((tenantData?.settings || {}) as Record<string, unknown>)
       if (Array.isArray(currentSettings.quotations)) {
-        const updatedList = currentSettings.quotations.filter((q: any) => q.id !== id)
+        const updatedList = currentSettings.quotations.filter(
+          (q: { id?: string; quotation_number?: string }) =>
+            q.id !== id && (!quoteNumber || q.quotation_number !== quoteNumber)
+        )
         await supabase
           .from('tenants')
           .update({
@@ -287,7 +263,7 @@ export async function DELETE(req: Request) {
       }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, message: 'Presupuesto eliminado correctamente.' })
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error al eliminar cotización' },
