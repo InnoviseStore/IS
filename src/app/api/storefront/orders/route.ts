@@ -184,8 +184,22 @@ export async function POST(req: Request) {
     const randSeq = Math.floor(1000 + Math.random() * 9000)
     const orderNumber = `IS-${year}-${randSeq}`
 
-    const finalTotalUsd = Number(totalUsd) || 0
-    const finalTotalVes = Number(totalVes) || finalTotalUsd * rate
+    // Sumar subtotales de los items directamente como fallback infalible
+    const computedItemsTotalUsd = items.reduce((acc: number, item: any) => {
+      const price = Number(item.unit_price_usd) || 0
+      const qty = parseInt(item.quantity, 10) || 1
+      return acc + (price * qty)
+    }, 0)
+
+    const rawTotalUsd = totalUsd !== undefined ? totalUsd : total_usd
+    const finalTotalUsd = (rawTotalUsd !== undefined && Number(rawTotalUsd) > 0)
+      ? Number(rawTotalUsd)
+      : computedItemsTotalUsd
+
+    const rawTotalVes = totalVes !== undefined ? totalVes : total_ves
+    const finalTotalVes = (rawTotalVes !== undefined && Number(rawTotalVes) > 0)
+      ? Number(rawTotalVes)
+      : (finalTotalUsd * rate)
 
     let deliverySummary = 'Entrega: Retiro en Sitio'
     if (deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local') {

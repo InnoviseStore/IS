@@ -76,6 +76,7 @@ export default function CheckoutPage() {
   
   const [orderComplete, setOrderComplete] = useState(false)
   const [orderNumber, setOrderNumber] = useState('')
+  const [confirmedTotalUsd, setConfirmedTotalUsd] = useState(0)
 
   // Form State
   const [customer, setCustomer] = useState<CustomerData>({
@@ -251,7 +252,9 @@ export default function CheckoutPage() {
 
       const data = await res.json()
       
-      // Success
+      // Success: almacenar el total confirmado antes de vaciar el carrito reactivo
+      const finalRecordedUsd = data.total_usd !== undefined ? Number(data.total_usd) : totalUsd
+      setConfirmedTotalUsd(finalRecordedUsd)
       setOrderNumber(data.order_number || data.id?.substring(0, 8).toUpperCase() || 'ORD-0000')
       clearCart()
       setOrderComplete(true)
@@ -292,7 +295,7 @@ export default function CheckoutPage() {
   const paymentAccounts = tenantData?.settings?.payment_accounts?.filter(a => a.enabled) || []
 
   if (orderComplete) {
-    const waMessage = `¡Hola! Acabo de realizar un pedido en la tienda.\n\n*N° Pedido:* ${orderNumber}\n*Monto:* $${totalUsd.toFixed(2)}\n*Referencia:* ${payment.reference}`
+    const waMessage = `¡Hola! Acabo de realizar un pedido en la tienda.\n\n*N° Pedido:* ${orderNumber}\n*Monto:* $${confirmedTotalUsd.toFixed(2)}\n*Referencia:* ${payment.reference}`
     const waLink = `https://wa.me/${tenantData?.phone_whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(waMessage)}`
 
     return (
@@ -307,9 +310,15 @@ export default function CheckoutPage() {
           </div>
           
           <div className="p-8">
-            <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 mb-6 inline-block">
+            <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 mb-6 inline-block w-full max-w-sm">
               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1">N° de Orden</p>
-              <p className="text-3xl font-bold text-slate-900 dark:text-white font-mono">{orderNumber}</p>
+              <p className="text-3xl font-bold text-slate-900 dark:text-white font-mono mb-3">{orderNumber}</p>
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Total a Pagar:</span>
+                <span className="font-extrabold text-blue-600 dark:text-blue-400 text-base">
+                  ${confirmedTotalUsd.toFixed(2)} USD
+                </span>
+              </div>
             </div>
 
             <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 p-4 rounded-xl text-left mb-8">
