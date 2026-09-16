@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { SplitPaymentModal } from '@/components/admin/SplitPaymentModal'
 import type { Product, CartItem, Customer } from '@/types/database'
-import { Search, Plus, Minus, Trash2, ShoppingCart, Package, ArrowRight, Globe, X, Percent, Tag, Pencil } from 'lucide-react'
+import { Search, Plus, Minus, Trash2, ShoppingCart, Package, ArrowRight, Globe, X, Percent, Tag, Pencil, FileText } from 'lucide-react'
 
 // ─── Cart Reducer ─────────────────────────────────────────────────────────────
 type CartAction =
@@ -48,6 +48,7 @@ interface WebOrderInfo {
   customerName: string
   customer: Customer | null
   isEditMode?: boolean
+  isQuotation?: boolean
   authPin?: string
   paymentBreakdown?: any[]
   dueDate?: string | null
@@ -60,6 +61,7 @@ function POSContent() {
   const searchParams = useSearchParams()
   const fromOrderId = searchParams.get('fromOrder')
   const editOrderId = searchParams.get('editOrder')
+  const fromQuotationId = searchParams.get('fromQuotation')
   const authPin = searchParams.get('authPin')
   const targetOrderId = editOrderId || fromOrderId
   const isEditMode = Boolean(editOrderId)
@@ -193,6 +195,77 @@ function POSContent() {
 
     loadTargetOrder()
   }, [targetOrderId, tenant, isEditMode, authPin])
+
+  // Cargar productos de cotización importada
+  useEffect(() => {
+    if (!fromQuotationId || !tenant) return
+
+    async function loadQuotationIntoPos() {
+      try {
+        let quoteData: any = null
+        if (typeof window !== 'undefined') {
+          const cached = sessionStorage.getItem('pos_quote_import')
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached)
+              if (parsed.id === fromQuotationId) quoteData = parsed
+            } catch {}
+          }
+        }
+
+        if (!quoteData) {
+          const supabase = createClient()
+          const { data, error } = await supabase
+            .from('quotations')
+            .select('*')
+            .eq('id', fromQuotationId)
+            .single()
+          if (!error && data) quoteData = data
+        }
+
+        if (quoteData && Array.isArray(quoteData.items) && quoteData.items.length > 0) {
+          const loadedItems: CartItem[] = quoteData.items.map((i: any) => ({
+            product_id: i.product_id || crypto.randomUUID(),
+            name: i.name,
+            sku: i.sku || '',
+            unit_price_usd: Number(i.unit_price_usd) || 0,
+            quantity: Number(i.quantity) || 1,
+            discount_percent: i.discount_percent ? Number(i.discount_percent) : 0,
+            discount_usd: i.discount_percent
+              ? parseFloat(((Number(i.unit_price_usd) * Number(i.quantity) * Number(i.discount_percent)) / 100).toFixed(2))
+              : 0,
+            image_url: null,
+          }))
+
+          dispatch({ type: 'SET_CART', items: loadedItems })
+          setMobileTab('ticket')
+
+          let resolvedCustomer: Customer | null = null
+          if (quoteData.customer_id) {
+            const supabase = createClient()
+            const { data: cust } = await supabase.from('customers').select('*').eq('id', quoteData.customer_id).single()
+            if (cust) resolvedCustomer = cust
+          }
+
+          setWebOrderInfo({
+            orderId: '',
+            orderNumber: quoteData.quotation_number || 'Cotización',
+            customerName: resolvedCustomer?.full_name || quoteData.customer_name || 'Cliente Cotización',
+            customer: resolvedCustomer,
+            isQuotation: true,
+          })
+
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('pos_quote_import')
+          }
+        }
+      } catch (err) {
+        console.error('Error al cargar cotización en POS:', err)
+      }
+    }
+
+    loadQuotationIntoPos()
+  }, [fromQuotationId, tenant])
 
   const filtered = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim()
@@ -363,28 +436,43 @@ function POSContent() {
 
         {/* PANEL DERECHO: Cart/Ticket */}
         <div className={`md:col-span-5 lg:col-span-5 xl:col-span-4 glass-card flex flex-col p-4 sm:p-5 gap-3.5 min-h-0 border border-slate-200/80 dark:border-slate-800/80 ${mobileTab === 'ticket' ? 'flex' : 'hidden md:flex'}`}>
-          {/* Banner de Pedido Web o Modo Edición */}
+          {/* Banner de Pedido Web, Modo Edición o Cotización */}
           {webOrderInfo && (
             <div className={`p-3 rounded-2xl border flex items-center justify-between gap-2 flex-shrink-0 animate-in fade-in duration-200 ${
               webOrderInfo.isEditMode
                 ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800'
+                : webOrderInfo.isQuotation
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800'
                 : 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800'
             }`}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center shrink-0 shadow-xs ${
-                  webOrderInfo.isEditMode ? 'bg-amber-600' : 'bg-blue-600'
+                  webOrderInfo.isEditMode
+                    ? 'bg-amber-600'
+                    : webOrderInfo.isQuotation
+                    ? 'bg-emerald-600'
+                    : 'bg-blue-600'
                 }`}>
-                  {webOrderInfo.isEditMode ? <Pencil className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+                  {webOrderInfo.isEditMode ? <Pencil className="w-4 h-4" /> : webOrderInfo.isQuotation ? <FileText className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
                 </div>
                 <div className="min-w-0">
                   <p className={`text-xs font-black truncate ${
-                    webOrderInfo.isEditMode ? 'text-amber-800 dark:text-amber-200' : 'text-blue-800 dark:text-blue-200'
+                    webOrderInfo.isEditMode
+                      ? 'text-amber-800 dark:text-amber-200'
+                      : webOrderInfo.isQuotation
+                      ? 'text-emerald-800 dark:text-emerald-200'
+                      : 'text-blue-800 dark:text-blue-200'
                   }`}>
-                    {webOrderInfo.isEditMode ? `Modo Edición: Factura #${webOrderInfo.orderNumber}` : `Pedido Web #${webOrderInfo.orderNumber}`}
+                    {webOrderInfo.isEditMode
+                      ? `Modo Edición: Factura #${webOrderInfo.orderNumber}`
+                      : webOrderInfo.isQuotation
+                      ? `Cotización Cargada #${webOrderInfo.orderNumber}`
+                      : `Pedido Web #${webOrderInfo.orderNumber}`}
                   </p>
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
                     Cliente: <strong>{webOrderInfo.customerName}</strong>
                     {webOrderInfo.isEditMode && ' • Clave autorizada'}
+                    {webOrderInfo.isQuotation && ' • Precios y descuentos aplicados'}
                   </p>
                 </div>
               </div>
@@ -396,7 +484,7 @@ function POSContent() {
                   router.replace('/admin/pos')
                 }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition cursor-pointer"
-                title={webOrderInfo.isEditMode ? "Cancelar edición y volver a ticket limpio" : "Desvincular orden web y empezar ticket limpio"}
+                title={webOrderInfo.isEditMode ? "Cancelar edición y volver a ticket limpio" : webOrderInfo.isQuotation ? "Quitar cotización y limpiar ticket" : "Desvincular orden web y empezar ticket limpio"}
               >
                 <X className="w-4 h-4" />
               </button>

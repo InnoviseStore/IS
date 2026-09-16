@@ -55,11 +55,15 @@ export async function GET(req: Request) {
 
     if (teamErr) throw new Error(teamErr.message)
 
+    const isEnterprise = features.planId === 'enterprise'
+    const isUnlimited = isEnterprise || features.maxUsers === Infinity
+
     return NextResponse.json({
       success: true,
       team: team || [],
       currentCount: (team || []).length,
-      maxUsers: features.maxUsers,
+      maxUsers: isUnlimited ? -1 : features.maxUsers,
+      isUnlimited,
       planName: features.name,
       planId: features.planId,
     })
@@ -129,7 +133,10 @@ export async function POST(req: Request) {
       .eq('tenant_id', targetTenantId)
       .neq('role', 'superadmin')
 
-    if (!countErr && features.maxUsers !== Infinity && (currentCount ?? 0) >= features.maxUsers) {
+    const isEnterprise = features.planId === 'enterprise'
+    const isUnlimited = isEnterprise || features.maxUsers === Infinity
+
+    if (!countErr && !isUnlimited && (currentCount ?? 0) >= features.maxUsers) {
       return NextResponse.json(
         {
           error: `Has alcanzado el límite de ${features.maxUsers} usuario(s) permitidos en tu Plan ${features.name}. Para incorporar más colaboradores (cajeros, bodegueros o vendedores), actualiza tu suscripción a Plan Pro o Enterprise.`,

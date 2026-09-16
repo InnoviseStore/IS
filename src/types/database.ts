@@ -55,7 +55,7 @@ export function getRoleLabel(role?: string | null): string {
     case 'superadmin':
       return 'Super Administrador (SaaS Global)'
     case 'owner':
-      return 'Propietario / Dueño de Tienda'
+      return 'Usuario Admin'
     case 'admin':
       return 'Administrador de Tienda'
     case 'cashier':
@@ -278,6 +278,7 @@ export interface QuotationItem {
   sku: string | null
   unit_price_usd: number
   quantity: number
+  discount_percent?: number
   subtotal_usd: number
 }
 

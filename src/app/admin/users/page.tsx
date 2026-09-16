@@ -112,8 +112,15 @@ export default function AdminUsersPage() {
         throw new Error(data.error || 'Error al cargar el equipo.')
       }
       setTeam(data.team || [])
-      setMaxUsers(data.maxUsers ?? 1)
-      setPlanName(data.planName || 'Básico')
+      const isUnlim = Boolean(
+        data.isUnlimited ||
+        data.planId === 'enterprise' ||
+        data.maxUsers === -1 ||
+        data.maxUsers === null ||
+        (typeof data.planName === 'string' && data.planName.toLowerCase().includes('enterprise'))
+      )
+      setMaxUsers(isUnlim ? Infinity : (data.maxUsers ?? 1))
+      setPlanName(data.planName || (isUnlim ? 'Enterprise' : 'Básico'))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error desconocido.')
     } finally {
@@ -262,9 +269,9 @@ export default function AdminUsersPage() {
     }
   }
 
-  const isUnlimited = !Number.isFinite(maxUsers)
+  const isUnlimited = !Number.isFinite(maxUsers) || maxUsers === -1 || (Boolean(planName) && planName.toLowerCase().includes('enterprise'))
   const isLimitReached = !isUnlimited && team.length >= maxUsers
-  const usagePercentage = isUnlimited ? 20 : Math.min(100, Math.round((team.length / maxUsers) * 100))
+  const usagePercentage = isUnlimited ? Math.min(100, team.length * 10) : Math.min(100, Math.round((team.length / maxUsers) * 100))
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
