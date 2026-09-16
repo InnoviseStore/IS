@@ -168,10 +168,11 @@ export default function QuotationsPage() {
     const text = `📄 *Cotización ${q.quotation_number}* - ${tenant?.name ?? 'Innovise Store'}\n\n` +
       `📅 Válida hasta: ${formatDate(q.valid_until)}\n\n` +
       `📦 *Productos:*\n` +
-      q.items.map((i) => `• ${i.quantity}x ${i.name} — $${(i.unit_price_usd * i.quantity).toFixed(2)}`).join('\n') +
-      `\n\n💰 *Total: $${q.total_usd.toFixed(2)} USD | Bs. ${q.total_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}*\n` +
-      `📊 Tasa aplicada: Bs. ${q.exchange_rate.toFixed(2)}/USD\n\n` +
-      `_Para confirmar tu pedido o solicitar factura contáctanos directamente._`
+      q.items.map((i) => `• ${i.quantity}x ${i.name} — $${(i.unit_price_usd * i.quantity).toFixed(2)} USD`).join('\n') +
+      `\n\n💰 *Total Estimado: $${q.total_usd.toFixed(2)} USD | Bs. ${q.total_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}*\n` +
+      `📊 Tasa referencial aplicada: Bs. ${q.exchange_rate.toFixed(2)}/USD\n\n` +
+      `💡 *Nota:* Los pagos o abonos en Bolívares se calculan a la tasa oficial del BCV del día en que se efectúen.\n\n` +
+      `_Para confirmar tu pedido o solicitar factura formal, contáctanos respondiendo a este mensaje._`
 
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }

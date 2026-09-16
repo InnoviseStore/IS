@@ -38,6 +38,7 @@ export interface WhatsAppOrderPayload {
   totalVes: number;
   exchangeRate: number;
   config: WhatsAppConfig;
+  discountTotalUsd?: number;
 }
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ export function generateWhatsAppMessage(
   totalVes: number,
   exchangeRate: number,
   storeName: string,
+  discountTotalUsd?: number,
 ): string {
   const lines: string[] = [];
 
@@ -125,11 +127,20 @@ export function generateWhatsAppMessage(
   }
   lines.push('');
 
+  // Descuento si aplica
+  if (discountTotalUsd && discountTotalUsd > 0) {
+    lines.push(`🎉 *Descuento Especial:* -$${formatUsd(discountTotalUsd)} USD`);
+  }
+
   // Totals
   lines.push(
-    `💰 *Total: $${formatUsd(totalUsd)} USD | Bs. ${formatVes(totalVes)}*`,
+    `💰 *Total a Pagar: $${formatUsd(totalUsd)} USD | Bs. ${formatVes(totalVes)}*`,
   );
   lines.push(`📊 Tasa BCV aplicada: Bs. ${formatVes(exchangeRate)}/USD`);
+
+  // Advertencia de abonos con tasa BCV del día
+  lines.push('');
+  lines.push(`💡 *Nota de Pago / Abonos:* Si realizas un abono o pago parcial en Bolívares, este se calcula a la *tasa oficial del BCV del día* en que efectúes el abono.`);
 
   // Optional notes
   if (customer.notes && customer.notes.trim().length > 0) {
@@ -166,6 +177,7 @@ export function buildWhatsAppCheckoutUrl(payload: WhatsAppOrderPayload): string 
     payload.totalVes,
     payload.exchangeRate,
     payload.config.storeName,
+    payload.discountTotalUsd,
   );
   return createWhatsAppUrl(payload.config.phone, message);
 }

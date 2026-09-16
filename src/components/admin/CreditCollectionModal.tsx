@@ -23,6 +23,7 @@ export interface InitialCreditSaleInfo {
   paidUsd: number
   creditAmountUsd: number
   dueDate: string
+  discountAmountUsd?: number
   items: { name: string; quantity: number; unitPrice: number }[]
   payments: { method: string; amountUsd: number }[]
 }
@@ -47,13 +48,15 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
     totalPaidUsd: number
     pendingDebtUsd: number
     dueDateStr: string
+    discountAmountUsd: number
   }>({
     items: initialSaleInfo?.items ?? [],
     payments: initialSaleInfo?.payments ?? [],
     totalPurchaseUsd: initialSaleInfo?.totalUsd ?? customer.current_debt_usd,
     totalPaidUsd: initialSaleInfo?.paidUsd ?? 0,
     pendingDebtUsd: initialSaleInfo?.creditAmountUsd ?? customer.current_debt_usd,
-    dueDateStr: initialSaleInfo?.dueDate ? formatDate(initialSaleInfo.dueDate) : formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+    dueDateStr: initialSaleInfo?.dueDate ? formatDate(initialSaleInfo.dueDate) : formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+    discountAmountUsd: initialSaleInfo?.discountAmountUsd ?? 0,
   })
 
   // Cargar órdenes a crédito históricas si no viene de una venta inmediata
@@ -109,7 +112,8 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
           totalPurchaseUsd: totalOrder,
           totalPaidUsd: totalPaid,
           pendingDebtUsd: customer.current_debt_usd > 0 ? customer.current_debt_usd : Math.max(0, totalOrder - totalPaid),
-          dueDateStr: dueDateFormatted
+          dueDateStr: dueDateFormatted,
+          discountAmountUsd: Number(activeOrder.discount_total_usd) || 0,
         })
       }
     } catch (e) {
@@ -143,16 +147,23 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
     const pendingVes = (pendingUsd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const formattedUsd = `$${pendingUsd.toFixed(2)} USD`
 
+    const discountLine = saleDetails.discountAmountUsd > 0
+      ? `🎉 Descuento especial: -$${saleDetails.discountAmountUsd.toFixed(2)} USD\n`
+      : ''
+    const bcvNotice = `💡 *Condición de Abono:* Todo abono o pago en Bolívares se liquida a la *tasa oficial del BCV del día* en que realices el pago.`
+
     if (!includeDetails) {
       // Formato Resumen
       return `👋 Hola *${customer.full_name}*, te saludamos cordialmente de *${storeName}*.
 
 Te recordamos que mantienes un saldo pendiente a crédito en nuestro comercio por un total de:
 💰 *${formattedUsd}* (Aprox. Bs. ${pendingVes} a tasa oficial BCV).
-
+${discountLine}
 📅 *Fecha límite de pago:* ${saleDetails.dueDateStr}
 
-Agradecemos tu pronta confirmación para conciliar tu cuenta. Si ya realizaste el pago, por favor haznos llegar el comprobante. ¡Muchas gracias por tu confianza! 🙌`
+${bcvNotice}
+
+Agradecemos tu confirmación para conciliar tu cuenta. Si ya realizaste el pago, por favor haznos llegar el comprobante. ¡Muchas gracias por tu confianza! 🙌`
     }
 
     // Formato Detallado con productos y abonos
@@ -181,9 +192,11 @@ Compartimos contigo el estado detallado de tu compra a crédito:
 ${itemsBlock ? `${itemsBlock}\n` : ''}${paymentsBlock}
 📊 *Resumen de Cuenta:*
 • Total Compra: $${saleDetails.totalPurchaseUsd.toFixed(2)} USD
-• Total Abonado: $${saleDetails.totalPaidUsd.toFixed(2)} USD
+${saleDetails.discountAmountUsd > 0 ? `• 🎉 Descuento Aplicado: -$${saleDetails.discountAmountUsd.toFixed(2)} USD\n` : ''}• Total Abonado: $${saleDetails.totalPaidUsd.toFixed(2)} USD
 • 💰 *Saldo Pendiente por Pagar: ${formattedUsd}* (Bs. ${pendingVes})
 • 📅 *Fecha Límite de Pago:* ${saleDetails.dueDateStr}
+
+${bcvNotice}
 
 Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos envíes el comprobante al completar tu transferencia. ¡Feliz día y gracias por preferirnos! ✨`
   }, [customer.full_name, tenant?.name, saleDetails, exchangeRate, includeDetails])

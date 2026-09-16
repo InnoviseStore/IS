@@ -21,10 +21,13 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  DollarSign,
+  CreditCard,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
+import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
 
 interface OrderItem {
   id: string
@@ -69,12 +72,13 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'completed' | 'cancelled' | 'all'>('pending')
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'credit' | 'completed' | 'cancelled' | 'all'>('pending')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({})
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [abonoOrder, setAbonoOrder] = useState<OrderRecord | null>(null)
 
   const loadOrders = useCallback(async (isRefresh = false) => {
     if (!tenant) return
@@ -124,6 +128,8 @@ export default function AdminOrdersPage() {
   const stats = useMemo(() => {
     let pendingCount = 0
     let pendingUsd = 0
+    let creditCount = 0
+    let creditUsd = 0
     let completedCount = 0
     let completedUsd = 0
 
@@ -131,13 +137,18 @@ export default function AdminOrdersPage() {
       if (o.status === 'pending') {
         pendingCount++
         pendingUsd += Number(o.total_usd) || 0
+      } else if (o.status === 'credit' || o.payment_condition === 'credit_7d') {
+        creditCount++
+        const breakdown = Array.isArray(o.payment_breakdown) ? o.payment_breakdown : []
+        const pagado = breakdown.reduce((acc: number, it: any) => it.method === 'credit_7d' ? acc : acc + (Number(it.amount_usd) || 0), 0)
+        creditUsd += Math.max(0, (Number(o.total_usd) || 0) - pagado)
       } else if (o.status === 'completed') {
         completedCount++
         completedUsd += Number(o.total_usd) || 0
       }
     })
 
-    return { pendingCount, pendingUsd, completedCount, completedUsd }
+    return { pendingCount, pendingUsd, creditCount, creditUsd, completedCount, completedUsd }
   }, [orders])
 
   // Cancelar orden (marcar como cancelada)
@@ -359,6 +370,19 @@ export default function AdminOrdersPage() {
 
           <button
             type="button"
+            onClick={() => setStatusFilter('credit')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+              statusFilter === 'credit'
+                ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>A Crédito / Abonos</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setStatusFilter('completed')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
               statusFilter === 'completed'
@@ -436,12 +460,24 @@ export default function AdminOrdersPage() {
               ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(`¡Hola ${cust.name}! Te escribimos de ${tenant?.name || 'la tienda'} referente a tu pedido #${order.order_number}.`)}`
               : null
 
+            const breakdown = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
+            const pagadoPrevioUsd = breakdown.reduce((acc: number, item: any) => {
+              if (item.method === 'credit_7d') return acc
+              return acc + (Number(item.amount_usd) || 0)
+            }, 0)
+            const totalUsd = Number(order.total_usd) || 0
+            const saldoPendienteUsd = Math.max(0, totalUsd - pagadoPrevioUsd)
+            const isCreditSale = order.status === 'credit' || order.payment_condition === 'credit_7d'
+            const canAbonar = isCreditSale || (order.status !== 'cancelled' && saldoPendienteUsd > 0.01)
+
             return (
               <div
                 key={order.id}
                 className={`glass-card rounded-3xl border transition-all duration-200 overflow-hidden ${
                   order.status === 'pending'
                     ? 'border-amber-300/80 dark:border-amber-700/60 bg-white/90 dark:bg-slate-900/90 shadow-md shadow-amber-500/5'
+                    : isCreditSale
+                    ? 'border-purple-300/80 dark:border-purple-700/60 bg-white/90 dark:bg-slate-900/90 shadow-md shadow-purple-500/5'
                     : 'border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80'
                 }`}
               >
@@ -459,7 +495,14 @@ export default function AdminOrdersPage() {
                       </span>
                     )}
 
-                    {order.status === 'completed' && (
+                    {isCreditSale && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60">
+                        <CreditCard className="w-3 h-3" />
+                        <span>A Crédito (7 días)</span>
+                      </span>
+                    )}
+
+                    {order.status === 'completed' && !isCreditSale && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                         <CheckCircle2 className="w-3 h-3" />
                         <span>Facturado</span>
@@ -542,10 +585,30 @@ export default function AdminOrdersPage() {
                       <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
                         Bs. {Number(order.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
+                      {saldoPendienteUsd > 0.01 && (
+                        <div className="mt-1 flex items-center justify-start lg:justify-end gap-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Resta:</span>
+                          <span className="text-xs font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900">
+                            ${saldoPendienteUsd.toFixed(2)} USD
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Botones de acción rápida */}
                     <div className="flex flex-col sm:flex-row items-center gap-2">
+                      {canAbonar && (
+                        <button
+                          type="button"
+                          onClick={() => setAbonoOrder(order)}
+                          className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md shadow-emerald-500/25 active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Registrar abono a esta factura"
+                        >
+                          <DollarSign className="w-4 h-4" />
+                          <span>Abonar</span>
+                        </button>
+                      )}
+
                       {order.status === 'pending' && (
                         <button
                           type="button"
@@ -662,6 +725,19 @@ export default function AdminOrdersPage() {
         title="Generando Factura en PDF"
         message="Construyendo diseño formal con logo, datos fiscales del cliente y desglose en USD y Bs. oficiales..."
       />
+
+      {/* Modal para Registrar Abonos */}
+      {abonoOrder && (
+        <PaymentAbonoModal
+          isOpen={Boolean(abonoOrder)}
+          onClose={() => setAbonoOrder(null)}
+          order={abonoOrder}
+          exchangeRate={exchangeRate}
+          onAbonoSuccess={() => {
+            loadOrders(true)
+          }}
+        />
+      )}
     </div>
   )
 }

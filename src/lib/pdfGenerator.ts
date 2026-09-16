@@ -37,12 +37,25 @@ async function getBase64ImageFromUrl(imageUrl: string): Promise<string | null> {
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas')
-        canvas.width = img.width
-        canvas.height = img.height
+        const MAX_WIDTH = 240
+        const MAX_HEIGHT = 160
+        let width = img.width || 200
+        let height = img.height || 100
+
+        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+          const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height)
+          width = Math.round(width * ratio)
+          height = Math.round(height * ratio)
+        }
+
+        canvas.width = width
+        canvas.height = height
         const ctx = canvas.getContext('2d')
         if (ctx) {
-          ctx.drawImage(img, 0, 0)
-          const dataURL = canvas.toDataURL('image/png')
+          // Fondo blanco en caso de transparencias en JPEG
+          ctx.drawImage(img, 0, 0, width, height)
+          // Usar JPEG comprimido al 75% para reducir el peso drásticamente
+          const dataURL = canvas.toDataURL('image/jpeg', 0.75)
           resolve(dataURL)
           return
         }
@@ -91,6 +104,7 @@ export async function generateOrderPdf({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
+    compress: true,
   })
 
   const settings = (tenant?.settings as Record<string, unknown>) || {}
@@ -113,7 +127,7 @@ export async function generateOrderPdf({
     try {
       const base64Logo = await getBase64ImageFromUrl(logoUrl)
       if (base64Logo) {
-        doc.addImage(base64Logo, 'PNG', 14, currentY, 24, 24)
+        doc.addImage(base64Logo, 'JPEG', 14, currentY, 24, 24, undefined, 'FAST')
       }
     } catch {
       // Fallback without image
@@ -370,6 +384,7 @@ export async function generateQuotationPdf({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
+    compress: true,
   })
 
   const settings = (tenant?.settings as Record<string, unknown>) || {}
@@ -392,7 +407,7 @@ export async function generateQuotationPdf({
     try {
       const base64Logo = await getBase64ImageFromUrl(logoUrl)
       if (base64Logo) {
-        doc.addImage(base64Logo, 'PNG', 14, currentY, 24, 24)
+        doc.addImage(base64Logo, 'JPEG', 14, currentY, 24, 24, undefined, 'FAST')
       }
     } catch {
       // Fallback

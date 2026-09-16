@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Customer } from '@/types/database'
+import Link from 'next/link'
 import { Search, Users, MessageCircle, Plus, Pencil, Trash2 } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal } from '@/components/admin/CreditCollectionModal'
@@ -153,14 +154,23 @@ export default function CustomersPage() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         {c.current_debt_usd > 0 ? (
-                          <button
-                            onClick={() => setCollectionCustomer(c)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer"
-                            title="Gestionar cobro detallado por WhatsApp"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            Cobrar
-                          </button>
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <button
+                              onClick={() => setCollectionCustomer(c)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer"
+                              title="Gestionar cobro detallado por WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              Cobrar
+                            </button>
+                            <Link
+                              href={`/admin/orders?status=credit`}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition"
+                              title="Ver facturas y registrar abonos"
+                            >
+                              Abonar
+                            </Link>
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-400 font-medium">Al día</span>
                         )}

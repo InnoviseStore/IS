@@ -139,6 +139,8 @@ export interface Order {
   updated_at: string
 }
 
+export type OrderRecord = Order
+
 // ─── Order Item ───────────────────────────────────────────────────────────────
 export interface OrderItem {
   id: string

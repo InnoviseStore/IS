@@ -260,6 +260,7 @@ export function SplitPaymentModal({
           paidUsd: paidUsd,
           creditAmountUsd: creditAmountUsd,
           dueDate: dueDate,
+          discountAmountUsd: discountAmountUsd,
           items: cartItems.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.unit_price_usd })),
           payments: validPayments.map((p) => ({
             method: p.method,
