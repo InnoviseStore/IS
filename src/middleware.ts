@@ -82,7 +82,7 @@ export async function middleware(request: NextRequest) {
   supabaseResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   supabaseResponse.headers.set(
     'Permissions-Policy',
-    'camera=(self), microphone=(), geolocation=(), interest-cohort=()'
+    'camera=(self), microphone=(), geolocation=(self), interest-cohort=()'
   )
   supabaseResponse.headers.set(
     'Strict-Transport-Security',

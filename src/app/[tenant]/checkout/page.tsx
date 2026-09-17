@@ -105,29 +105,53 @@ export default function CheckoutPage() {
   const [isLocating, setIsLocating] = useState(false)
   const [locationSuccess, setLocationSuccess] = useState(false)
 
-  // Geolocalización del usuario para Delivery Local
+  // Geolocalización del usuario para Delivery Local con reintento y fallback
   const handleGetDeviceLocation = () => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       alert('Tu navegador o dispositivo no soporta geolocalización.')
       return
     }
     setIsLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const coords = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        }
-        setDelivery(prev => ({ ...prev, delivery_coords: coords }))
-        setLocationSuccess(true)
-        setIsLocating(false)
-      },
-      (error) => {
-        console.warn('Error al obtener ubicación GPS:', error)
+
+    const onLocationSuccess = (position: GeolocationPosition) => {
+      const coords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      }
+      setDelivery(prev => ({ ...prev, delivery_coords: coords }))
+      setLocationSuccess(true)
+      setIsLocating(false)
+    }
+
+    const onLocationError = (error: GeolocationPositionError) => {
+      if (error.code === error.TIMEOUT || error.code === error.POSITION_UNAVAILABLE) {
+        navigator.geolocation.getCurrentPosition(
+          onLocationSuccess,
+          (fallbackErr) => {
+            setIsLocating(false)
+            if (fallbackErr.code === fallbackErr.PERMISSION_DENIED) {
+              alert('Permiso de ubicación denegado. Por favor permite el acceso en tu navegador o escribe tu dirección.')
+            } else {
+              alert('No se pudo acceder a tu ubicación GPS en este momento. Puedes ingresar tu dirección escrita.')
+            }
+          },
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        )
+        return
+      }
+
+      setIsLocating(false)
+      if (error.code === error.PERMISSION_DENIED) {
+        alert('Permiso de ubicación denegado. Por favor permite el acceso a tu ubicación en los ajustes de tu navegador o escribe tu dirección.')
+      } else {
         alert('No se pudo acceder a tu ubicación GPS. Asegúrate de permitir el permiso de ubicación en tu navegador o escribe tu dirección.')
-        setIsLocating(false)
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      }
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      onLocationSuccess,
+      onLocationError,
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
     )
   }
 

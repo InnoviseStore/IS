@@ -135,28 +135,53 @@ export default function CartDrawer({
     agencyAddress?: string;
   }>({});
 
-  // Geolocalización del usuario para Delivery Bqto
+  // Geolocalización del usuario para Delivery Bqto con soporte y reintento
   function handleGetLocation() {
-    if (!navigator.geolocation) {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
       alert('Tu navegador no soporta geolocalización.');
       return;
     }
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setDeliveryCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setLocationSuccess(true);
-        setIsLocating(false);
-      },
-      (error) => {
-        console.warn('Error al obtener ubicación:', error);
+
+    const onLocationSuccess = (position: GeolocationPosition) => {
+      setDeliveryCoords({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+      setLocationSuccess(true);
+      setIsLocating(false);
+    };
+
+    const onLocationError = (error: GeolocationPositionError) => {
+      // Si falló por timeout o alta precisión (frecuente en PCs/laptops o señal débil), reintentar con red/wifi
+      if (error.code === error.TIMEOUT || error.code === error.POSITION_UNAVAILABLE) {
+        navigator.geolocation.getCurrentPosition(
+          onLocationSuccess,
+          (fallbackErr) => {
+            setIsLocating(false);
+            if (fallbackErr.code === fallbackErr.PERMISSION_DENIED) {
+              alert('Permiso denegado. Por favor permite el acceso a tu ubicación en el navegador o escribe tu dirección.');
+            } else {
+              alert('No se pudo obtener tu ubicación GPS en este momento. Puedes ingresar tu dirección escrita.');
+            }
+          },
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        );
+        return;
+      }
+
+      setIsLocating(false);
+      if (error.code === error.PERMISSION_DENIED) {
+        alert('Permiso de ubicación denegado. Por favor permite el acceso a tu ubicación en los ajustes del navegador o escribe tu dirección.');
+      } else {
         alert('No se pudo obtener tu ubicación precisa. Puedes ingresar tu dirección escrita.');
-        setIsLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      onLocationSuccess,
+      onLocationError,
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
     );
   }
 
