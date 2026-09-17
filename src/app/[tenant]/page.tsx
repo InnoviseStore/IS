@@ -90,33 +90,34 @@ async function getStorefrontData(slug: string) {
   const isOutdated = !lastSync || !isToday || new Date(lastSync).getTime() < thirtyMinutesAgo
 
   if (isOutdated) {
-    try {
-      const bcvData = await fetchLiveBcvRate()
-      exchangeRate = bcvData.rate
-      fechaValor = bcvData.fechaValor
-
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (supabaseUrl && serviceRoleKey) {
-        const adminClient = createPublicClient(supabaseUrl, serviceRoleKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        })
-        await adminClient
-          .from('tenants')
-          .update({
-            currency_rate_bcv: bcvData.rate,
-            settings: {
-              ...settings,
-              bcv_fecha_valor: bcvData.fechaValor,
-              bcv_last_sync: bcvData.timestamp,
-              bcv_source: bcvData.source,
-            },
+    // Sincronización en segundo plano no bloqueante (Fire & Forget)
+    // El catálogo responde inmediatamente con la tasa guardada en BD sin esperar al scraping externo
+    void (async () => {
+      try {
+        const bcvData = await fetchLiveBcvRate()
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        if (supabaseUrl && serviceRoleKey) {
+          const adminClient = createPublicClient(supabaseUrl, serviceRoleKey, {
+            auth: { autoRefreshToken: false, persistSession: false },
           })
-          .eq('id', tenant.id)
+          await adminClient
+            .from('tenants')
+            .update({
+              currency_rate_bcv: bcvData.rate,
+              settings: {
+                ...settings,
+                bcv_fecha_valor: bcvData.fechaValor,
+                bcv_last_sync: bcvData.timestamp,
+                bcv_source: bcvData.source,
+              },
+            })
+            .eq('id', tenant.id)
+        }
+      } catch (e) {
+        console.warn('Storefront background BCV sync notice:', (e as Error).message)
       }
-    } catch (e) {
-      console.warn('Storefront SSR auto-sync error:', (e as Error).message)
-    }
+    })()
   }
 
   if (!fechaValor) {
