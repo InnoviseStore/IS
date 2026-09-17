@@ -209,18 +209,31 @@ export async function POST(req: Request) {
     }
 
     // 8. Buscar cliente en la tienda por su número telefónico
-    // Comparamos los últimos 7 a 10 dígitos para evitar inconsistencias de formato (+58, 0424, 424)
-    const last7 = senderDigits.slice(-7)
-    const last10 = senderDigits.slice(-10)
-
-    const { data: customerCandidates } = await supabase
+    // Obtenemos los clientes del tenant y comparamos eliminando guiones, espacios y códigos de país
+    const { data: tenantCustomers } = await supabase
       .from('customers')
-      .select('*')
+      .select('id, full_name, phone, current_debt_usd, is_active')
       .eq('tenant_id', tenant.id)
-      .or(`phone.ilike.%${last7}%,phone.ilike.%${last10}%`)
-      .limit(5)
 
-    const customer = customerCandidates?.[0]
+    const customer = tenantCustomers?.find((c) => {
+      if (!c.phone) return false
+      const cleanDbPhone = c.phone.replace(/\D/g, '')
+      if (!cleanDbPhone || cleanDbPhone.length < 7) return false
+
+      // 1. Coincidencia exacta de dígitos
+      if (cleanDbPhone === senderDigits) return true
+
+      // 2. Coincidencia de los últimos 7 a 10 dígitos (ignora si tiene 0424, 58424, etc.)
+      const dbLast7 = cleanDbPhone.slice(-7)
+      const senderLast7 = senderDigits.slice(-7)
+      if (dbLast7 === senderLast7) return true
+
+      const dbLast10 = cleanDbPhone.slice(-10)
+      const senderLast10 = senderDigits.slice(-10)
+      if (dbLast10.length === 10 && senderLast10.length === 10 && dbLast10 === senderLast10) return true
+
+      return false
+    })
 
     // 9. Ejecutar la respuesta según la intención detectada
 
