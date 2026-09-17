@@ -275,6 +275,7 @@ export default function SettingsPage() {
         setWaStatus('connecting')
       } else if (data.status === 'connected') {
         setWaStatus('connected')
+        setWaQrCode(null)
       }
     } catch (e) {
       console.error(e)
@@ -282,6 +283,40 @@ export default function SettingsPage() {
       setWaLoading(false)
     }
   }
+
+  // Cargar estado real de WhatsApp al abrir la pestaña
+  useEffect(() => {
+    if (activeSection === 'whatsapp' && tenant) {
+      handleRefreshQr()
+    }
+  }, [activeSection, tenant?.id])
+
+  // Sondeo automático cada 4 segundos mientras se esté esperando el escaneo del QR
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null
+    if (activeSection === 'whatsapp' && waStatus === 'connecting' && tenant) {
+      timer = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/admin/whatsapp/instance?tenant_id=${tenant.id}`)
+          const data = await res.json()
+          if (data.status === 'connected') {
+            setWaStatus('connected')
+            setWaQrCode(null)
+            setTestSuccess('¡WhatsApp vinculado exitosamente!')
+            setTimeout(() => setTestSuccess(null), 5000)
+          } else if (data.qrcode && data.qrcode !== waQrCode) {
+            setWaQrCode(data.qrcode)
+          }
+        } catch (err) {
+          console.warn('Error polling whatsapp status:', err)
+        }
+      }, 4000)
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [activeSection, waStatus, tenant?.id, waQrCode])
+
 
   async function handleSendTestMessage() {
     if (!tenant || !testPhone.trim()) {
