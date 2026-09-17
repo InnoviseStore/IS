@@ -32,7 +32,11 @@ export default function CashClosingPage() {
   const [alreadyClosed, setAlreadyClosed] = useState(false)
   const [closedAt, setClosedAt] = useState<string | null>(null)
 
-  const today = new Date().toISOString().split('T')[0]
+  const now = new Date()
+  const startOfToday = new Date(now)
+  startOfToday.setHours(0, 0, 0, 0)
+  const todayStartIso = startOfToday.toISOString()
+  const localToday = `${startOfToday.getFullYear()}-${String(startOfToday.getMonth() + 1).padStart(2, '0')}-${String(startOfToday.getDate()).padStart(2, '0')}`
 
   const loadOrders = useCallback(async () => {
     if (!tenant) return
@@ -44,7 +48,7 @@ export default function CashClosingPage() {
       .from('cash_closings')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('closing_date', today)
+      .eq('closing_date', localToday)
       .eq('status', 'closed')
       .maybeSingle()
 
@@ -61,12 +65,12 @@ export default function CashClosingPage() {
       .select('*')
       .eq('tenant_id', tenant.id)
       .eq('status', 'completed')
-      .gte('created_at', today)
+      .gte('created_at', todayStartIso)
       .order('created_at', { ascending: false })
 
     setOrders((data ?? []) as Order[])
     setLoading(false)
-  }, [tenant, today])
+  }, [tenant, localToday, todayStartIso])
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
@@ -84,7 +88,7 @@ export default function CashClosingPage() {
 
     await supabase.from('cash_closings').insert({
       tenant_id: tenant.id,
-      closing_date: today,
+      closing_date: localToday,
       status: 'closed',
       summary_by_method: summary,
       subtotal_usd: parseFloat(subtotalUsd.toFixed(4)),

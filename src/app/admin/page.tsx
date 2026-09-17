@@ -76,8 +76,15 @@ export default function AdminDashboard() {
     if (!tenant) return
     const supabase = createClient()
     const now = new Date()
-    const today = now.toISOString().split('T')[0]
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+    const startOfToday = new Date(now)
+    startOfToday.setHours(0, 0, 0, 0)
+    const todayStartIso = startOfToday.toISOString()
+
+    const localToday = `${startOfToday.getFullYear()}-${String(startOfToday.getMonth() + 1).padStart(2, '0')}-${String(startOfToday.getDate()).padStart(2, '0')}`
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+    const monthStartIso = startOfMonth.toISOString()
+    const localMonthStart = `${startOfMonth.getFullYear()}-${String(startOfMonth.getMonth() + 1).padStart(2, '0')}-01`
 
     const [
       { data: ordersRecent },
@@ -91,17 +98,17 @@ export default function AdminDashboard() {
       supabase.from('orders').select('total_usd, order_number, status, created_at, id')
         .eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10),
       supabase.from('orders').select('total_usd')
-        .eq('tenant_id', tenant.id).gte('created_at', today),
+        .eq('tenant_id', tenant.id).gte('created_at', todayStartIso).neq('status', 'cancelled'),
       supabase.from('orders').select('total_usd')
-        .eq('tenant_id', tenant.id).gte('created_at', firstDayOfMonth).eq('status', 'completed'),
+        .eq('tenant_id', tenant.id).gte('created_at', monthStartIso).eq('status', 'completed'),
       supabase.from('expenses').select('amount_usd')
-        .eq('tenant_id', tenant.id).gte('expense_date', firstDayOfMonth),
+        .eq('tenant_id', tenant.id).gte('expense_date', localMonthStart),
       supabase.from('products').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant.id).lt('stock', 5).eq('is_active', true),
       supabase.from('orders').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant.id).eq('payment_condition', 'credit_7d').eq('status', 'credit'),
       supabase.from('cash_closings').select('id')
-        .eq('tenant_id', tenant.id).eq('closing_date', today).eq('status', 'closed').maybeSingle(),
+        .eq('tenant_id', tenant.id).eq('closing_date', localToday).eq('status', 'closed').maybeSingle(),
     ])
 
     const totalToday = (ordersTodayData ?? []).reduce((s, o) => s + (o.total_usd ?? 0), 0)

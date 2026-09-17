@@ -26,9 +26,15 @@ import {
   Plus,
   Trash2,
   Globe,
+  ChevronDown,
+  ChevronRight,
+  Sliders,
+  Layers,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
+
+type SectionKey = 'identity' | 'payments' | 'security' | 'about' | 'plan'
 
 export default function SettingsPage() {
   const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
@@ -41,6 +47,32 @@ export default function SettingsPage() {
   const [showPin, setShowPin] = useState(false)
 
   const isOwnerOrAdmin = profile?.role === 'owner' || profile?.role === 'admin' || profile?.role === 'superadmin'
+
+  // Estados para secciones colapsables (botones desplegables)
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
+    identity: true,
+    payments: true,
+    security: false,
+    about: false,
+    plan: false,
+  })
+
+  function toggleSection(key: SectionKey) {
+    setOpenSections(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  function setAllSections(open: boolean) {
+    setOpenSections({
+      identity: open,
+      payments: open,
+      security: open,
+      about: open,
+      plan: open,
+    })
+  }
 
   // Estados para la página 'Nosotros'
   const [aboutTitle, setAboutTitle] = useState('')
@@ -194,749 +226,929 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl pb-12">
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Configuración de Tienda</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
-          Parámetros generales y contenido público de {tenant?.name}
-        </p>
+    <div className="space-y-6 max-w-4xl pb-16">
+      {/* Encabezado */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Configuración de Tienda
+          </h1>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+            Parámetros operativos, pasarela de pagos y contenido público de {tenant?.name}
+          </p>
+        </div>
+
+        {/* Botones de acción global para expandir/colapsar */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAllSections(true)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+          >
+            Expandir Todo
+          </button>
+          <button
+            type="button"
+            onClick={() => setAllSections(false)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+          >
+            Colapsar Todo
+          </button>
+        </div>
       </div>
 
-      <div className="glass-card p-6 sm:p-7 border border-slate-200/80 dark:border-slate-800/80">
-        <form onSubmit={handleSave} className="space-y-6">
-          {/* SECCIÓN 1: DATOS BÁSICOS */}
-          <div className="space-y-4">
-            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-              <Building2 className="w-4 h-4 text-blue-600" />
-              <span>1. Identidad y Canales</span>
-            </h2>
+      {/* Botones rápidos de acceso a funciones */}
+      <div className="flex flex-wrap items-center gap-2 p-2 rounded-2xl bg-white/60 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+        <button
+          type="button"
+          onClick={() => toggleSection('identity')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            openSections.identity
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          <span>1. Identidad</span>
+        </button>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                Nombre de la Tienda
-              </label>
-              <input
-                type="text"
-                disabled
-                value={tenant?.name ?? 'Innovise Store'}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm font-semibold cursor-not-allowed"
-              />
-            </div>
+        <button
+          type="button"
+          onClick={() => toggleSection('payments')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            openSections.payments
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70'
+          }`}
+        >
+          <CreditCard className="w-3.5 h-3.5" />
+          <span>2. Pagos & Catálogo</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${openSections.payments ? 'bg-blue-700 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'}`}>
+            {paymentAccounts.filter(a => a.enabled).length}
+          </span>
+        </button>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                Slug del Storefront (URL Pública)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  disabled
-                  value={`/${tenant?.slug ?? 'innovise'}`}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm cursor-not-allowed font-mono font-semibold"
-                />
-                <Link
-                  href={`/${tenant?.slug ?? 'innovise'}`}
-                  target="_blank"
-                  className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition flex items-center justify-center border border-blue-200 dark:border-blue-800/60"
-                  title="Abrir vitrina virtual"
-                >
-                  <ExternalLink className="w-5 h-5" />
-                </Link>
+        {isOwnerOrAdmin && (
+          <button
+            type="button"
+            onClick={() => toggleSection('security')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              openSections.security
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-500/20'
+                : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>3. Clave Admin</span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => toggleSection('about')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            openSections.about
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5" />
+          <span>4. Nosotros</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => toggleSection('plan')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            openSections.plan
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/70'
+          }`}
+        >
+          <Tag className="w-3.5 h-3.5" />
+          <span>5. Plan SaaS</span>
+        </button>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-5">
+        {/* ========================================================================= */}
+        {/* BOTÓN DESPLEGABLE 1: IDENTIDAD Y CANALES */}
+        {/* ========================================================================= */}
+        <div className="border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-900/50 backdrop-blur-md shadow-sm transition-all">
+          <button
+            type="button"
+            onClick={() => toggleSection('identity')}
+            className="w-full flex items-center justify-between p-4 sm:p-5 text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70 transition cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <Building2 className="w-5 h-5" />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                Teléfono WhatsApp (Pedidos Storefront)
-              </label>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="584121234567"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Formato internacional sin signos (ej. 584121234567).</p>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                  Tasa Oficial BCV (USD/VES)
-                </label>
-                <button
-                  type="button"
-                  onClick={handleLiveSync}
-                  disabled={isSyncingBcv}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBcv ? 'animate-spin' : ''}`} />
-                  Sincronizar ahora con bcv.org.ve
-                </button>
-              </div>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 dark:text-slate-400">Bs.</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-extrabold"
-                />
-              </div>
-              {bcvFechaValor && (
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">
-                  Fecha Valor oficial registrada: <strong className="text-slate-800 dark:text-slate-200">{bcvFechaValor}</strong>
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>1. Identidad y Canales Oficiales</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Nombre de la tienda, enlace público, WhatsApp y sincronización oficial BCV
                 </p>
-              )}
+              </div>
             </div>
-          </div>
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline-block text-xs font-bold text-slate-500 dark:text-slate-400">
+                {openSections.identity ? 'Ocultar' : 'Configurar'}
+              </span>
+              <div className="p-1 rounded-lg text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                {openSections.identity ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </div>
+            </div>
+          </button>
 
-          {/* SECCIÓN DE SEGURIDAD: CLAVE ADMIN (SOLO OWNER / ADMIN) */}
-          {isOwnerOrAdmin && (
-            <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
-              <div className="flex items-center justify-between">
+          {openSections.identity && (
+            <div className="p-5 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4 animate-in fade-in duration-150">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                    <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    <span>2. Clave de Administrador (Seguridad y Autorizaciones)</span>
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Clave exclusiva para autorizar la edición de facturas emitidas y operaciones sensibles de tu tienda.
-                  </p>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                    Nombre de la Tienda
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={tenant?.name ?? 'Innovise Store'}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm font-semibold cursor-not-allowed"
+                  />
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Solo Admin</span>
-                </span>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                    Slug del Storefront (URL Pública)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      disabled
+                      value={`/${tenant?.slug ?? 'innovise'}`}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 text-sm cursor-not-allowed font-mono font-semibold"
+                    />
+                    <Link
+                      href={`/${tenant?.slug ?? 'innovise'}`}
+                      target="_blank"
+                      className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition flex items-center justify-center border border-blue-200 dark:border-blue-800/60"
+                      title="Abrir vitrina virtual"
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                    </Link>
+                  </div>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                  Clave de la Tienda
+                  Teléfono WhatsApp Oficial (Pedidos Storefront)
                 </label>
-                <div className="relative max-w-sm">
-                  <input
-                    type={showPin ? 'text' : 'password'}
-                    value={adminSecurityPin}
-                    onChange={(e) => setAdminSecurityPin(e.target.value)}
-                    placeholder="Mínimo 4 caracteres (ej. 1234)"
-                    minLength={4}
-                    className="w-full px-4 pr-11 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="584121234567"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Formato internacional sin signos ni espacios (ej. 584121234567).</p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                    Tasa Oficial BCV (USD/VES)
+                  </label>
                   <button
                     type="button"
-                    onClick={() => setShowPin(!showPin)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
-                    title={showPin ? 'Ocultar clave' : 'Mostrar clave'}
+                    onClick={handleLiveSync}
+                    disabled={isSyncingBcv}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 cursor-pointer"
                   >
-                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBcv ? 'animate-spin' : ''}`} />
+                    Sincronizar ahora con bcv.org.ve
                   </button>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
-                  Esta clave es configurable por tienda y únicamente visible/editable por administradores y dueños.
-                </p>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 dark:text-slate-400">Bs.</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={rate}
+                    onChange={(e) => setRate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-extrabold"
+                  />
+                </div>
+                {bcvFechaValor && (
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">
+                    Fecha Valor oficial registrada: <strong className="text-slate-800 dark:text-slate-200">{bcvFechaValor}</strong>
+                  </p>
+                )}
               </div>
             </div>
           )}
+        </div>
 
-          {/* SECCIÓN 3: PÁGINA "NOSOTROS" EDITABLE */}
-          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
-            <div className="flex items-center justify-between">
+        {/* ========================================================================= */}
+        {/* BOTÓN DESPLEGABLE 2: MÓDULO DE PAGOS Y CHECKOUT DEL CATÁLOGO */}
+        {/* ========================================================================= */}
+        <div className="border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-900/50 backdrop-blur-md shadow-sm transition-all">
+          <button
+            type="button"
+            onClick={() => toggleSection('payments')}
+            className="w-full flex items-center justify-between p-4 sm:p-5 text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70 transition cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <CreditCard className="w-5 h-5" />
+              </div>
               <div>
-                <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>📖 3. Página Pública &quot;Nosotros&quot;</span>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>2. Módulo de Pagos y Checkout del Catálogo</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Personaliza lo que ofrece tu comercio a los visitantes del catálogo.
+                  Elige entre Pago Directo en Catálogo o WhatsApp, y configura tus cuentas bancarias y Binance
                 </p>
               </div>
-              <Link
-                href={`/${tenant?.slug ?? 'innovise'}/nosotros`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition"
-              >
-                <span>Ver Página Pública</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </Link>
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                Título Principal
-              </label>
-              <input
-                type="text"
-                value={aboutTitle}
-                onChange={(e) => setAboutTitle(e.target.value)}
-                placeholder="Ej. Sobre Innovise Store"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                ¿Qué ofrece tu tienda? (Descripción Detallada)
-              </label>
-              <textarea
-                rows={3}
-                value={aboutDescription}
-                onChange={(e) => setAboutDescription(e.target.value)}
-                placeholder="Explica tu propuesta, experiencia o rubro principal..."
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
-              />
-            </div>
-
-            {/* Los 3 Pilares */}
-            <div className="space-y-3 pt-2">
-              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
-                Los 3 Pilares y Beneficios Destacados:
-              </h3>
-
-              {/* Pilar 1: Envíos */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400">
-                  <Truck className="w-4 h-4" />
-                  <span>Pilar 1: Logística de Envíos</span>
-                </div>
-                <input
-                  type="text"
-                  value={aboutShippingText}
-                  onChange={(e) => setAboutShippingText(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
-                  placeholder="ENVÍOS A TODO EL PAÍS"
-                />
-                <textarea
-                  rows={2}
-                  value={aboutShippingSubtext}
-                  onChange={(e) => setAboutShippingSubtext(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
-                  placeholder="Detalle de agencias, zonas de entrega o delivery local..."
-                />
-              </div>
-
-              {/* Pilar 2: Precios */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                  <BadgePercent className="w-4 h-4" />
-                  <span>Pilar 2: Competitividad de Precios</span>
-                </div>
-                <input
-                  type="text"
-                  value={aboutPriceText}
-                  onChange={(e) => setAboutPriceText(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
-                  placeholder="EL MEJOR PRECIO DEL MERCADO"
-                />
-                <textarea
-                  rows={2}
-                  value={aboutPriceSubtext}
-                  onChange={(e) => setAboutPriceSubtext(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
-                  placeholder="Explicación de precios justos, ofertas o tasa BCV..."
-                />
-              </div>
-
-              {/* Pilar 3: Soporte */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-purple-600 dark:text-purple-400">
-                  <Headphones className="w-4 h-4" />
-                  <span>Pilar 3: Atención y Posventa</span>
-                </div>
-                <input
-                  type="text"
-                  value={aboutSupportText}
-                  onChange={(e) => setAboutSupportText(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
-                  placeholder="SOPORTE POSVENTA"
-                />
-                <textarea
-                  rows={2}
-                  value={aboutSupportSubtext}
-                  onChange={(e) => setAboutSupportSubtext(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
-                  placeholder="Garantía, atención por WhatsApp o cambios..."
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Módulo de Gestión de Pagos del Catálogo (Storefront Checkout) */}
-          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Módulo de Pagos y Checkout del Catálogo
-                </label>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Define cómo tus clientes completan sus compras en la vitrina virtual y qué datos de pago ven en pantalla.
-                </p>
-              </div>
-              <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
-                Plan Pro / Enterprise
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                {paymentAccounts.filter(a => a.enabled).length} cuentas activas
               </span>
-            </div>
-
-            {/* Selector de Modo de Checkout */}
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-slate-800/40 dark:to-indigo-950/20 border border-blue-200/60 dark:border-indigo-900/40 space-y-3">
-              <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
-                Modo de Compra de la Vitrina:
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div
-                  onClick={() => setCheckoutMode('direct_payment')}
-                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                    checkoutMode === 'direct_payment'
-                      ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md shadow-blue-500/10'
-                      : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-extrabold text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4" /> Pago Directo en Catálogo
-                    </span>
-                    {checkoutMode === 'direct_payment' && (
-                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    El cliente ve el botón <strong>&quot;Completar Compra&quot;</strong>, ingresa sus datos, elige entrega, ve tus cuentas bancarias y reporta su referencia de pago.
-                  </p>
-                </div>
-
-                <div
-                  onClick={() => setCheckoutMode('whatsapp_only')}
-                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                    checkoutMode === 'whatsapp_only'
-                      ? 'border-emerald-600 bg-white dark:bg-slate-800 shadow-md shadow-emerald-500/10'
-                      : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                      <Globe className="w-4 h-4" /> Solo WhatsApp
-                    </span>
-                    {checkoutMode === 'whatsapp_only' && (
-                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    El cliente arma su carrito y envía el pedido directamente por mensaje estructurado a tu WhatsApp oficial.
-                  </p>
-                </div>
+              <div className="p-1 rounded-lg text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                {openSections.payments ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </div>
             </div>
+          </button>
 
-            {/* Listado de Cuentas Receptoras */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                  Cuentas Receptoras Configuradas ({paymentAccounts.filter(a => a.enabled).length} activas):
+          {openSections.payments && (
+            <div className="p-5 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 space-y-5 animate-in fade-in duration-150">
+              {/* Selector de Modo de Checkout */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-slate-800/40 dark:to-indigo-950/20 border border-blue-200/60 dark:border-indigo-900/40 space-y-3">
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                  Modo de Compra de la Vitrina:
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newId = 'acc_' + Date.now()
-                    setPaymentAccounts([
-                      ...paymentAccounts,
-                      {
-                        id: newId,
-                        method: 'pago_movil',
-                        enabled: true,
-                        label: 'Nueva Cuenta / Pago Móvil',
-                        bank_name: '',
-                        phone: '',
-                        id_number: '',
-                        instructions: '',
-                      },
-                    ])
-                  }}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-xs font-bold transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Agregar Método
-                </button>
-              </div>
-
-              {paymentAccounts.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    No tienes métodos de pago configurados para el checkout. Haz clic en &quot;Agregar Método&quot; para añadir Pago Móvil, Transferencia, Zelle o Binance Pay.
-                  </p>
-                </div>
-              ) : (
-                paymentAccounts.map((account, index) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div
-                    key={account.id || index}
-                    className={`p-4 rounded-2xl border transition-all ${
-                      account.enabled
-                        ? 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-sm'
-                        : 'bg-slate-50/60 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 opacity-60'
+                    onClick={() => setCheckoutMode('direct_payment')}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      checkoutMode === 'direct_payment'
+                        ? 'border-blue-600 bg-white dark:bg-slate-800 shadow-md shadow-blue-500/10'
+                        : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
                     }`}
                   >
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700/60 mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400">
-                          {account.method === 'pago_movil' && <Smartphone className="w-4 h-4" />}
-                          {account.method === 'transferencia' && <Landmark className="w-4 h-4" />}
-                          {account.method === 'binance_pay' && <QrCode className="w-4 h-4" />}
-                          {account.method === 'zelle' && <Wallet className="w-4 h-4" />}
-                        </span>
-                        <input
-                          type="text"
-                          value={account.label || ''}
-                          onChange={(e) => {
-                            const updated = [...paymentAccounts]
-                            updated[index].label = e.target.value
-                            setPaymentAccounts(updated)
-                          }}
-                          placeholder="Etiqueta visible (ej. Pago Móvil Provincial)"
-                          className="font-bold text-xs text-slate-900 dark:text-white bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none px-1 py-0.5"
-                        />
-                      </div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-extrabold text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4" /> Pago Directo en Catálogo
+                      </span>
+                      {checkoutMode === 'direct_payment' && (
+                        <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      El cliente ve el botón <strong>&quot;Completar Compra&quot;</strong>, ingresa sus datos, elige entrega, ve tus cuentas bancarias y reporta su referencia de pago en la web.
+                    </p>
+                  </div>
 
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-600 dark:text-slate-300">
+                  <div
+                    onClick={() => setCheckoutMode('whatsapp_only')}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      checkoutMode === 'whatsapp_only'
+                        ? 'border-emerald-600 bg-white dark:bg-slate-800 shadow-md shadow-emerald-500/10'
+                        : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                        <Globe className="w-4 h-4" /> Solo WhatsApp
+                      </span>
+                      {checkoutMode === 'whatsapp_only' && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      El cliente arma su carrito y envía el pedido directamente por mensaje estructurado a tu WhatsApp oficial.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Listado de Cuentas Receptoras */}
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    Cuentas Receptoras Configuradas ({paymentAccounts.filter(a => a.enabled).length} activas):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newId = 'acc_' + Date.now()
+                      setPaymentAccounts([
+                        ...paymentAccounts,
+                        {
+                          id: newId,
+                          method: 'pago_movil',
+                          enabled: true,
+                          label: 'Nueva Cuenta / Pago Móvil',
+                          bank_name: '',
+                          phone: '',
+                          id_number: '',
+                          instructions: '',
+                        },
+                      ])
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-xs font-bold transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar Método
+                  </button>
+                </div>
+
+                {paymentAccounts.length === 0 ? (
+                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No tienes métodos de pago configurados para el checkout. Haz clic en &quot;Agregar Método&quot; para añadir Pago Móvil, Transferencia, Zelle o Binance Pay.
+                    </p>
+                  </div>
+                ) : (
+                  paymentAccounts.map((account, index) => (
+                    <div
+                      key={account.id || index}
+                      className={`p-4 rounded-2xl border transition-all ${
+                        account.enabled
+                          ? 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-sm'
+                          : 'bg-slate-50/60 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700/60 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400">
+                            {account.method === 'pago_movil' && <Smartphone className="w-4 h-4" />}
+                            {account.method === 'transferencia' && <Landmark className="w-4 h-4" />}
+                            {account.method === 'binance_pay' && <QrCode className="w-4 h-4" />}
+                            {account.method === 'zelle' && <Wallet className="w-4 h-4" />}
+                          </span>
                           <input
-                            type="checkbox"
-                            checked={account.enabled}
+                            type="text"
+                            value={account.label || ''}
                             onChange={(e) => {
                               const updated = [...paymentAccounts]
-                              updated[index].enabled = e.target.checked
+                              updated[index].label = e.target.value
                               setPaymentAccounts(updated)
                             }}
-                            className="rounded text-blue-600 focus:ring-blue-500"
+                            placeholder="Etiqueta visible (ej. Pago Móvil Provincial)"
+                            className="font-bold text-xs text-slate-900 dark:text-white bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none px-1 py-0.5"
                           />
-                          <span>{account.enabled ? 'Activo' : 'Pausado'}</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentAccounts(paymentAccounts.filter((_, i) => i !== index))
-                          }}
-                          className="text-slate-400 hover:text-rose-500 p-1 transition"
-                          title="Eliminar método"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
+                        </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                          Tipo de Método
-                        </label>
-                        <select
-                          value={account.method}
-                          onChange={(e) => {
-                            const updated = [...paymentAccounts]
-                            updated[index].method = e.target.value
-                            setPaymentAccounts(updated)
-                          }}
-                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                        >
-                          <option value="pago_movil">Pago Móvil (Bolívares)</option>
-                          <option value="transferencia">Transferencia Bancaria (Bolívares)</option>
-                          <option value="binance_pay">Binance Pay QR (USDT)</option>
-                          <option value="zelle">Zelle (USD)</option>
-                        </select>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-600 dark:text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={account.enabled}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].enabled = e.target.checked
+                                setPaymentAccounts(updated)
+                              }}
+                              className="rounded text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>{account.enabled ? 'Activo' : 'Pausado'}</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentAccounts(paymentAccounts.filter((_, i) => i !== index))
+                            }}
+                            className="text-slate-400 hover:text-rose-500 p-1 transition cursor-pointer"
+                            title="Eliminar método"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
 
-                      {account.method !== 'binance_pay' && account.method !== 'zelle' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                            Banco
+                            Tipo de Método
+                          </label>
+                          <select
+                            value={account.method}
+                            onChange={(e) => {
+                              const updated = [...paymentAccounts]
+                              updated[index].method = e.target.value
+                              setPaymentAccounts(updated)
+                            }}
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                          >
+                            <option value="pago_movil">Pago Móvil (Bolívares)</option>
+                            <option value="transferencia">Transferencia Bancaria (Bolívares)</option>
+                            <option value="binance_pay">Binance Pay QR (USDT)</option>
+                            <option value="zelle">Zelle (USD)</option>
+                          </select>
+                        </div>
+
+                        {account.method !== 'binance_pay' && account.method !== 'zelle' && (
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              Banco
+                            </label>
+                            <input
+                              type="text"
+                              value={account.bank_name || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].bank_name = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="Ej. Banco Provincial (0108)"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                            />
+                          </div>
+                        )}
+
+                        {account.method === 'pago_movil' && (
+                          <>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Teléfono Afiliado
+                              </label>
+                              <input
+                                type="text"
+                                value={account.phone || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].phone = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="0426-2485369"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Cédula / RIF del Titular
+                              </label>
+                              <input
+                                type="text"
+                                value={account.id_number || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].id_number = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="V-27.250.266"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {account.method === 'transferencia' && (
+                          <>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Número de Cuenta (20 dígitos)
+                              </label>
+                              <input
+                                type="text"
+                                value={account.account_number || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].account_number = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="01080119250100684672"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Titular de la Cuenta
+                              </label>
+                              <input
+                                type="text"
+                                value={account.account_holder || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].account_holder = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="Yiovanner Miguel Parra Ceballos"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Cédula / RIF
+                              </label>
+                              <input
+                                type="text"
+                                value={account.id_number || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].id_number = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="V-27.250.266"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {account.method === 'binance_pay' && (
+                          <div className="sm:col-span-2">
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                              URL de Imagen del Código QR Binance
+                            </label>
+                            <input
+                              type="text"
+                              value={account.qr_image_url || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentAccounts]
+                                updated[index].qr_image_url = e.target.value
+                                setPaymentAccounts(updated)
+                              }}
+                              placeholder="https://lh3.googleusercontent.com/... o enlace de tu QR"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono"
+                            />
+                          </div>
+                        )}
+
+                        {account.method === 'zelle' && (
+                          <>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Correo Electrónico de Zelle
+                              </label>
+                              <input
+                                type="email"
+                                value={account.email || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].email = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="tu-correo-zelle@ejemplo.com"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Nombre del Titular Zelle
+                              </label>
+                              <input
+                                type="text"
+                                value={account.account_holder || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].account_holder = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="Nombre y Apellido"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                            Instrucciones adicionales para el comprador
                           </label>
                           <input
                             type="text"
-                            value={account.bank_name || ''}
+                            value={account.instructions || ''}
                             onChange={(e) => {
                               const updated = [...paymentAccounts]
-                              updated[index].bank_name = e.target.value
+                              updated[index].instructions = e.target.value
                               setPaymentAccounts(updated)
                             }}
-                            placeholder="Ej. Banco Provincial (0108)"
+                            placeholder="Ej. Colocar en concepto número de orden. Enviar captura por WhatsApp."
                             className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
                           />
                         </div>
-                      )}
-
-                      {account.method === 'pago_movil' && (
-                        <>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Teléfono Afiliado
-                            </label>
-                            <input
-                              type="text"
-                              value={account.phone || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].phone = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="0426-2485369"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Cédula / RIF del Titular
-                            </label>
-                            <input
-                              type="text"
-                              value={account.id_number || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].id_number = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="V-27.250.266"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                            />
-                          </div>
-                        </>
-                      )}
-
-                      {account.method === 'transferencia' && (
-                        <>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Número de Cuenta (20 dígitos)
-                            </label>
-                            <input
-                              type="text"
-                              value={account.account_number || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].account_number = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="01080119250100684672"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Titular de la Cuenta
-                            </label>
-                            <input
-                              type="text"
-                              value={account.account_holder || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].account_holder = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="Yiovanner Miguel Parra Ceballos"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Cédula / RIF
-                            </label>
-                            <input
-                              type="text"
-                              value={account.id_number || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].id_number = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="V-27.250.266"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                            />
-                          </div>
-                        </>
-                      )}
-
-                      {account.method === 'binance_pay' && (
-                        <div className="sm:col-span-2">
-                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                            URL de Imagen del Código QR Binance
-                          </label>
-                          <input
-                            type="text"
-                            value={account.qr_image_url || ''}
-                            onChange={(e) => {
-                              const updated = [...paymentAccounts]
-                              updated[index].qr_image_url = e.target.value
-                              setPaymentAccounts(updated)
-                            }}
-                            placeholder="https://lh3.googleusercontent.com/... o enlace de tu QR"
-                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono"
-                          />
-                        </div>
-                      )}
-
-                      {account.method === 'zelle' && (
-                        <>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Correo Electrónico de Zelle
-                            </label>
-                            <input
-                              type="email"
-                              value={account.email || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].email = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="tu-correo-zelle@ejemplo.com"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              Nombre del Titular Zelle
-                            </label>
-                            <input
-                              type="text"
-                              value={account.account_holder || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].account_holder = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="Nombre y Apellido"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                            />
-                          </div>
-                        </>
-                      )}
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                          Instrucciones adicionales para el comprador
-                        </label>
-                        <input
-                          type="text"
-                          value={account.instructions || ''}
-                          onChange={(e) => {
-                            const updated = [...paymentAccounts]
-                            updated[index].instructions = e.target.value
-                            setPaymentAccounts(updated)
-                          }}
-                          placeholder="Ej. Colocar en concepto número de orden. Enviar captura por WhatsApp."
-                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-                        />
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Plan SaaS de la Tienda (Informativo) */}
-          <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-indigo-500" /> Plan SaaS de la Tienda
-              </label>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
-                {features.name}
-              </span>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                <span>Estado de Suscripción:</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> Activo (${features.priceUsd}/mes)
-                </span>
+                  ))
+                )}
               </div>
-              <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 list-disc list-inside">
-                <li>Capacidad de Inventario: <strong>{features.maxProducts === Infinity ? 'Productos Ilimitados' : `Hasta ${features.maxProducts} productos`}</strong></li>
-                <li>Copiloto IA Edith: <strong>{features.hasAIEdith ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
-                <li>Ventas a Crédito a 7 días: <strong>{features.hasCreditSales ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
-                <li>Pagos Divididos multimoneda: <strong>{features.hasSplitPayments ? 'Habilitado' : '1 método por venta en Básico'}</strong></li>
-                <li>Importación masiva Excel: <strong>{features.hasBulkImport ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
-              </ul>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 italic border-t border-slate-200/60 dark:border-slate-700/40">
-                ℹ️ Los cambios de plan y activación de módulos adicionales son gestionados exclusivamente por el Administrador de la plataforma desde el Panel Master.
-              </p>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Seguridad y Clave de Administrador para Edición de Facturas (Solo Owner / Admin) */}
-          {isOwnerOrAdmin && (
-            <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-500" /> Clave de Administrador de la Tienda
-                </label>
-                <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
-                  Exclusivo Administrador / Propietario
-                </span>
+        {/* ========================================================================= */}
+        {/* BOTÓN DESPLEGABLE 3: SEGURIDAD Y CLAVE DE ADMINISTRADOR (ÚNICA SECCIÓN) */}
+        {/* ========================================================================= */}
+        {isOwnerOrAdmin && (
+          <div className="border border-amber-200/80 dark:border-amber-900/60 rounded-2xl overflow-hidden bg-amber-50/20 dark:bg-amber-950/10 backdrop-blur-md shadow-sm transition-all">
+            <button
+              type="button"
+              onClick={() => toggleSection('security')}
+              className="w-full flex items-center justify-between p-4 sm:p-5 text-left bg-amber-50/60 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 transition cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>3. Clave de Administrador (Seguridad y Autorizaciones)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Clave exclusiva requerida para anular pedidos, editar facturas y autorizar operaciones sensibles
+                  </p>
+                </div>
               </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Solo Admin</span>
+                </span>
+                <div className="p-1 rounded-lg text-slate-400 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60">
+                  {openSections.security ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </div>
+              </div>
+            </button>
 
-              <div className="p-4 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 space-y-3">
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Esta clave es obligatoria para <strong>editar facturas ya emitidas</strong> o autorizar operaciones restringidas. Los cajeros no tienen acceso a verla ni modificarla.
-                </p>
+            {openSections.security && (
+              <div className="p-5 sm:p-6 border-t border-amber-200/60 dark:border-amber-900/50 space-y-4 animate-in fade-in duration-150">
+                <div className="p-4 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-slate-700 dark:text-slate-300">
+                  Esta clave protege tu comercio evitando que cajeros o usuarios sin autorización modifiquen o anulen facturas registradas. Es confidencial y administrada únicamente por el dueño de la tienda.
+                </div>
 
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                  <div className="relative w-full sm:w-64">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                    PIN / Clave Maestra de la Tienda
+                  </label>
+                  <div className="relative max-w-sm">
                     <input
                       type={showPin ? 'text' : 'password'}
                       value={adminSecurityPin}
                       onChange={(e) => setAdminSecurityPin(e.target.value)}
-                      placeholder="Ej: 1234 o clave segura"
+                      placeholder="Mínimo 4 dígitos o caracteres"
                       minLength={4}
-                      className="w-full pl-4 pr-10 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white tracking-widest outline-none focus:ring-2 focus:ring-amber-500/50"
+                      className="w-full px-4 pr-11 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPin(!showPin)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                      title={showPin ? 'Ocultar clave' : 'Mostrar clave'}
                     >
                       {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Mínimo 4 dígitos o caracteres (predeterminada: <code>1234</code>). Recuerda presionar &quot;Guardar Configuración&quot;.
-                  </span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
+                    (Valor predeterminado inicial: <code>1234</code>). Cámbialo por un código seguro y presiona &quot;Guardar Configuración&quot;.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* BOTÓN DESPLEGABLE 4: PÁGINA PÚBLICA "NOSOTROS" */}
+        {/* ========================================================================= */}
+        <div className="border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-900/50 backdrop-blur-md shadow-sm transition-all">
+          <button
+            type="button"
+            onClick={() => toggleSection('about')}
+            className="w-full flex items-center justify-between p-4 sm:p-5 text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70 transition cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <Globe className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>4. Página Pública &quot;Nosotros&quot; y Pilares</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Personaliza la presentación de tu negocio, logística, precios y atención para los clientes
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/${tenant?.slug ?? 'innovise'}/nosotros`}
+                target="_blank"
+                onClick={(e) => e.stopPropagation()}
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 hover:bg-purple-100 transition"
+              >
+                <span>Ver En Vivo</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+              <div className="p-1 rounded-lg text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                {openSections.about ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </div>
+            </div>
+          </button>
+
+          {openSections.about && (
+            <div className="p-5 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4 animate-in fade-in duration-150">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                  Título Principal de la Sección
+                </label>
+                <input
+                  type="text"
+                  value={aboutTitle}
+                  onChange={(e) => setAboutTitle(e.target.value)}
+                  placeholder="Ej. Sobre Innovise Store"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                  ¿Qué ofrece tu tienda? (Descripción Detallada)
+                </label>
+                <textarea
+                  rows={3}
+                  value={aboutDescription}
+                  onChange={(e) => setAboutDescription(e.target.value)}
+                  placeholder="Explica tu propuesta, experiencia o rubro principal..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
+                />
+              </div>
+
+              {/* Los 3 Pilares */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                  Los 3 Pilares y Beneficios Destacados:
+                </h3>
+
+                {/* Pilar 1: Envíos */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400">
+                    <Truck className="w-4 h-4" />
+                    <span>Pilar 1: Logística de Envíos</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={aboutShippingText}
+                    onChange={(e) => setAboutShippingText(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                    placeholder="ENVÍOS A TODO EL PAÍS"
+                  />
+                  <textarea
+                    rows={2}
+                    value={aboutShippingSubtext}
+                    onChange={(e) => setAboutShippingSubtext(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
+                    placeholder="Detalle de agencias, zonas de entrega o delivery local..."
+                  />
+                </div>
+
+                {/* Pilar 2: Precios */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <BadgePercent className="w-4 h-4" />
+                    <span>Pilar 2: Competitividad de Precios</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={aboutPriceText}
+                    onChange={(e) => setAboutPriceText(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                    placeholder="EL MEJOR PRECIO DEL MERCADO"
+                  />
+                  <textarea
+                    rows={2}
+                    value={aboutPriceSubtext}
+                    onChange={(e) => setAboutPriceSubtext(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
+                    placeholder="Explicación de precios justos, ofertas o tasa BCV..."
+                  />
+                </div>
+
+                {/* Pilar 3: Soporte */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-purple-600 dark:text-purple-400">
+                    <Headphones className="w-4 h-4" />
+                    <span>Pilar 3: Atención y Posventa</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={aboutSupportText}
+                    onChange={(e) => setAboutSupportText(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                    placeholder="SOPORTE POSVENTA"
+                  />
+                  <textarea
+                    rows={2}
+                    value={aboutSupportSubtext}
+                    onChange={(e) => setAboutSupportSubtext(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 resize-none"
+                    placeholder="Garantía, atención por WhatsApp o cambios..."
+                  />
                 </div>
               </div>
             </div>
           )}
+        </div>
 
-          {errorMessage && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMessage}</span>
+        {/* ========================================================================= */}
+        {/* BOTÓN DESPLEGABLE 5: PLAN SAAS DE LA TIENDA */}
+        {/* ========================================================================= */}
+        <div className="border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-900/50 backdrop-blur-md shadow-sm transition-all">
+          <button
+            type="button"
+            onClick={() => toggleSection('plan')}
+            className="w-full flex items-center justify-between p-4 sm:p-5 text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70 transition cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                <Tag className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>5. Plan SaaS y Límites del Sistema</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Plan actual de tu tienda, límites de productos y módulos activados
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+                {features.name}
+              </span>
+              <div className="p-1 rounded-lg text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                {openSections.plan ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </div>
+            </div>
+          </button>
+
+          {openSections.plan && (
+            <div className="p-5 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 space-y-4 animate-in fade-in duration-150">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <span>Estado de Suscripción:</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Activo (${features.priceUsd}/mes)
+                  </span>
+                </div>
+                <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5 list-disc list-inside">
+                  <li>Capacidad de Inventario: <strong>{features.maxProducts === Infinity ? 'Productos Ilimitados' : `Hasta ${features.maxProducts} productos`}</strong></li>
+                  <li>Copiloto IA Edith: <strong>{features.hasAIEdith ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
+                  <li>Ventas a Crédito a 7 días: <strong>{features.hasCreditSales ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
+                  <li>Pagos Divididos multimoneda: <strong>{features.hasSplitPayments ? 'Habilitado' : '1 método por venta en Básico'}</strong></li>
+                  <li>Importación masiva Excel: <strong>{features.hasBulkImport ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
+                  <li>Checkout Directo en Catálogo: <strong>{features.hasDirectCheckout ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
+                </ul>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 italic border-t border-slate-200/60 dark:border-slate-700/40">
+                  ℹ️ Los cambios de plan y activación de módulos adicionales son gestionados exclusivamente por el Administrador de la plataforma desde el Panel Master.
+                </p>
+              </div>
             </div>
           )}
+        </div>
 
-          <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
+        {/* Mensaje de error general */}
+        {errorMessage && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Barra flotante inferior de guardar */}
+        <div className="sticky bottom-4 z-20 flex items-center justify-between p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 shadow-xl shadow-slate-900/5">
+          <div>
             {saved ? (
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                 <Check className="w-4 h-4" /> Cambios guardados correctamente
               </span>
-            ) : <span />}
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold transition active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Guardando…</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Configuración</span>
-                </>
-              )}
-            </button>
+            ) : (
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Recuerda guardar tras modificar cualquier sección
+              </span>
+            )}
           </div>
-        </form>
-      </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold transition active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Guardando…</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>Guardar Configuración</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
