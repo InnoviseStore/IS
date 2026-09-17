@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   X,
   CreditCard,
@@ -9,8 +9,18 @@ import {
   CheckCircle2,
   Share2,
   Calendar,
-  FileText
+  FileText,
+  Monitor,
+  Smartphone,
+  Copy,
+  Check
 } from 'lucide-react'
+import {
+  COUNTRY_CODES,
+  normalizeWhatsAppPhone,
+  createWhatsAppWebUrl,
+  createWhatsAppUrl
+} from '@/lib/whatsapp'
 export interface AbonoOrderTarget {
   id: string
   order_number: string
@@ -153,11 +163,35 @@ export default function PaymentAbonoModal({
     }
   }
 
-  const sendWhatsAppReceipt = () => {
-    if (!successResult) return
-    const customerPhone = (order as any).customers?.phone || (order as any).phone || ''
-    const cleanPhone = customerPhone.replace(/\D/g, '')
+  const initialCustomerPhone = (order as any).customers?.phone || (order as any).phone || ''
 
+  const initialCountry = useMemo(() => {
+    const digits = initialCustomerPhone.replace(/\D/g, '')
+    const matched = COUNTRY_CODES.find((c) => digits.startsWith(c.code))
+    return matched ? matched.code : '58'
+  }, [initialCustomerPhone])
+
+  const [countryCode, setCountryCode] = useState(initialCountry)
+
+  const initialLocalPhone = useMemo(() => {
+    let digits = initialCustomerPhone.replace(/\D/g, '')
+    if (digits.startsWith(countryCode)) {
+      digits = digits.slice(countryCode.length)
+    }
+    if (digits.startsWith('0')) {
+      digits = digits.replace(/^0+/, '')
+    }
+    return digits
+  }, [initialCustomerPhone, countryCode])
+
+  const [localPhone, setLocalPhone] = useState(initialLocalPhone)
+  const [copiedReceipt, setCopiedReceipt] = useState(false)
+
+  const fullPhone = `${countryCode}${localPhone.replace(/^0+/, '')}`
+  const normalizedFullPhone = normalizeWhatsAppPhone(fullPhone, countryCode)
+
+  const receiptMessage = useMemo(() => {
+    if (!successResult) return ''
     let msg = `🧾 *COMPROBANTE DE ABONO RECIBIDO*\n`
     msg += `📄 *Factura:* #${order.order_number}\n`
     msg += `📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}\n\n`
@@ -176,11 +210,22 @@ export default function PaymentAbonoModal({
     }
 
     msg += `\n¡Gracias por tu pago y preferencia!`
+    return msg
+  }, [successResult, order.order_number, exchangeRate, method, reference])
 
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`
-    window.open(url, '_blank')
+  const handleCopyReceipt = () => {
+    if (!receiptMessage) return
+    navigator.clipboard.writeText(receiptMessage)
+    setCopiedReceipt(true)
+    setTimeout(() => setCopiedReceipt(false), 2000)
+  }
+
+  const sendWhatsAppReceipt = (preferWeb = false) => {
+    if (!receiptMessage) return
+    const url = preferWeb
+      ? createWhatsAppWebUrl(normalizedFullPhone, receiptMessage)
+      : createWhatsAppUrl(normalizedFullPhone, receiptMessage)
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -212,7 +257,7 @@ export default function PaymentAbonoModal({
         {/* Contenido / Estado de Éxito o Formulario */}
         <div className="p-6 overflow-y-auto space-y-5">
           {successResult ? (
-            <div className="text-center py-4 space-y-4">
+            <div className="text-center py-2 space-y-4">
               <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-2">
                 <CheckCircle2 className="w-10 h-10" />
               </div>
@@ -242,17 +287,81 @@ export default function PaymentAbonoModal({
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              {/* Teléfono y Envío por WhatsApp */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 text-left space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Teléfono WhatsApp del Cliente
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="px-2.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} +{c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    value={localPhone}
+                    onChange={(e) => setLocalPhone(e.target.value)}
+                    placeholder="Ej. 4121234567"
+                    className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Número internacional: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">+{normalizedFullPhone || '—'}</strong>
+                </p>
+              </div>
+
+              {/* Tips para PC */}
+              <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-2.5 text-xs text-blue-800 dark:text-blue-300 text-left">
+                <Monitor className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+                <p className="leading-snug">
+                  <strong>En PC:</strong> Usa <em>WhatsApp Web</em> para que los emojis (🧾, 💵, 🇻🇪, 📊) se muestren intactos, o pulsa <em>Copiar</em> y pégalo en el chat.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => sendWhatsAppReceipt(true)}
+                    className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+                    title="Abrir en WhatsApp Web en una nueva pestaña"
+                  >
+                    <Monitor className="w-4 h-4" />
+                    <span>WhatsApp Web (PC)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyReceipt}
+                    className="py-2.5 px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Copiar comprobante de abono al portapapeles"
+                  >
+                    {copiedReceipt ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+                    <span>{copiedReceipt ? '¡Copiado!' : 'Copiar'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => sendWhatsAppReceipt(false)}
+                    className="py-2.5 px-3 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Abrir con app de WhatsApp"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    <span>App</span>
+                  </button>
+                </div>
+
                 <button
-                  onClick={sendWhatsAppReceipt}
-                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-600/20"
-                >
-                  <Share2 className="w-4 h-4" />
-                  Enviar Comprobante WhatsApp
-                </button>
-                <button
+                  type="button"
                   onClick={onClose}
-                  className="py-3 px-5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-sm transition-all"
+                  className="w-full py-2.5 px-5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs transition-all cursor-pointer"
                 >
                   Cerrar
                 </button>

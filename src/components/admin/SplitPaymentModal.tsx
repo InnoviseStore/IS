@@ -7,6 +7,7 @@ import type { CartItem, Customer, PaymentMethodType } from '@/types/database'
 import { X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock, FileDown, Printer, Pencil, ShoppingCart } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
+import { WhatsAppInvoiceModal } from '@/components/admin/WhatsAppInvoiceModal'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
@@ -128,6 +129,7 @@ export function SplitPaymentModal({
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [showInvoiceWhatsAppModal, setShowInvoiceWhatsAppModal] = useState(false)
 
   const features = getTenantFeatures(tenant)
 
@@ -447,14 +449,25 @@ export function SplitPaymentModal({
             </button>
           </div>
 
+          {/* Botón Universal para Enviar Factura por WhatsApp (Contado o Crédito) */}
+          <button
+            type="button"
+            onClick={() => setShowInvoiceWhatsAppModal(true)}
+            className="w-full mb-2.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition cursor-pointer"
+            title="Enviar comprobante de venta al WhatsApp del cliente"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>Enviar Factura por WhatsApp</span>
+          </button>
+
           {isCredit && selectedCustomer && (
             <button
               type="button"
               onClick={() => setShowCollectionModal(true)}
-              className="w-full mb-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition cursor-pointer"
+              className="w-full mb-3 py-2 rounded-xl bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
             >
-              <MessageCircle className="w-4 h-4" />
-              <span>Enviar Detalle / Cobro por WhatsApp</span>
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>Recordatorio de Cobro a Crédito</span>
             </button>
           )}
 
@@ -462,6 +475,42 @@ export function SplitPaymentModal({
             {isEditMode ? 'Listo, Volver a Facturas' : 'Nueva Venta'}
           </button>
         </div>
+
+        {/* Modal de Envío de Factura por WhatsApp con soporte para PC y Web */}
+        {showInvoiceWhatsAppModal && (
+          <WhatsAppInvoiceModal
+            isOpen={showInvoiceWhatsAppModal}
+            onClose={() => setShowInvoiceWhatsAppModal(false)}
+            orderNumber={success}
+            tenantName={tenant?.name || 'Innovise Store'}
+            exchangeRate={exchangeRate}
+            customerName={selectedCustomer?.full_name || 'Consumidor Final'}
+            customerPhone={selectedCustomer?.phone || null}
+            customerIdNumber={selectedCustomer?.id_number || null}
+            items={cartItems.map((i) => ({
+              name: i.name,
+              quantity: i.quantity,
+              unitPriceUsd: i.unit_price_usd,
+              subtotalUsd: i.quantity * i.unit_price_usd,
+            }))}
+            totalUsd={grandTotalUsd}
+            totalVes={grandTotalVes}
+            igtfUsd={igtfTotal}
+            discountUsd={discountAmountUsd}
+            isCredit={isCredit}
+            creditDueDate={dueDate}
+            creditRemainingUsd={isCredit ? creditAmountUsd : 0}
+            payments={payments
+              .filter((p) => (parseFloat(p.amount) || 0) > 0)
+              .map((p) => ({
+                method: p.method,
+                amountUsd: VES_METHODS.includes(p.method)
+                  ? (parseFloat(p.amount) || 0) / exchangeRate
+                  : (parseFloat(p.amount) || 0),
+                reference: p.reference,
+              }))}
+          />
+        )}
 
         {showCollectionModal && selectedCustomer && (
           <CreditCollectionModal

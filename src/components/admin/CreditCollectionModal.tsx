@@ -13,9 +13,19 @@ import {
   Send, 
   Calendar, 
   Edit3,
-  Sparkles
+  Sparkles,
+  Monitor,
+  Smartphone,
+  CheckCircle2,
+  Share2
 } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
+import { 
+  COUNTRY_CODES, 
+  normalizeWhatsAppPhone, 
+  createWhatsAppWebUrl, 
+  createWhatsAppUrl 
+} from '@/lib/whatsapp'
 
 export interface InitialCreditSaleInfo {
   orderNumber?: string
@@ -209,16 +219,43 @@ Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos
     setCustomMessage(generatedText)
   }, [generatedText])
 
-  const cleanPhone = (customer.phone ?? '').replace(/[^0-9]/g, '')
-  const hasValidPhone = cleanPhone.length >= 10
+  const rawPhone = customer.phone ?? ''
 
-  function handleSendWhatsApp() {
+  // Determinar código de país inicial y número local
+  const initialCountry = useMemo(() => {
+    const digits = rawPhone.replace(/\D/g, '')
+    const matched = COUNTRY_CODES.find((c) => digits.startsWith(c.code))
+    return matched ? matched.code : '58'
+  }, [rawPhone])
+
+  const [countryCode, setCountryCode] = useState(initialCountry)
+  
+  const initialLocalNumber = useMemo(() => {
+    let digits = rawPhone.replace(/\D/g, '')
+    if (digits.startsWith(countryCode)) {
+      digits = digits.slice(countryCode.length)
+    }
+    if (digits.startsWith('0')) {
+      digits = digits.replace(/^0+/, '')
+    }
+    return digits
+  }, [rawPhone, countryCode])
+
+  const [localNumber, setLocalNumber] = useState(initialLocalNumber)
+
+  const fullPhone = `${countryCode}${localNumber.replace(/^0+/, '')}`
+  const normalizedFullPhone = normalizeWhatsAppPhone(fullPhone, countryCode)
+  const hasValidPhone = normalizedFullPhone.length >= 10
+
+  function handleSendWhatsApp(preferWeb = false) {
     if (!hasValidPhone) {
-      alert('El cliente no posee un número de teléfono válido para WhatsApp.')
+      alert('Por favor ingresa un número de teléfono válido para WhatsApp.')
       return
     }
-    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(customMessage)}`
-    window.open(url, '_blank')
+    const url = preferWeb 
+      ? createWhatsAppWebUrl(normalizedFullPhone, customMessage)
+      : createWhatsAppUrl(normalizedFullPhone, customMessage)
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   function handleCopy() {
@@ -344,30 +381,94 @@ Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos
           )}
         </div>
 
-        {/* Estado del Teléfono & Acciones */}
-        {!hasValidPhone && (
-          <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900">
-            ⚠️ Este cliente no posee un teléfono registrado. Puedes copiar el texto manualmente o actualizar su número en la sección de Clientes.
-          </p>
-        )}
+        {/* Selector de Código de País y Teléfono del Cliente */}
+        <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            Teléfono de WhatsApp del Cliente
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value)}
+              className="px-2.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+            >
+              {COUNTRY_CODES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} +{c.code}
+                </option>
+              ))}
+            </select>
+            <input
+              type="tel"
+              value={localNumber}
+              onChange={(e) => setLocalNumber(e.target.value)}
+              placeholder="Ej. 4121234567"
+              className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span>
+              Número internacional:{' '}
+              <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                +{normalizedFullPhone || '—'}
+              </strong>
+            </span>
+            {!hasValidPhone && (
+              <span className="text-amber-600 dark:text-amber-400 font-medium">⚠️ Número incompleto</span>
+            )}
+          </div>
+        </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 font-bold transition cursor-pointer"
-          >
-            Cerrar
-          </button>
-          <button
-            type="button"
-            onClick={handleSendWhatsApp}
-            disabled={!hasValidPhone || !customMessage.trim()}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-          >
-            <Send className="w-4 h-4" />
-            <span>Enviar por WhatsApp</span>
-          </button>
+        {/* Consejo para PC / Emojis */}
+        <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-2.5 text-xs text-blue-800 dark:text-blue-300">
+          <Monitor className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+          <p className="leading-snug">
+            <strong>Consejo para PC:</strong> Al usar <em>WhatsApp Web</em> los emojis (💵, 📦, 📊, 📅) se cargan sin corromperse. También puedes pulsar <em>Copiar</em> y pegarlo directamente en el chat.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 font-bold transition cursor-pointer text-xs"
+            >
+              Cerrar
+            </button>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+              <span>{copied ? '¡Copiado! ✓' : 'Copiar'}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => handleSendWhatsApp(true)}
+              disabled={!hasValidPhone || !customMessage.trim()}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+              title="Abrir en WhatsApp Web en una nueva pestaña de la PC"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span>WhatsApp Web (PC)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSendWhatsApp(false)}
+              disabled={!hasValidPhone || !customMessage.trim()}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Abrir con app de WhatsApp móvil o de escritorio"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>App</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
