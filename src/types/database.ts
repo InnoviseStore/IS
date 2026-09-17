@@ -108,6 +108,13 @@ export interface Product {
   updated_at: string
 }
 
+export interface ColorVariantItem {
+  name: string
+  hex?: string
+  image_url?: string
+  stock?: number
+}
+
 // ─── Inventory Log ────────────────────────────────────────────────────────────
 export interface InventoryLog {
   id: string

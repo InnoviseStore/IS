@@ -7,6 +7,8 @@ import { useTenant } from '@/contexts/TenantContext'
 import { ProductModal } from '@/components/admin/ProductModal'
 import { ImportProductsModal } from '@/components/admin/ImportProductsModal'
 import { StockRegisterModal } from '@/components/admin/StockRegisterModal'
+import { ColorStockModal } from '@/components/admin/ColorStockModal'
+import { parseColorVariants } from '@/lib/colorVariants'
 import type { Product } from '@/types/database'
 import { 
   Plus, 
@@ -22,7 +24,8 @@ import {
   Lock,
   Filter,
   Tag,
-  Barcode
+  Barcode,
+  Palette
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
@@ -49,6 +52,7 @@ function InventoryContent() {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [stockRegisterOpen, setStockRegisterOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [colorStockProduct, setColorStockProduct] = useState<Product | null>(null)
 
   useEffect(() => {
     if (isRegisterParam) {
@@ -274,6 +278,7 @@ function InventoryContent() {
           <div className="grid grid-cols-1 gap-2.5 md:hidden">
             {filtered.map((p) => {
               const priceVes = p.base_price_usd * exchangeRate
+              const { colors } = parseColorVariants(p.description)
               return (
                 <div 
                   key={p.id}
@@ -308,6 +313,28 @@ function InventoryContent() {
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                         {formatDateTime(p.created_at)}
                       </p>
+
+                      {/* Botón táctil para ver cantidad por color si está habilitado */}
+                      {colors.length > 0 && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setColorStockProduct(p)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60 active:scale-95 transition cursor-pointer"
+                          >
+                            <div className="flex items-center -space-x-1 shrink-0">
+                              {colors.slice(0, 3).map((c, i) => (
+                                <span
+                                  key={i}
+                                  className="w-2.5 h-2.5 rounded-full border border-white dark:border-slate-800"
+                                  style={{ backgroundColor: c.hex || '#64748B' }}
+                                />
+                              ))}
+                            </div>
+                            <span>Cantidad por color ({colors.length})</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -351,6 +378,7 @@ function InventoryContent() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filtered.map((p) => {
                     const priceVes = p.base_price_usd * exchangeRate
+                    const { colors } = parseColorVariants(p.description)
                     const margin = p.cost_usd && p.base_price_usd > 0
                       ? (((p.base_price_usd - p.cost_usd) / p.base_price_usd) * 100).toFixed(1)
                       : '—'
@@ -378,7 +406,30 @@ function InventoryContent() {
                         <td className="px-4 py-3.5 font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap">Bs. {priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">{p.cost_usd ? `$${p.cost_usd.toFixed(2)}` : '—'}</td>
                         <td className="px-4 py-3.5 font-semibold text-slate-700 dark:text-slate-300">{margin !== '—' ? `${margin}%` : '—'}</td>
-                        <td className="px-4 py-3.5"><StockBadge stock={p.stock} /></td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-col items-start gap-1">
+                            <StockBadge stock={p.stock} />
+                            {colors.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setColorStockProduct(p)}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition cursor-pointer shadow-2xs group"
+                                title="Ver inventario desglosado por color"
+                              >
+                                <div className="flex items-center -space-x-1 shrink-0">
+                                  {colors.slice(0, 3).map((c, i) => (
+                                    <span
+                                      key={i}
+                                      className="w-2.5 h-2.5 rounded-full border border-white dark:border-slate-800"
+                                      style={{ backgroundColor: c.hex || '#64748B' }}
+                                    />
+                                  ))}
+                                </div>
+                                <span>{colors.length} {colors.length === 1 ? 'color' : 'colores'}</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3.5">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${p.is_active ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-900' : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'}`}>
                             {p.is_active ? 'Activo' : 'Inactivo'}
@@ -445,6 +496,17 @@ function InventoryContent() {
           currentProductCount={products.length}
         />
       )}
+
+      {/* Modal de Inventario Detallado por Color */}
+      <ColorStockModal
+        isOpen={!!colorStockProduct}
+        onClose={() => setColorStockProduct(null)}
+        product={colorStockProduct}
+        onEditProduct={(p) => {
+          setColorStockProduct(null)
+          openEdit(p)
+        }}
+      />
 
       {/* Modal de Importación Masiva */}
       <ImportProductsModal

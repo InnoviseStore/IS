@@ -21,11 +21,7 @@ import {
 } from 'lucide-react'
 import { detectCategory, extractCategory } from '@/lib/categories'
 
-interface ColorVariantItem {
-  name: string
-  hex?: string
-  image_url?: string
-}
+import { parseColorVariants, type ColorVariantItem } from '@/lib/colorVariants'
 
 export interface ApparelAttributes {
   garmentType?: string
@@ -55,19 +51,6 @@ function parseApparelAttributes(desc?: string | null): { cleanDescription: strin
     }
   } catch {
     return { cleanDescription: desc, apparel: { sizes: [] } }
-  }
-}
-
-function parseColorVariants(desc?: string | null): { baseDescription: string; colors: ColorVariantItem[] } {
-  if (!desc) return { baseDescription: '', colors: [] }
-  const match = desc.match(/<!--COLOR_VARIANTS:(.*?)-->/)
-  if (!match) return { baseDescription: desc, colors: [] }
-  try {
-    const colors = JSON.parse(match[1]) as ColorVariantItem[]
-    const baseDescription = desc.replace(/<!--COLOR_VARIANTS:(.*?)-->/, '').trim()
-    return { baseDescription, colors: Array.isArray(colors) ? colors : [] }
-  } catch {
-    return { baseDescription: desc, colors: [] }
   }
 }
 
@@ -187,6 +170,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [colors, setColors] = useState<ColorVariantItem[]>(parsedInitial.colors)
   const [newColorName, setNewColorName] = useState('')
   const [newColorHex, setNewColorHex] = useState('#000000')
+  const [newColorStock, setNewColorStock] = useState('')
   const [targetColorIndexForUpload, setTargetColorIndexForUpload] = useState<number | null>(null)
 
   // Múltiples fotos
@@ -374,20 +358,50 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   }
 
   // Métodos para colores
-  function handleAddColor(colorName?: string, hex?: string) {
+  function handleAddColor(colorName?: string, hex?: string, initialStock?: number) {
     const nameToAdd = (colorName || newColorName).trim()
     if (!nameToAdd) return
     if (colors.some((c) => c.name.toLowerCase() === nameToAdd.toLowerCase())) return
+
+    let stockVal: number | undefined = undefined
+    if (initialStock !== undefined) {
+      stockVal = initialStock
+    } else if (newColorStock.trim() !== '') {
+      const parsed = parseInt(newColorStock.trim(), 10)
+      if (!isNaN(parsed) && parsed >= 0) stockVal = parsed
+    }
 
     setColors((prev) => [
       ...prev,
       {
         name: nameToAdd,
         hex: hex || newColorHex,
+        stock: stockVal,
         image_url: undefined,
       },
     ])
     setNewColorName('')
+    setNewColorStock('')
+  }
+
+  function handleUpdateColorStock(index: number, val: string) {
+    setColors((prev) => {
+      const copy = [...prev]
+      if (val.trim() === '') {
+        copy[index] = { ...copy[index], stock: undefined }
+      } else {
+        const parsed = parseInt(val, 10)
+        copy[index] = { ...copy[index], stock: isNaN(parsed) ? undefined : Math.max(0, parsed) }
+      }
+      return copy
+    })
+  }
+
+  const totalColorStock = colors.reduce((acc, c) => acc + (typeof c.stock === 'number' ? c.stock : 0), 0)
+  const hasAnyColorStock = colors.some((c) => typeof c.stock === 'number')
+
+  function handleSyncTotalStockFromColors() {
+    setStock(totalColorStock.toString())
   }
 
   function handleRemoveColor(index: number) {
@@ -1071,41 +1085,52 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
               </div>
 
               {/* Input personalizado de color */}
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <input
                   type="color"
                   value={newColorHex}
                   onChange={(e) => setNewColorHex(e.target.value)}
-                  className="w-9 h-9 rounded-xl border border-slate-300 dark:border-slate-700 cursor-pointer p-0.5 bg-white dark:bg-slate-800"
+                  className="w-9 h-9 rounded-xl border border-slate-300 dark:border-slate-700 cursor-pointer p-0.5 bg-white dark:bg-slate-800 shrink-0"
                   title="Seleccionar tono de color"
                 />
                 <input
                   type="text"
                   value={newColorName}
                   onChange={(e) => setNewColorName(e.target.value)}
-                  placeholder="Otro color (ej. Morado Neón)…"
-                  className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium"
+                  placeholder="Nombre de color (ej. Morado Neón)…"
+                  className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium"
                 />
-                <button
-                  type="button"
-                  onClick={() => handleAddColor()}
-                  disabled={!newColorName.trim()}
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition disabled:opacity-50 cursor-pointer"
-                >
-                  Agregar Color
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <input
+                    type="number"
+                    min="0"
+                    value={newColorStock}
+                    onChange={(e) => setNewColorStock(e.target.value)}
+                    placeholder="Stock (opcional)"
+                    className="w-24 px-2.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white text-center"
+                    title="Cantidad disponible para este color"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddColor()}
+                    disabled={!newColorName.trim()}
+                    className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition disabled:opacity-50 cursor-pointer"
+                  >
+                    + Agregar
+                  </button>
+                </div>
               </div>
 
               {/* Lista de colores configurados */}
               {colors.length > 0 && (
-                <div className="space-y-2 pt-2">
+                <div className="space-y-2.5 pt-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {colors.map((c, idx) => (
                       <div
                         key={idx}
-                        className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2"
+                        className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 shadow-2xs"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
                           {c.hex && (
                             <span
                               className="w-4 h-4 rounded-full border border-black/20 flex-shrink-0"
@@ -1117,7 +1142,21 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Input de Stock por Color */}
+                          <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/60 px-1.5 py-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Stock:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={c.stock ?? ''}
+                              onChange={(e) => handleUpdateColorStock(idx, e.target.value)}
+                              placeholder="0"
+                              className="w-12 text-center text-xs font-black text-slate-900 dark:text-white bg-transparent outline-none focus:ring-1 focus:ring-blue-500 rounded"
+                              title={`Cantidad en stock de ${c.name}`}
+                            />
+                          </div>
+
                           {/* Miniatura de foto asignada */}
                           {c.image_url ? (
                             <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
@@ -1130,7 +1169,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                                 setTargetColorIndexForUpload(idx)
                                 colorFileInputRef.current?.click()
                               }}
-                              className="px-2 py-1 rounded-lg border border-dashed border-blue-400 text-blue-600 dark:text-blue-400 text-[10px] font-semibold hover:bg-blue-50 transition"
+                              className="px-2 py-1 rounded-lg border border-dashed border-blue-400 text-blue-600 dark:text-blue-400 text-[10px] font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
                             >
                               + Foto
                             </button>
@@ -1139,7 +1178,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                           <button
                             type="button"
                             onClick={() => handleRemoveColor(idx)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-500 transition"
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-500 transition cursor-pointer"
                             title="Eliminar color"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1147,6 +1186,26 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Resumen de cantidades y botón sincronizar stock general */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/40">
+                    <div className="text-xs text-slate-700 dark:text-slate-300">
+                      <span>Total unidades en colores: </span>
+                      <strong className="text-blue-700 dark:text-blue-300 font-black">{totalColorStock}</strong>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1">
+                        ({colors.length} {colors.length === 1 ? 'color' : 'colores'})
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSyncTotalStockFromColors}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-2xs cursor-pointer self-start sm:self-auto"
+                      title="Actualizar el campo 'Stock Disponible' del producto con la suma de las cantidades por color"
+                    >
+                      <span>Sincronizar Stock General ({totalColorStock})</span>
+                    </button>
                   </div>
                 </div>
               )}
