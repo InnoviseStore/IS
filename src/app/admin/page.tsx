@@ -20,7 +20,7 @@ function StatCard({
   icon: React.ElementType; color: string; href?: string
 }) {
   const content = (
-    <div className={`glass-card p-6 flex flex-col gap-4 border border-slate-200/80 dark:border-slate-800/80 ${href ? 'hover:border-blue-400 dark:hover:border-blue-600 transition cursor-pointer hover:shadow-lg' : ''}`}>
+    <div className={`glass-card p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl flex flex-col gap-3 sm:gap-4 border border-slate-200/80 dark:border-slate-800/80 ${href ? 'hover:border-blue-400 dark:hover:border-blue-600 transition cursor-pointer hover:shadow-lg' : ''}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{title}</p>

@@ -17,6 +17,7 @@ import { getPlanLabel } from '@/lib/formatters'
 import { useTheme } from '@/components/common/ThemeProvider'
 import { getRoleLabel, type UserRole } from '@/types/database'
 import { LiveOrderNotification } from '@/components/admin/LiveOrderNotification'
+import { PwaInstallPrompt } from '@/components/admin/PwaInstallPrompt'
 
 // Mapeo exhaustivo de módulos y permisos por rol (RBAC)
 interface NavItemConfig {
@@ -78,6 +79,15 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       router.replace(navItems[0].href)
     }
   }, [pathname, profile, navItems, router])
+
+  // Registro de Service Worker para PWA y notificaciones del sistema
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .catch((err) => console.warn('PWA service worker registration notice:', err))
+    }
+  }, [])
 
   async function handleLogout() {
     if (isLoggingOut) return
@@ -475,16 +485,79 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        {/* Page content con padding ergonómico adaptado a teléfono y PC */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-6">
           {children}
         </main>
+
+        {/* Barra de Navegación Rápida Móvil (Optimización para Teléfonos) */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+          <Link
+            href="/admin"
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+              pathname === '/admin'
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5">Inicio</span>
+          </Link>
+
+          <Link
+            href="/admin/orders"
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+              pathname.startsWith('/admin/orders')
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5">Pedidos</span>
+          </Link>
+
+          {/* Botón Central Destacado POS */}
+          <Link
+            href="/admin/pos"
+            className={`flex flex-col items-center justify-center -mt-4 p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/35 active:scale-95 transition ${
+              pathname.startsWith('/admin/pos') ? 'ring-2 ring-blue-400' : ''
+            }`}
+            title="Punto de Venta"
+          >
+            <ShoppingCart className="w-5 h-5" />
+            <span className="text-[9px] font-extrabold mt-0.5">POS</span>
+          </Link>
+
+          <Link
+            href="/admin/inventory"
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+              pathname.startsWith('/admin/inventory')
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <Package className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5">Stock</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5">Menú</span>
+          </button>
+        </nav>
 
         {/* Asistente IA Edith */}
         <EdithAssistantModal />
 
-        {/* Notificaciones en Vivo de Nuevos Pedidos (Sonido y Banner) */}
+        {/* Notificaciones Nativas y Alarmas de Pedidos, Cobranza y Cierre */}
         <LiveOrderNotification />
+
+        {/* Prompt de Instalación PWA para Teléfonos y PC */}
+        <PwaInstallPrompt />
 
         {/* Full-screen animated overlay on logout */}
         {isLoggingOut && (

@@ -939,7 +939,7 @@ export default function ProductGrid({
           })}
         </div>
       ) : template === 'tech' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
           {filtered.map((product) => {
             const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
             return (
@@ -962,7 +962,7 @@ export default function ProductGrid({
           })}
         </div>
       ) : template === 'boutique' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5 md:gap-6">
           {filtered.map((product) => {
             const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
             return (
@@ -985,7 +985,7 @@ export default function ProductGrid({
           })}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5 md:gap-6">
           {filtered.map((product) => {
             const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
             return (
