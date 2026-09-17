@@ -20,6 +20,7 @@ import {
   Navigation,
   ArrowRight,
   CreditCard,
+  ExternalLink,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useCart } from '@/contexts/CartContext';
@@ -771,17 +772,25 @@ export default function CartDrawer({
                         loading="lazy"
                         referrerPolicy="no-referrer-when-downgrade"
                       />
-                      <div className="bg-slate-900/80 backdrop-blur-xs text-white text-[10px] px-2.5 py-1 flex items-center justify-between">
-                        <span>
+                      <div className="bg-slate-900/90 backdrop-blur-xs text-white text-[10px] px-2.5 py-1.5 flex items-center justify-between gap-2">
+                        <span className="truncate">
                           {deliveryCoords
-                            ? `📍 Ubicación GPS: ${deliveryCoords.lat.toFixed(4)}, ${deliveryCoords.lng.toFixed(4)}`
+                            ? `📍 GPS: ${deliveryCoords.lat.toFixed(5)}, ${deliveryCoords.lng.toFixed(5)}`
                             : address.trim()
-                            ? `📍 ${address.slice(0, 32)}...`
+                            ? `📍 ${address.slice(0, 28)}...`
                             : '📍 Barquisimeto, Edo. Lara'}
                         </span>
-                        {deliveryCoords && (
-                          <span className="text-emerald-400 font-bold">Coordenadas listas</span>
-                        )}
+                        {deliveryCoords ? (
+                          <a
+                            href={`https://maps.google.com/?q=${deliveryCoords.lat},${deliveryCoords.lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200 font-bold shrink-0 underline"
+                          >
+                            <span>Abrir Maps</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        ) : null}
                       </div>
                     </div>
                   </div>

@@ -113,8 +113,9 @@ export async function POST(req: Request) {
     const deliveryMethod = body.delivery_method || customer.deliveryMethod || customer.delivery_method || 'delivery_bqto'
     const shippingAgency = body.shipping_agency ? sanitizeText(body.shipping_agency) : (customer.shippingAgency ? sanitizeText(customer.shippingAgency) : null)
     const cleanAgencyAddress = body.agency_address ? sanitizeText(body.agency_address) : (customer.agencyAddress ? sanitizeText(customer.agencyAddress) : null)
-    const deliveryCoords = customer.deliveryCoords && typeof customer.deliveryCoords.lat === 'number' && typeof customer.deliveryCoords.lng === 'number'
-      ? { lat: customer.deliveryCoords.lat, lng: customer.deliveryCoords.lng }
+    const rawCoords = body.delivery_coords || body.deliveryCoords || customer.delivery_coords || customer.deliveryCoords
+    const deliveryCoords = rawCoords && typeof rawCoords.lat === 'number' && typeof rawCoords.lng === 'number'
+      ? { lat: rawCoords.lat, lng: rawCoords.lng }
       : null
 
     const paymentMethod = body.payment_method ? sanitizeText(body.payment_method) : null

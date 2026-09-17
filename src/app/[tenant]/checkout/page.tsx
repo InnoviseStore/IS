@@ -8,7 +8,7 @@ import {
   User, MapPin, CreditCard, Truck, Store, Package, 
   ChevronLeft, ChevronRight, Check, Copy, Loader2, 
   ShoppingBag, AlertCircle, CheckCircle2, MessageCircle, 
-  Phone, Hash, Building2, Wallet, QrCode, Globe
+  Phone, Hash, Building2, Wallet, QrCode, Globe, Navigation, ExternalLink
 } from 'lucide-react'
 import { COUNTRY_CODES, normalizeWhatsAppPhone } from '@/lib/whatsapp'
 
@@ -52,6 +52,7 @@ interface DeliveryData {
   method: 'retiro_sitio' | 'envio_nacional' | 'delivery_local' | ''
   shipping_agency?: string
   agency_address?: string
+  delivery_coords?: { lat: number; lng: number } | null
 }
 
 interface PaymentData {
@@ -95,9 +96,38 @@ export default function CheckoutPage() {
   const [delivery, setDelivery] = useState<DeliveryData>({
     method: '',
     shipping_agency: 'MRW',
-    agency_address: ''
+    agency_address: '',
+    delivery_coords: null
   })
   const [errorsDelivery, setErrorsDelivery] = useState<Record<string, string>>({})
+  const [isLocating, setIsLocating] = useState(false)
+  const [locationSuccess, setLocationSuccess] = useState(false)
+
+  // Geolocalización del usuario para Delivery Local
+  const handleGetDeviceLocation = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      alert('Tu navegador o dispositivo no soporta geolocalización.')
+      return
+    }
+    setIsLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        }
+        setDelivery(prev => ({ ...prev, delivery_coords: coords }))
+        setLocationSuccess(true)
+        setIsLocating(false)
+      },
+      (error) => {
+        console.warn('Error al obtener ubicación GPS:', error)
+        alert('No se pudo acceder a tu ubicación GPS. Asegúrate de permitir el permiso de ubicación en tu navegador o escribe tu dirección.')
+        setIsLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
 
   const [payment, setPayment] = useState<PaymentData>({
     method: '',
@@ -231,9 +261,13 @@ export default function CheckoutPage() {
           id_number: `${customer.id_prefix}${customer.id_number}`,
           phone: normalizeWhatsAppPhone(customer.phone, customer.country_code || '58'),
           address: customer.address,
-          notes: customer.notes
+          notes: customer.notes,
+          delivery_coords: delivery.delivery_coords || undefined,
+          deliveryCoords: delivery.delivery_coords || undefined
         },
         delivery_method: delivery.method,
+        delivery_coords: delivery.delivery_coords || undefined,
+        deliveryCoords: delivery.delivery_coords || undefined,
         shipping_agency: delivery.shipping_agency,
         agency_address: delivery.agency_address,
         payment_method: selectedAccount?.method,
@@ -298,7 +332,16 @@ export default function CheckoutPage() {
   const paymentAccounts = tenantData?.settings?.payment_accounts?.filter(a => a.enabled) || []
 
   if (orderComplete) {
-    const waMessage = `¡Hola! Acabo de realizar un pedido en la tienda.\n\n*N° Pedido:* ${orderNumber}\n*Monto:* $${confirmedTotalUsd.toFixed(2)}\n*Referencia:* ${payment.reference}`
+    const waLines = [
+      '¡Hola! Acabo de realizar un pedido en la tienda.',
+      '',
+      `*N° Pedido:* #${orderNumber}`,
+      `*Monto:* $${confirmedTotalUsd.toFixed(2)} USD`,
+      payment.reference ? `*Referencia:* ${payment.reference}` : null,
+      delivery.delivery_coords ? `📍 *Ubicación GPS:* https://maps.google.com/?q=${delivery.delivery_coords.lat},${delivery.delivery_coords.lng}` : null,
+      customer.address ? `🏠 *Dirección:* ${customer.address}` : null
+    ].filter(Boolean)
+    const waMessage = waLines.join('\n')
     const waLink = `https://wa.me/${tenantData?.phone_whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(waMessage)}`
 
     return (
@@ -631,8 +674,27 @@ export default function CheckoutPage() {
                     </div>
 
                     {delivery.method === 'delivery_local' && (
-                      <div className="ml-10 mt-4 animate-in slide-in-from-top-2">
-                        <label className="block text-sm text-slate-700 dark:text-slate-300 mb-1">Dirección de Entrega <span className="text-rose-500">*</span></label>
+                      <div className="ml-10 mt-4 space-y-3 animate-in slide-in-from-top-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Dirección de Entrega <span className="text-rose-500">*</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleGetDeviceLocation}
+                            disabled={isLocating}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                            title="Obtener coordenadas GPS del dispositivo"
+                          >
+                            {isLocating ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Navigation className="w-3.5 h-3.5" />
+                            )}
+                            <span>{locationSuccess && delivery.delivery_coords ? 'Ubicación Fijada ✓' : '📍 Marcar mi ubicación (GPS)'}</span>
+                          </button>
+                        </div>
+
                         <textarea 
                           value={customer.address}
                           onChange={e => setCustomer({...customer, address: e.target.value})}
@@ -643,6 +705,38 @@ export default function CheckoutPage() {
                           placeholder="Urbanización, calle, casa/apto, punto de referencia..."
                         />
                         {errorsDelivery.address && <p className="text-rose-500 text-xs mt-1">{errorsDelivery.address}</p>}
+
+                        {/* Coordenadas GPS y Enlace Directo a Google Maps */}
+                        {delivery.delivery_coords && (
+                          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                              <span className="font-mono text-indigo-900 dark:text-indigo-200 font-semibold flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                                GPS: {delivery.delivery_coords.lat.toFixed(6)}, {delivery.delivery_coords.lng.toFixed(6)}
+                              </span>
+                              <a
+                                href={`https://maps.google.com/?q=${delivery.delivery_coords.lat},${delivery.delivery_coords.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 font-bold underline cursor-pointer"
+                              >
+                                <span>Ver en Google Maps</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                            
+                            {/* Mapa Iframe Interactivo */}
+                            <div className="rounded-lg overflow-hidden border border-indigo-200 dark:border-indigo-800 h-36">
+                              <iframe
+                                title="Mapa de Ubicación GPS"
+                                src={`https://maps.google.com/maps?q=${delivery.delivery_coords.lat},${delivery.delivery_coords.lng}&z=16&output=embed`}
+                                className="w-full h-full border-0"
+                                loading="lazy"
+                                referrerPolicy="no-referrer-when-downgrade"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </label>

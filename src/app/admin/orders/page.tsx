@@ -24,6 +24,8 @@ import {
   DollarSign,
   CreditCard,
   Pencil,
+  MapPin,
+  Navigation,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
@@ -229,14 +231,23 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // Extraer nombre de cliente, cédula, teléfono y dirección del objeto customer o de las notas
+  // Extraer nombre de cliente, cédula, teléfono, dirección y coordenadas GPS del objeto customer o de las notas
   const getCustomerDisplay = (o: OrderRecord) => {
     let name = o.customer?.full_name || ''
     let phone = o.customer?.phone || ''
     let idNumber = o.customer?.id_number || ''
     let address = o.customer?.address || ''
+    let gpsUrl = ''
 
-    // Fallback: parsear de o.notes ("Cliente: X | CI/RIF: Y | WhatsApp: Z | Dirección: W")
+    // Si el objeto customer tiene coordenadas o dirección
+    const custAny = o.customer as any
+    if (custAny?.delivery_coords?.lat && custAny?.delivery_coords?.lng) {
+      gpsUrl = `https://maps.google.com/?q=${custAny.delivery_coords.lat},${custAny.delivery_coords.lng}`
+    } else if (custAny?.deliveryCoords?.lat && custAny?.deliveryCoords?.lng) {
+      gpsUrl = `https://maps.google.com/?q=${custAny.deliveryCoords.lat},${custAny.deliveryCoords.lng}`
+    }
+
+    // Fallback: parsear de o.notes ("Cliente: X | CI/RIF: Y | WhatsApp: Z | Dirección: W | GPS: https://...")
     if (o.notes) {
       const parts = o.notes.split('|').map((p) => p.trim())
       parts.forEach((p) => {
@@ -250,13 +261,34 @@ export default function AdminOrdersPage() {
         if (!address && (p.toLowerCase().startsWith('dirección:') || p.toLowerCase().startsWith('direccion:'))) {
           address = p.replace(/(dirección|direccion):/i, '').trim()
         }
+        if (!gpsUrl && p.toLowerCase().includes('maps.google.com')) {
+          const match = p.match(/https:\/\/maps\.google\.com[^\s|]+/i)
+          if (match) gpsUrl = match[0]
+        }
       })
+
+      // Segundo check de regex para o.notes si no venía en parts
+      if (!gpsUrl) {
+        const fullMatch = o.notes.match(/https:\/\/maps\.google\.com\/\?q=[-0-9.,]+/i)
+        if (fullMatch) gpsUrl = fullMatch[0]
+      }
     }
+
+    // Si no hay link GPS pero la dirección tiene un formato de link o coordenadas
+    if (!gpsUrl && address.includes('maps.google.com')) {
+      const match = address.match(/https:\/\/maps\.google\.com[^\s|]+/i)
+      if (match) {
+        gpsUrl = match[0]
+        address = address.replace(match[0], '').replace(/GPS:\s*\|?/i, '').trim()
+      }
+    }
+
     return {
       name: name || 'Cliente Web',
       phone,
       idNumber,
       address,
+      gpsUrl,
     }
   }
 
@@ -597,6 +629,22 @@ export default function AdminOrdersPage() {
                       <div className="flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-400">
                         <span className="text-slate-400 font-semibold shrink-0">📍 Entrega:</span>
                         <span className="line-clamp-2">{cust.address}</span>
+                      </div>
+                    )}
+
+                    {cust.gpsUrl && (
+                      <div className="pt-1">
+                        <a
+                          href={cust.gpsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/80 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 shadow-xs transition cursor-pointer"
+                          title="Abrir ubicación exacta en Google Maps"
+                        >
+                          <Navigation className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-pulse" />
+                          <span>Ver Ubicación Exacta en Google Maps</span>
+                          <ExternalLink className="w-3 h-3 text-blue-500" />
+                        </a>
                       </div>
                     )}
 
