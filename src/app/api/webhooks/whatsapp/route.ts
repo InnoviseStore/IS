@@ -125,6 +125,9 @@ export async function POST(req: Request) {
       buttonId === 'btn_datos_pago' ||
       buttonId === 'btn_pago' ||
       buttonId === 'datos_pago' ||
+      normalized === 'pago' ||
+      normalized === 'pagos' ||
+      normalized.includes('pago') ||
       normalized.includes('pago movil') ||
       normalized.includes('pagomovil') ||
       normalized.includes('cuenta') ||
@@ -258,7 +261,15 @@ export async function POST(req: Request) {
           `🛍️ También puedes ver nuestros productos escribiendo *CATALOGO*.`
 
         await sendWhatsAppTextMessage(instanceName, senderDigits, msgText)
-        return NextResponse.json({ status: 'customer_not_found_responded' })
+        return NextResponse.json({
+          status: 'customer_not_found_responded',
+          debug: {
+            senderDigits,
+            tenantId: tenant.id,
+            tenantCustomersCount: tenantCustomers?.length,
+            firstFew: tenantCustomers?.slice(0, 3).map((c: any) => ({ name: c.full_name, phone: c.phone }))
+          }
+        })
       }
 
       const debtUsd = Number(customer.current_debt_usd || 0)
