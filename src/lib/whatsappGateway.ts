@@ -304,3 +304,106 @@ export async function sendWhatsAppDocument(
   }
 }
 
+export interface WhatsAppButtonOption {
+  id: string
+  displayText: string
+}
+
+/**
+ * Envía un mensaje con botones interactivos de selección rápida
+ */
+export async function sendWhatsAppButtons(
+  instanceName: string,
+  toPhone: string,
+  title: string,
+  description: string,
+  buttons: WhatsAppButtonOption[],
+  footer?: string
+): Promise<SendMessageResult> {
+  const cleanPhone = normalizeWhatsAppPhone(toPhone)
+  if (!cleanPhone || cleanPhone.length < 10) {
+    return { success: false, error: 'Número de teléfono destinatario inválido.' }
+  }
+
+  const { apiUrl, apiKey, isConfigured } = getGatewayConfig()
+
+  if (isConfigured) {
+    try {
+      const res = await fetch(`${apiUrl}/message/sendButtons/${instanceName}`, {
+        method: 'POST',
+        headers: {
+          apikey: apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: cleanPhone,
+          title: title,
+          description: description,
+          footer: footer || '',
+          buttons: buttons.map((b) => ({
+            type: 'reply',
+            displayText: b.displayText,
+            id: b.id,
+          })),
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && (data?.key || data?.id || data?.status === 'PENDING' || data?.status === 'SUCCESS')) {
+        return { success: true, messageId: data?.key?.id || data?.id }
+      }
+
+      // Si el cliente de WhatsApp no soporta botones nativos en este momento, hacer fallback a texto
+      console.warn('[WhatsAppGateway] Fallback sendButtons to sendText:', data?.message || data?.error)
+      const fallbackText = `${title ? `*${title}*\n\n` : ''}${description}\n\n` +
+        buttons.map((b, i) => `${i + 1}️⃣ Escribe *${b.displayText.replace(/^[^\w]+/, '')}*`).join('\n')
+      return sendWhatsAppTextMessage(instanceName, cleanPhone, fallbackText)
+    } catch (e: any) {
+      console.error('[WhatsAppGateway] Error sending buttons:', e)
+      return { success: false, error: e.message }
+    }
+  }
+
+  console.log(`[WhatsAppGateway Simulado] Enviando botones a +${cleanPhone}:`, { title, description, buttons })
+  return {
+    success: true,
+    messageId: `sim_btn_${Date.now()}`,
+    simulated: true,
+  }
+}
+
+/**
+ * Configura el Webhook de Evolution API para una instancia
+ */
+export async function configureTenantWebhook(
+  instanceName: string,
+  webhookUrl: string
+): Promise<boolean> {
+  const { apiUrl, apiKey, isConfigured } = getGatewayConfig()
+  if (!isConfigured || !webhookUrl) return false
+
+  try {
+    const res = await fetch(`${apiUrl}/webhook/set/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        apikey: apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        webhook: {
+          enabled: true,
+          url: webhookUrl,
+          byEvents: false,
+          base64: false,
+          events: ['MESSAGES_UPSERT'],
+        },
+      }),
+    })
+
+    return res.ok
+  } catch (err) {
+    console.warn('[WhatsAppGateway] Error setting webhook:', err)
+    return false
+  }
+}
+

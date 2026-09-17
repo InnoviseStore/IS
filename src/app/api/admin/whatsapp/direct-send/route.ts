@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 import { getTenantFeatures } from '@/lib/planLimits'
-import { sendWhatsAppTextMessage, sendWhatsAppDocument } from '@/lib/whatsappGateway'
+import { sendWhatsAppTextMessage, sendWhatsAppDocument, sendWhatsAppButtons } from '@/lib/whatsappGateway'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -20,6 +20,8 @@ export async function POST(req: Request) {
       phone,
       type = 'text',
       message = '',
+      title = '',
+      buttons = [],
       media_base64,
       file_name = 'Documento.pdf',
     } = body
@@ -69,6 +71,14 @@ export async function POST(req: Request) {
         )
       }
       result = await sendWhatsAppDocument(instanceName, phone, media_base64, file_name, message)
+    } else if (type === 'buttons' || (Array.isArray(buttons) && buttons.length > 0)) {
+      result = await sendWhatsAppButtons(
+        instanceName,
+        phone,
+        title || tenant.name,
+        message,
+        buttons
+      )
     } else {
       if (!message.trim()) {
         return NextResponse.json(

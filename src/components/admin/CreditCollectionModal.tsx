@@ -209,6 +209,8 @@ ${saleDetails.discountAmountUsd > 0 ? `• 🎉 Descuento Aplicado: -$${saleDeta
 
 ${bcvNotice}
 
+💡 *Autoservicio:* Responde con la palabra *SALDO* o *ABONAR* en cualquier momento para conocer tu monto actualizado en Bs a la tasa oficial del día.
+
 Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos envíes el comprobante al completar tu transferencia. ¡Feliz día y gracias por preferirnos! ✨`
   }, [customer.full_name, tenant?.name, saleDetails, exchangeRate, includeDetails])
 
@@ -287,8 +289,13 @@ Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos
         body: JSON.stringify({
           tenant_id: tenant.id,
           phone: normalizedFullPhone,
-          type: 'text',
+          type: 'buttons',
+          title: `Estado de Cuenta • ${tenant.name}`,
           message: customMessage,
+          buttons: [
+            { id: 'btn_saldo', displayText: '💰 Consultar Saldo' },
+            { id: 'btn_datos_pago', displayText: '🏦 Datos de Pago' },
+          ],
         }),
       })
 
