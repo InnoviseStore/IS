@@ -882,22 +882,43 @@ export default function SettingsPage() {
                         )}
 
                         {account.method === 'binance_pay' && (
-                          <div className="sm:col-span-2">
-                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                              URL de Imagen del Código QR Binance
-                            </label>
-                            <input
-                              type="text"
-                              value={account.qr_image_url || ''}
-                              onChange={(e) => {
-                                const updated = [...paymentAccounts]
-                                updated[index].qr_image_url = e.target.value
-                                setPaymentAccounts(updated)
-                              }}
-                              placeholder="https://lh3.googleusercontent.com/... o enlace de tu QR"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono"
-                            />
-                          </div>
+                          <>
+                            <div className="sm:col-span-2">
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                Enlace Directo de Pago Binance (Universal QR Link)
+                              </label>
+                              <input
+                                type="url"
+                                value={account.payment_url || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].payment_url = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="https://app.binance.com/uni-qr/..."
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono"
+                              />
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                Enlace oficial para que los clientes paguen con 1 clic directo desde su app de Binance en el celular sin tener que escanear.
+                              </p>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                URL de Imagen del Código QR Binance
+                              </label>
+                              <input
+                                type="text"
+                                value={account.qr_image_url || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentAccounts]
+                                  updated[index].qr_image_url = e.target.value
+                                  setPaymentAccounts(updated)
+                                }}
+                                placeholder="https://lh3.googleusercontent.com/... o enlace de tu QR"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono"
+                              />
+                            </div>
+                          </>
                         )}
 
                         {account.method === 'zelle' && (

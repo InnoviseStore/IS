@@ -212,7 +212,18 @@ export async function POST(req: Request) {
           } else if (acc.method === 'transferencia') {
             return `🏛️ *Transferencia Bancaria:*\n• Banco: *${acc.bank_name || ''}*\n• Cuenta: *${acc.account_number || ''}*\n• Titular: *${acc.account_holder || ''}*\n• Cédula/RIF: *${acc.id_number || ''}*`
           } else if (acc.method === 'binance_pay') {
-            return `🟡 *Binance Pay:*\n• Pay ID / Email: *${acc.email || acc.account_holder || ''}*`
+            const payUrl = acc.payment_url || (tenant?.slug === 'innovise' ? 'https://app.binance.com/uni-qr/J1UsGBdp' : '')
+            const lines = [`🟡 *Binance Pay (USDT):*`]
+            if (payUrl) {
+              lines.push(`• 📲 *Pagar con 1 Clic (App/Web):* ${payUrl}`)
+            }
+            if (acc.email || acc.account_holder) {
+              lines.push(`• Pay ID / Email: *${acc.email || acc.account_holder}*`)
+            }
+            if (acc.instructions) {
+              lines.push(`• ℹ️ _${acc.instructions}_`)
+            }
+            return lines.join('\n')
           }
           return `💳 *${acc.label || 'Método de Pago'}:*\n• ${acc.instructions || ''}`
         })

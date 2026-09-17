@@ -25,6 +25,7 @@ interface StorefrontPaymentAccount {
   account_number?: string
   email?: string
   qr_image_url?: string
+  payment_url?: string
   instructions?: string
 }
 
@@ -884,9 +885,26 @@ export default function CheckoutPage() {
 
                                 {account.method === 'binance_pay' && (
                                   <>
+                                    {(account.payment_url || tenantSlug === 'innovise') && (
+                                      <div className="mb-4">
+                                        <a
+                                          href={account.payment_url || 'https://app.binance.com/uni-qr/J1UsGBdp'}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm shadow-md shadow-amber-500/20 transition-all active:scale-95"
+                                        >
+                                          <ExternalLink className="w-4 h-4" />
+                                          <span>Pagar con 1 Clic en Binance App</span>
+                                        </a>
+                                        <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                                          ¿Estás desde tu teléfono? Toca el botón para abrir tu app de Binance y pagar sin escanear.
+                                        </p>
+                                      </div>
+                                    )}
                                     {account.qr_image_url && (
-                                      <div className="flex justify-center mb-4">
-                                        <img src={account.qr_image_url} alt="QR Binance" className="w-48 h-48 rounded-xl object-contain bg-white p-2 border border-slate-200" />
+                                      <div className="flex flex-col items-center justify-center mb-4">
+                                        <img src={account.qr_image_url} alt="QR Binance" className="w-44 h-44 rounded-xl object-contain bg-white p-2 border border-slate-200 shadow-sm" />
+                                        <span className="text-[11px] text-slate-400 mt-1">O escanea este código QR si estás desde una computadora</span>
                                       </div>
                                     )}
                                     <DetailRow label="Pay ID / Email" value={account.email || account.account_number || ''} id={`${account.id}-binance`} onCopy={handleCopy} copied={copiedField} />
