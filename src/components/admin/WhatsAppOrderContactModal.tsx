@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle } from 'lucide-react'
+import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle, Zap, Loader2 } from 'lucide-react'
+import { useTenant } from '@/contexts/TenantContext'
 import { COUNTRY_CODES, normalizeWhatsAppPhone, createWhatsAppWebUrl, createWhatsAppUrl } from '@/lib/whatsapp'
 
 interface Props {
@@ -79,7 +80,48 @@ export function WhatsAppOrderContactModal({
     return lines.join('\n')
   }, [customerName, tenantName, order, exchangeRate])
 
+  const { tenant } = useTenant()
   const [message, setMessage] = useState(defaultMessage)
+  const [sendingDirect, setSendingDirect] = useState(false)
+  const [directSuccess, setDirectSuccess] = useState<string | null>(null)
+  const [directError, setDirectError] = useState<string | null>(null)
+
+  const handleSendDirect = async () => {
+    if (!normalizedFullPhone || normalizedFullPhone.length < 10) {
+      alert('Por favor ingresa un número de teléfono válido.')
+      return
+    }
+    if (!tenant) return
+
+    setSendingDirect(true)
+    setDirectSuccess(null)
+    setDirectError(null)
+
+    try {
+      const res = await fetch('/api/admin/whatsapp/direct-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          phone: normalizedFullPhone,
+          type: 'text',
+          message,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setDirectSuccess('¡Mensaje enviado directamente al cliente por WhatsApp! ✓')
+        setTimeout(() => setDirectSuccess(null), 5000)
+      } else {
+        setDirectError(data.error || 'No se pudo enviar directo. Puedes abrir WhatsApp Web.')
+      }
+    } catch (err: any) {
+      setDirectError(err.message || 'Error de conexión.')
+    } finally {
+      setSendingDirect(false)
+    }
+  }
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message)
@@ -175,11 +217,25 @@ export function WhatsAppOrderContactModal({
             />
           </div>
 
+          {/* Feedback de envío directo */}
+          {directSuccess && (
+            <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 flex items-center gap-2 text-xs font-bold animate-in fade-in duration-200">
+              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>{directSuccess}</span>
+            </div>
+          )}
+          {directError && (
+            <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-center gap-2 text-xs font-medium">
+              <X className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              <span>{directError}</span>
+            </div>
+          )}
+
           {/* Tips para PC */}
           <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-2.5 text-xs text-blue-800 dark:text-blue-300">
             <Monitor className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
             <p className="leading-snug">
-              <strong>Consejo para PC:</strong> Al usar <em>WhatsApp Web</em> los emojis se cargarán directamente en el chat. Si tu navegador tiene bloqueadores o desajustes, pulsa <em>Copiar Mensaje</em> y pégalo directamente en la conversación.
+              <strong>Consejo:</strong> Puedes presionar <em>⚡ Enviar Directo</em> para despachar el mensaje de inmediato al cliente sin abrir WhatsApp Web ni copiar nada.
             </p>
           </div>
         </div>
@@ -195,24 +251,35 @@ export function WhatsAppOrderContactModal({
             <span>{copied ? '¡Mensaje Copiado! ✓' : 'Copiar Mensaje'}</span>
           </button>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handleSendDirect}
+              disabled={sendingDirect}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 active:scale-95 disabled:opacity-50 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Enviar directamente al cliente en segundo plano"
+            >
+              {sendingDirect ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-300" />}
+              <span>{sendingDirect ? 'Enviando...' : '⚡ Enviar Directo'}</span>
+            </button>
+
             <button
               type="button"
               onClick={handleOpenWeb}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
               title="Abrir en WhatsApp Web en una nueva pestaña de la PC"
             >
-              <Monitor className="w-4 h-4" />
-              <span>WhatsApp Web (PC)</span>
+              <Monitor className="w-3.5 h-3.5 text-blue-500" />
+              <span>Web (PC)</span>
             </button>
 
             <button
               type="button"
               onClick={handleOpenApp}
-              className="px-3 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+              className="px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
               title="Abrir con la app de WhatsApp de escritorio o móvil"
             >
-              <Smartphone className="w-4 h-4" />
+              <Smartphone className="w-3.5 h-3.5" />
               <span>App</span>
             </button>
           </div>

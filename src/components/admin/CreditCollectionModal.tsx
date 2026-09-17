@@ -17,7 +17,8 @@ import {
   Monitor,
   Smartphone,
   CheckCircle2,
-  Share2
+  Share2,
+  Zap
 } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { 
@@ -264,6 +265,47 @@ Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const [sendingDirect, setSendingDirect] = useState(false)
+  const [directSuccess, setDirectSuccess] = useState<string | null>(null)
+  const [directError, setDirectError] = useState<string | null>(null)
+
+  async function handleSendDirect() {
+    if (!hasValidPhone) {
+      alert('Por favor ingresa un número de teléfono válido para WhatsApp.')
+      return
+    }
+    if (!tenant) return
+
+    setSendingDirect(true)
+    setDirectSuccess(null)
+    setDirectError(null)
+
+    try {
+      const res = await fetch('/api/admin/whatsapp/direct-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          phone: normalizedFullPhone,
+          type: 'text',
+          message: customMessage,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setDirectSuccess('¡Mensaje de cobro enviado directamente por WhatsApp! ✓')
+        setTimeout(() => setDirectSuccess(null), 5000)
+      } else {
+        setDirectError(data.error || 'No se pudo enviar el mensaje directo. Puedes usar WhatsApp Web.')
+      }
+    } catch (err: any) {
+      setDirectError(err.message || 'Error de conexión con el servidor.')
+    } finally {
+      setSendingDirect(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={onClose} />
@@ -427,6 +469,20 @@ Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos
           </p>
         </div>
 
+        {/* Feedback de envío directo */}
+        {directSuccess && (
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 flex items-center gap-2 text-xs font-bold animate-in fade-in duration-200">
+            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{directSuccess}</span>
+          </div>
+        )}
+        {directError && (
+          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-center gap-2 text-xs font-medium">
+            <X className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span>{directError}</span>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
@@ -446,23 +502,35 @@ Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos
             </button>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {/* Botón Principal: Enviar Directo sin abrir WhatsApp */}
+            <button
+              type="button"
+              onClick={handleSendDirect}
+              disabled={!hasValidPhone || !customMessage.trim() || sendingDirect}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md shadow-emerald-600/25 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer transition active:scale-95"
+              title="Enviar directamente al WhatsApp del cliente mediante tu servidor en segundo plano"
+            >
+              {sendingDirect ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-300" />}
+              <span>{sendingDirect ? 'Enviando...' : '⚡ Enviar Directo'}</span>
+            </button>
+
             <button
               type="button"
               onClick={() => handleSendWhatsApp(true)}
               disabled={!hasValidPhone || !customMessage.trim()}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+              className="px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               title="Abrir en WhatsApp Web en una nueva pestaña de la PC"
             >
-              <Monitor className="w-3.5 h-3.5" />
-              <span>WhatsApp Web (PC)</span>
+              <Monitor className="w-3.5 h-3.5 text-blue-500" />
+              <span>Web (PC)</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSendWhatsApp(false)}
               disabled={!hasValidPhone || !customMessage.trim()}
-              className="px-3.5 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               title="Abrir con app de WhatsApp móvil o de escritorio"
             >
               <Smartphone className="w-3.5 h-3.5" />

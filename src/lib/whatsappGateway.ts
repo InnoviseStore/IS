@@ -246,3 +246,61 @@ export async function sendWhatsAppTextMessage(
     simulated: true,
   }
 }
+
+/**
+ * Envía un documento (como factura PDF) a un destinatario
+ */
+export async function sendWhatsAppDocument(
+  instanceName: string,
+  toPhone: string,
+  base64Data: string,
+  fileName: string = 'Factura.pdf',
+  caption: string = ''
+): Promise<SendMessageResult> {
+  const cleanPhone = normalizeWhatsAppPhone(toPhone)
+  if (!cleanPhone || cleanPhone.length < 10) {
+    return { success: false, error: 'Número de teléfono destinatario inválido.' }
+  }
+
+  const { apiUrl, apiKey, isConfigured } = getGatewayConfig()
+
+  // Limpiar encabezado data:application/pdf;base64, si viene con prefijo DataURL
+  const rawBase64 = base64Data.replace(/^data:application\/pdf;base64,/, '').trim()
+
+  if (isConfigured) {
+    try {
+      const res = await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
+        method: 'POST',
+        headers: {
+          apikey: apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: cleanPhone,
+          mediatype: 'document',
+          mimetype: 'application/pdf',
+          media: rawBase64,
+          fileName: fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`,
+          caption: caption || '',
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && (data?.key || data?.id || data?.status === 'PENDING' || data?.status === 'SUCCESS')) {
+        return { success: true, messageId: data?.key?.id || data?.id }
+      }
+      return { success: false, error: data?.message || data?.error || 'Error al enviar documento PDF por WhatsApp' }
+    } catch (e: any) {
+      console.error('[WhatsAppGateway] Error sending document message:', e)
+      return { success: false, error: e.message }
+    }
+  }
+
+  console.log(`[WhatsAppGateway Simulado] Enviando documento ${fileName} a +${cleanPhone} desde instancia [${instanceName}]`)
+  return {
+    success: true,
+    messageId: `sim_doc_${Date.now()}`,
+    simulated: true,
+  }
+}
+

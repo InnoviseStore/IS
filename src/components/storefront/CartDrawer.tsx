@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Loader2,
   CheckCircle2,
+  Check,
   AlertCircle,
   Bike,
   Truck,
@@ -180,6 +181,7 @@ export default function CartDrawer({
   const [isSuccess, setIsSuccess] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<string | null>(null);
   const [whatsAppUrl, setWhatsAppUrl] = useState<string | null>(null);
+  const [autoSent, setAutoSent] = useState(false);
 
   // Trap focus inside drawer
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -268,6 +270,7 @@ export default function CartDrawer({
 
     try {
       let orderNumber: string | undefined = undefined;
+      let wasAutoSent = false;
 
       // 1. Registrar la orden en la base de datos de la tienda
       try {
@@ -298,6 +301,10 @@ export default function CartDrawer({
         if (res.ok && data.order_number) {
           orderNumber = data.order_number;
           setConfirmedOrderNumber(data.order_number);
+          if (data.auto_whatsapp_sent) {
+            wasAutoSent = true;
+            setAutoSent(true);
+          }
         }
       } catch (dbErr) {
         console.warn('Advertencia al registrar en BD, continuando por WhatsApp:', dbErr);
@@ -327,10 +334,13 @@ export default function CartDrawer({
       setWhatsAppUrl(url);
       setIsSuccess(true);
 
-      try {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      } catch (openErr) {
-        console.warn('Popup bloqueado, enlace disponible en pantalla:', openErr);
+      // Si la tienda es Enterprise y la orden ya fue despachada automáticamente, no forzar popup a WhatsApp
+      if (!wasAutoSent) {
+        try {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        } catch (openErr) {
+          console.warn('Popup bloqueado, enlace disponible en pantalla:', openErr);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -398,10 +408,13 @@ export default function CartDrawer({
               <CheckCircle2 className="h-12 w-12 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800/60">
-                Pedido Registrado
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800/60 inline-flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" />
+                {autoSent ? 'Enviado por WhatsApp' : 'Pedido Registrado'}
               </span>
-              <p className="text-2xl font-black text-slate-900 dark:text-white mt-2">¡Solicitud Enviada!</p>
+              <p className="text-2xl font-black text-slate-900 dark:text-white mt-2">
+                {autoSent ? '¡Pedido Confirmado!' : '¡Solicitud Enviada!'}
+              </p>
               {confirmedOrderNumber && (
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-1">
                   N° de Pedido:{' '}
@@ -410,30 +423,50 @@ export default function CartDrawer({
                   </span>
                 </p>
               )}
-              <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm mt-2 max-w-xs mx-auto">
-                Tu pedido quedó registrado en el sistema de{' '}
-                <strong className="font-semibold text-blue-600 dark:text-blue-400">{storeName}</strong> y se abrió WhatsApp para coordinar el pago y la entrega con un asesor.
+              <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm mt-2 max-w-xs mx-auto leading-relaxed">
+                {autoSent ? (
+                  <>
+                    Hemos enviado automáticamente el resumen y comprobante a tu WhatsApp. El equipo de{' '}
+                    <strong className="font-semibold text-blue-600 dark:text-blue-400">{storeName}</strong> ya fue notificado y procesará tu entrega de inmediato.
+                  </>
+                ) : (
+                  <>
+                    Tu pedido quedó registrado en el sistema de{' '}
+                    <strong className="font-semibold text-blue-600 dark:text-blue-400">{storeName}</strong> y se abrió WhatsApp para coordinar el pago y la entrega con un asesor.
+                  </>
+                )}
               </p>
             </div>
             <div className="flex flex-col gap-2.5 w-full max-w-xs mt-2">
-              {whatsAppUrl && (
+              <button
+                type="button"
+                onClick={handleClearAndClose}
+                className="w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 active:scale-95 transition cursor-pointer"
+              >
+                {autoSent ? 'Seguir Comprando' : 'Limpiar Carrito y Continuar'}
+              </button>
+              {whatsAppUrl && !autoSent && (
                 <a
                   href={whatsAppUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition"
                 >
                   <MessageCircle className="h-5 w-5" />
                   <span>Abrir WhatsApp {confirmedOrderNumber ? `(#${confirmedOrderNumber})` : ''}</span>
                 </a>
               )}
-              <button
-                type="button"
-                onClick={handleClearAndClose}
-                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 active:scale-95 transition cursor-pointer"
-              >
-                Limpiar Carrito y Continuar
-              </button>
+              {whatsAppUrl && autoSent && (
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 text-xs font-semibold transition"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Abrir chat de la tienda (Opcional)</span>
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => setIsCartOpen(false)}

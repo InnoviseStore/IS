@@ -80,6 +80,7 @@ export default function CheckoutPage() {
   const [orderComplete, setOrderComplete] = useState(false)
   const [orderNumber, setOrderNumber] = useState('')
   const [confirmedTotalUsd, setConfirmedTotalUsd] = useState(0)
+  const [autoWhatsAppSent, setAutoWhatsAppSent] = useState(false)
 
   // Form State
   const [customer, setCustomer] = useState<CustomerData>({
@@ -293,6 +294,9 @@ export default function CheckoutPage() {
       const finalRecordedUsd = data.total_usd !== undefined ? Number(data.total_usd) : totalUsd
       setConfirmedTotalUsd(finalRecordedUsd)
       setOrderNumber(data.order_number || data.id?.substring(0, 8).toUpperCase() || 'ORD-0000')
+      if (data.auto_whatsapp_sent) {
+        setAutoWhatsAppSent(true)
+      }
       clearCart()
       setOrderComplete(true)
 
@@ -367,27 +371,58 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 p-4 rounded-xl text-left mb-8">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-              <p className="text-sm">Tu pedido está <strong>Pendiente de Verificación</strong>. Será procesado una vez confirmado el pago por el equipo de {tenantData?.name || 'la tienda'}.</p>
-            </div>
+            {autoWhatsAppSent ? (
+              <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 p-4 rounded-2xl text-left mb-8 border border-emerald-200 dark:border-emerald-800/50">
+                <Check className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+                <p className="text-sm">
+                  <strong>¡Confirmación enviada a tu WhatsApp!</strong> Hemos despachado automáticamente los detalles de tu orden a tu teléfono ({customer.phone}). El equipo de {tenantData?.name || 'la tienda'} ya está procesando tu solicitud.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 p-4 rounded-xl text-left mb-8">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                <p className="text-sm">Tu pedido está <strong>Pendiente de Verificación</strong>. Será procesado una vez confirmado el pago por el equipo de {tenantData?.name || 'la tienda'}.</p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
-              <a 
-                href={waLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-4 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
-              >
-                <MessageCircle className="w-5 h-5" />
-                Enviar Comprobante por WhatsApp
-              </a>
-              <button 
-                onClick={() => router.push(`/${tenantSlug}`)}
-                className="flex items-center justify-center gap-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-6 py-4 rounded-xl font-medium transition-all"
-              >
-                Volver a la Tienda
-              </button>
+              {autoWhatsAppSent ? (
+                <>
+                  <button 
+                    onClick={() => router.push(`/${tenantSlug}`)}
+                    className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-4 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
+                  >
+                    Volver a la Tienda
+                  </button>
+                  <a 
+                    href={waLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 text-xs font-semibold py-2 transition text-center"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    Abrir chat de la tienda (Opcional)
+                  </a>
+                </>
+              ) : (
+                <>
+                  <a 
+                    href={waLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-4 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Enviar Comprobante por WhatsApp
+                  </a>
+                  <button 
+                    onClick={() => router.push(`/${tenantSlug}`)}
+                    className="flex items-center justify-center gap-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-6 py-4 rounded-xl font-medium transition-all"
+                  >
+                    Volver a la Tienda
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

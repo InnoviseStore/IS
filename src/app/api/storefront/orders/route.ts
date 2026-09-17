@@ -275,12 +275,14 @@ export async function POST(req: Request) {
     }
 
     // 6. Envío Automático de WhatsApp en Plan Enterprise
+    let autoWhatsAppSent = false
     try {
       const features = getTenantFeatures(tenant)
       const tSettings = (tenant?.settings || {}) as Record<string, any>
       const waSettings = tSettings.whatsapp_automation || {}
 
       if (features.hasWhatsAppAutomation && waSettings.enabled && waSettings.auto_send_web_order) {
+        autoWhatsAppSent = true
         const instanceName = waSettings.instance_name || `tenant_${tenant.slug}`
 
         const sendPromises: Promise<any>[] = []
@@ -345,6 +347,7 @@ export async function POST(req: Request) {
       order_number: order.order_number,
       total_usd: finalTotalUsd,
       total_ves: finalTotalVes,
+      auto_whatsapp_sent: autoWhatsAppSent,
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al registrar pedido web.'

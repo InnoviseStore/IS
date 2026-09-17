@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { X, MessageCircle, Copy, Check, Monitor, Smartphone } from 'lucide-react'
+import { X, MessageCircle, Copy, Check, Monitor, Smartphone, Zap, FileText, Loader2 } from 'lucide-react'
+import { useTenant } from '@/contexts/TenantContext'
+import { getOrderPdfBase64 } from '@/lib/pdfGenerator'
 import {
   COUNTRY_CODES,
   normalizeWhatsAppPhone,
@@ -178,7 +180,12 @@ export function WhatsAppInvoiceModal({
     payments,
   ])
 
+  const { tenant } = useTenant()
   const [message, setMessage] = useState(defaultMessage)
+  const [sendingDirectText, setSendingDirectText] = useState(false)
+  const [sendingDirectPdf, setSendingDirectPdf] = useState(false)
+  const [directSuccess, setDirectSuccess] = useState<string | null>(null)
+  const [directError, setDirectError] = useState<string | null>(null)
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message)
@@ -194,6 +201,116 @@ export function WhatsAppInvoiceModal({
   const handleOpenApp = () => {
     const url = createWhatsAppUrl(normalizedFullPhone, message)
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleSendDirectText = async () => {
+    if (!hasValidPhone) {
+      alert('Por favor ingresa un número de teléfono válido.')
+      return
+    }
+    if (!tenant) return
+
+    setSendingDirectText(true)
+    setDirectSuccess(null)
+    setDirectError(null)
+
+    try {
+      const res = await fetch('/api/admin/whatsapp/direct-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          phone: normalizedFullPhone,
+          type: 'text',
+          message,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setDirectSuccess('¡Recibo de factura enviado directamente por WhatsApp! ✓')
+        setTimeout(() => setDirectSuccess(null), 5000)
+      } else {
+        setDirectError(data.error || 'No se pudo enviar directo. Puedes abrir WhatsApp Web.')
+      }
+    } catch (err: any) {
+      setDirectError(err.message || 'Error de conexión.')
+    } finally {
+      setSendingDirectText(false)
+    }
+  }
+
+  const handleSendDirectPdf = async () => {
+    if (!hasValidPhone) {
+      alert('Por favor ingresa un número de teléfono válido.')
+      return
+    }
+    if (!tenant) return
+
+    setSendingDirectPdf(true)
+    setDirectSuccess(null)
+    setDirectError(null)
+
+    try {
+      const orderPayload: any = {
+        id: 'ord-' + Date.now(),
+        order_number: orderNumber,
+        exchange_rate_at_sale: exchangeRate,
+        subtotal_usd: totalUsd - (igtfUsd || 0) + (discountUsd || 0),
+        total_usd: totalUsd,
+        total_ves: totalVes,
+        payment_condition: isCredit ? 'credit_7d' : 'immediate',
+        status: isCredit ? 'credit' : 'completed',
+        due_date: creditDueDate || null,
+        created_at: new Date().toISOString(),
+        customer: {
+          full_name: customerName,
+          id_number: customerIdNumber,
+          phone: normalizedFullPhone,
+        },
+        order_items: (items || []).map((it) => ({
+          product_name: it.name,
+          quantity: it.quantity,
+          unit_price_usd: it.unitPriceUsd,
+          subtotal_usd: it.subtotalUsd,
+        })),
+        payment_breakdown: (payments || []).map((p) => ({
+          method: p.method,
+          amount_usd: p.amountUsd,
+          reference: p.reference,
+        })),
+      }
+
+      const { base64, fileName } = await getOrderPdfBase64({
+        order: orderPayload,
+        tenant,
+      })
+
+      const res = await fetch('/api/admin/whatsapp/direct-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          phone: normalizedFullPhone,
+          type: 'document',
+          media_base64: base64,
+          file_name: fileName,
+          message: `Adjunto envío tu Factura Digital #${orderNumber} de ${tenantName}. ¡Gracias por tu compra!`,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setDirectSuccess('¡Factura PDF enviada exitosamente al WhatsApp del cliente! 📄✓')
+        setTimeout(() => setDirectSuccess(null), 5000)
+      } else {
+        setDirectError(data.error || 'No se pudo enviar el PDF por WhatsApp.')
+      }
+    } catch (err: any) {
+      setDirectError(err.message || 'Error al generar o enviar la factura PDF.')
+    } finally {
+      setSendingDirectPdf(false)
+    }
   }
 
   return (
@@ -274,11 +391,25 @@ export function WhatsAppInvoiceModal({
             />
           </div>
 
+          {/* Feedback de envío directo */}
+          {directSuccess && (
+            <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 flex items-center gap-2 text-xs font-bold animate-in fade-in duration-200">
+              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>{directSuccess}</span>
+            </div>
+          )}
+          {directError && (
+            <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-center gap-2 text-xs font-medium">
+              <X className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              <span>{directError}</span>
+            </div>
+          )}
+
           {/* Consejo para PC */}
           <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-2.5 text-blue-800 dark:text-blue-300">
             <Monitor className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
             <p className="leading-snug">
-              <strong>Consejo para PC:</strong> Haz clic en <em>WhatsApp Web (PC)</em> para que los emojis se abran sin distorsión. También puedes presionar <em>Copiar</em> y pegarlo directamente en el chat del cliente.
+              <strong>Consejo:</strong> Puedes usar <em>⚡ Enviar Directo</em> o <em>📄 Enviar Factura PDF</em> para que el mensaje o el documento salga sin que tengas que abrir WhatsApp Web ni copiar nada.
             </p>
           </div>
         </div>
@@ -288,33 +419,55 @@ export function WhatsAppInvoiceModal({
           <button
             type="button"
             onClick={handleCopy}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+            className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
           >
             {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
-            <span>{copied ? '¡Mensaje Copiado! ✓' : 'Copiar Mensaje'}</span>
+            <span>{copied ? '¡Copiado!' : 'Copiar'}</span>
           </button>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {/* Botón: Enviar PDF oficial por WhatsApp */}
+            <button
+              type="button"
+              onClick={handleSendDirectPdf}
+              disabled={!hasValidPhone || sendingDirectPdf}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs shadow-md shadow-blue-500/25 disabled:opacity-50 transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="Generar y enviar la factura en archivo PDF adjunto por WhatsApp"
+            >
+              {sendingDirectPdf ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 text-blue-200" />
+              )}
+              <span>{sendingDirectPdf ? 'Generando PDF...' : '📄 Enviar Factura PDF'}</span>
+            </button>
+
+            {/* Botón: Enviar texto directo */}
+            <button
+              type="button"
+              onClick={handleSendDirectText}
+              disabled={!hasValidPhone || !message.trim() || sendingDirectText}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/25 disabled:opacity-50 transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="Enviar el resumen de texto directo por WhatsApp sin abrir pestañas"
+            >
+              {sendingDirectText ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+              )}
+              <span>{sendingDirectText ? 'Enviando...' : '⚡ Enviar Texto'}</span>
+            </button>
+
+            {/* Botón: WhatsApp Web */}
             <button
               type="button"
               onClick={handleOpenWeb}
               disabled={!hasValidPhone || !message.trim()}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 active:scale-95 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
+              className="px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               title="Abrir en WhatsApp Web en una nueva pestaña"
             >
-              <Monitor className="w-4 h-4" />
-              <span>WhatsApp Web (PC)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleOpenApp}
-              disabled={!hasValidPhone || !message.trim()}
-              className="px-3 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Abrir con la aplicación de WhatsApp"
-            >
-              <Smartphone className="w-4 h-4" />
-              <span>App</span>
+              <Monitor className="w-3.5 h-3.5 text-blue-500" />
+              <span>Web (PC)</span>
             </button>
           </div>
         </div>

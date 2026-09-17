@@ -109,11 +109,13 @@ export interface GenerateOrderPdfOptions {
   }
 }
 
-export async function generateOrderPdf({
+export async function buildOrderJsPdfDoc({
   order,
   tenant,
-  action = 'download',
-}: GenerateOrderPdfOptions): Promise<void> {
+}: {
+  order: GenerateOrderPdfOptions['order']
+  tenant?: Tenant | null
+}): Promise<{ doc: jsPDF; orderNumber: string }> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -388,13 +390,37 @@ export async function generateOrderPdf({
   )
   doc.text('¡Gracias por su compra y preferencia!', 105, footerY + 3, { align: 'center' })
 
-  // Output
+  return { doc, orderNumber }
+}
+
+export async function generateOrderPdf({
+  order,
+  tenant,
+  action = 'download',
+}: GenerateOrderPdfOptions): Promise<void> {
+  const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant })
+
   if (action === 'print') {
     doc.autoPrint()
     const blobUrl = doc.output('bloburl')
     window.open(blobUrl, '_blank')
   } else {
     doc.save(`Factura_${orderNumber}.pdf`)
+  }
+}
+
+export async function getOrderPdfBase64({
+  order,
+  tenant,
+}: {
+  order: GenerateOrderPdfOptions['order']
+  tenant?: Tenant | null
+}): Promise<{ base64: string; fileName: string }> {
+  const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant })
+  const base64 = doc.output('datauristring')
+  return {
+    base64,
+    fileName: `Factura_${orderNumber}.pdf`,
   }
 }
 
