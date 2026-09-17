@@ -48,8 +48,8 @@ export async function POST(req: Request) {
     }
 
     // 2. Ignorar mensajes de grupos o estados
-    const remoteJid: string = key.remoteJid || ''
-    if (remoteJid.includes('@g.us') || remoteJid.includes('status@broadcast')) {
+    const rawRemoteJid: string = key.remoteJid || ''
+    if (rawRemoteJid.includes('@g.us') || rawRemoteJid.includes('status@broadcast')) {
       return NextResponse.json({ status: 'ignored_group_or_broadcast' })
     }
 
@@ -60,7 +60,17 @@ export async function POST(req: Request) {
     }
 
     // 4. Extraer teléfono del remitente (número limpio en dígitos)
-    const senderDigits = remoteJid.replace(/@s\.whatsapp\.net/, '').replace(/\D/g, '')
+    // En WhatsApp con privacidad/dispositivos vinculados, key.remoteJidAlt contiene el número real (@s.whatsapp.net)
+    // mientras que remoteJid puede ser un identificador interno (@lid).
+    const realJid = (key.remoteJidAlt && key.remoteJidAlt.includes('@s.whatsapp.net'))
+      ? key.remoteJidAlt
+      : (key.remoteJid && key.remoteJid.includes('@s.whatsapp.net'))
+        ? key.remoteJid
+        : (rawData.sender && rawData.sender.includes('@s.whatsapp.net'))
+          ? rawData.sender
+          : (key.remoteJidAlt || key.remoteJid || '')
+
+    const senderDigits = realJid.replace(/@s\.whatsapp\.net/, '').replace(/@lid/, '').replace(/\D/g, '')
     if (!senderDigits || senderDigits.length < 7) {
       return NextResponse.json({ status: 'invalid_phone' })
     }
@@ -244,18 +254,10 @@ export async function POST(req: Request) {
         const msgText =
           `👋 ¡Hola! Gracias por comunicarte con *${tenant.name}*.\n\n` +
           `🔍 Consultamos en nuestro sistema pero no encontramos una cuenta de cliente registrada con este número telefónico (*+${senderDigits}*).\n\n` +
-          `📌 Si eres cliente y tienes compras pendientes o deseas registrarte, por favor indícanos tu *Nombre completo* y *Cédula/RIF* y con gusto te asistiremos.`
+          `📌 Si eres cliente y tienes compras pendientes o deseas consultar tu cuenta, por favor indícanos tu *Nombre completo* y *Cédula/RIF* y con gusto te asistiremos.\n\n` +
+          `🛍️ También puedes ver nuestros productos escribiendo *CATALOGO*.`
 
-        await sendWhatsAppButtons(
-          instanceName,
-          senderDigits,
-          `Atención al Cliente • ${tenant.name}`,
-          msgText,
-          [
-            { id: 'btn_catalogo', displayText: '🛍️ Ver Catálogo' },
-            { id: 'btn_datos_pago', displayText: '🏦 Cuentas de Pago' },
-          ]
-        )
+        await sendWhatsAppTextMessage(instanceName, senderDigits, msgText)
         return NextResponse.json({ status: 'customer_not_found_responded' })
       }
 
@@ -267,18 +269,13 @@ export async function POST(req: Request) {
           `🎉 *¡Hola ${customer.full_name}!* ✨\n\n` +
           `Te confirmamos que en *${tenant.name}* te encuentras **completamente al día**.\n\n` +
           `✅ *Saldo pendiente:* **$0.00 USD (Bs. 0,00)**\n\n` +
-          `¡Muchas gracias por tu puntualidad y preferencia constante! Si deseas realizar un nuevo pedido, visita nuestro catálogo virtual.`
+          `¡Muchas gracias por tu puntualidad y preferencia constante! 🙌\n\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `📌 *Opciones Disponibles:*\n` +
+          `• Escribe *CATALOGO* para ver novedades y productos.\n` +
+          `• Escribe *PAGO* para consultar cuentas bancarias.`
 
-        await sendWhatsAppButtons(
-          instanceName,
-          senderDigits,
-          `Estado de Cuenta • ${tenant.name}`,
-          alDiaText,
-          [
-            { id: 'btn_catalogo', displayText: '🛍️ Ver Catálogo' },
-            { id: 'btn_datos_pago', displayText: '🏦 Cuentas de Pago' },
-          ]
-        )
+        await sendWhatsAppTextMessage(instanceName, senderDigits, alDiaText)
         return NextResponse.json({ status: 'balance_al_dia_responded' })
       }
 
@@ -298,19 +295,9 @@ export async function POST(req: Request) {
         `💳 *DATOS PARA ABONAR O CANCELAR:*\n\n` +
         `${paymentMethodsFormatted}\n\n` +
         `━━━━━━━━━━━━━━━━━━\n` +
-        `📎 *Importante:* Al realizar tu abono o pago total, por favor envía la captura o número de referencia por este mismo chat para procesarlo y rebajarlo de tu saldo de inmediato.`
+        `📎 *Importante:* Al realizar tu abono o pago total, por favor envía la captura o número de referencia por este mismo chat para procesarlo y rebajarlo de tu saldo de inmediato. ¡Muchas gracias!`
 
-      await sendWhatsAppButtons(
-        instanceName,
-        senderDigits,
-        `Cobranza & Abonos • ${tenant.name}`,
-        debtText,
-        [
-          { id: 'btn_datos_pago', displayText: '🏦 Datos de Pago' },
-          { id: 'btn_catalogo', displayText: '🛍️ Ver Catálogo' },
-        ]
-      )
-
+      await sendWhatsAppTextMessage(instanceName, senderDigits, debtText)
       return NextResponse.json({ status: 'balance_debt_responded' })
     }
 
@@ -320,19 +307,11 @@ export async function POST(req: Request) {
         `💳 *Métodos y Cuentas de Pago Oficiales*\n*${tenant.name}*\n\n` +
         `📊 *Tasa Oficial BCV del día:* **Bs. ${exchangeRate.toFixed(4)}/USD**\n\n` +
         `${paymentMethodsFormatted}\n\n` +
-        `📎 *Nota:* Puedes realizar pagos completos o abonos parciales. No olvides enviar tu comprobante para validarlo en el sistema.`
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `📎 *Nota:* Puedes realizar pagos completos o abonos parciales. Envía tu comprobante por este chat para validarlo en el sistema.\n\n` +
+        `• Escribe *SALDO* para consultar tu deuda pendiente.`
 
-      await sendWhatsAppButtons(
-        instanceName,
-        senderDigits,
-        `Cuentas Bancarias • ${tenant.name}`,
-        paymentMsg,
-        [
-          { id: 'btn_saldo', displayText: '💰 Consultar Mi Saldo' },
-          { id: 'btn_catalogo', displayText: '🛍️ Ver Catálogo' },
-        ]
-      )
-
+      await sendWhatsAppTextMessage(instanceName, senderDigits, paymentMsg)
       return NextResponse.json({ status: 'payment_methods_responded' })
     }
 
@@ -343,19 +322,10 @@ export async function POST(req: Request) {
         `🛍️ *Catálogo Virtual • ${tenant.name}*\n\n` +
         `Explora todos nuestros productos con disponibilidad en tiempo real y precios actualizados en USD y Bolívares:\n\n` +
         `👉 *${catalogUrl}*\n\n` +
-        `¡Arma tu pedido directamente en la vitrina web sin necesidad de escribir la lista a mano!`
+        `¡Arma tu pedido directamente en la vitrina web sin necesidad de escribir la lista a mano!\n\n` +
+        `• Escribe *SALDO* para consultar tu estado de cuenta.`
 
-      await sendWhatsAppButtons(
-        instanceName,
-        senderDigits,
-        `Vitrina Virtual • ${tenant.name}`,
-        catalogMsg,
-        [
-          { id: 'btn_saldo', displayText: '💰 Consultar Saldo' },
-          { id: 'btn_datos_pago', displayText: '🏦 Cuentas de Pago' },
-        ]
-      )
-
+      await sendWhatsAppTextMessage(instanceName, senderDigits, catalogMsg)
       return NextResponse.json({ status: 'catalog_responded' })
     }
 
@@ -367,20 +337,9 @@ export async function POST(req: Request) {
         `1️⃣ Escribe *SALDO* para consultar tu monto pendiente y conversión en Bs.\n` +
         `2️⃣ Escribe *PAGO* para ver los datos bancarios y Pago Móvil.\n` +
         `3️⃣ Escribe *CATALOGO* para ingresar a nuestra tienda virtual.\n\n` +
-        `También puedes tocar directamente cualquiera de los botones abajo 👇 o dejar tu mensaje y un asesor te atenderá pronto.`
+        `O si lo prefieres, déjanos tu mensaje y un asesor te atenderá a la brevedad. 😊`
 
-      await sendWhatsAppButtons(
-        instanceName,
-        senderDigits,
-        `Menú de Opciones • ${tenant.name}`,
-        greetingMsg,
-        [
-          { id: 'btn_saldo', displayText: '💰 Consultar Saldo' },
-          { id: 'btn_datos_pago', displayText: '🏦 Cuentas de Pago' },
-          { id: 'btn_catalogo', displayText: '🛍️ Ver Catálogo' },
-        ]
-      )
-
+      await sendWhatsAppTextMessage(instanceName, senderDigits, greetingMsg)
       return NextResponse.json({ status: 'greeting_responded' })
     }
 
