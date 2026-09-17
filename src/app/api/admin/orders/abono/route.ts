@@ -186,7 +186,7 @@ export async function POST(req: Request) {
               `¡Muchas gracias por tu pago y preferencia!`,
             ].filter(Boolean).join('\n')
 
-            sendWhatsAppTextMessage(instanceName, cust.phone, abonoMsg).catch((err) =>
+            await sendWhatsAppTextMessage(instanceName, cust.phone, abonoMsg).catch((err) =>
               console.error('[Auto-WhatsApp] Error sending abono receipt:', err)
             )
           }

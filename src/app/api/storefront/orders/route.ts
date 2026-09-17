@@ -283,6 +283,8 @@ export async function POST(req: Request) {
       if (features.hasWhatsAppAutomation && waSettings.enabled && waSettings.auto_send_web_order) {
         const instanceName = waSettings.instance_name || `tenant_${tenant.slug}`
 
+        const sendPromises: Promise<any>[] = []
+
         // Mensaje al Cliente
         if (cleanPhone) {
           const clientMsg = [
@@ -301,8 +303,10 @@ export async function POST(req: Request) {
             `Estamos verificando tu solicitud para preparar tu despacho. ¡Muchas gracias por tu compra!`,
           ].filter(Boolean).join('\n')
 
-          sendWhatsAppTextMessage(instanceName, cleanPhone, clientMsg).catch((e) =>
-            console.error('[Auto-WhatsApp Web Order Client]', e)
+          sendPromises.push(
+            sendWhatsAppTextMessage(instanceName, cleanPhone, clientMsg).catch((e) =>
+              console.error('[Auto-WhatsApp Web Order Client]', e)
+            )
           )
         }
 
@@ -313,15 +317,22 @@ export async function POST(req: Request) {
             `🏪 *${tenant.name}*`,
             `🔖 *Orden:* #${order.order_number}`,
             `👤 *Cliente:* ${cleanFullName} (${cleanPhone || 'Sin teléfono'})`,
-            `💰 *Monto:* $${finalTotalUsd.toFixed(2)} USD (Bs. ${finalTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`,
+            `💰 *Monto:* $${finalTotalUsd.toFixed(2)} USD (Bs. ${finalTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
             paymentMethod ? `💳 Método: ${paymentMethod.toUpperCase()}` : '',
             paymentReference ? `🔢 Ref: ${paymentReference}` : '',
             `\nRevisa el panel de pedidos para procesarlo.`
           ].filter(Boolean).join('\n')
 
-          sendWhatsAppTextMessage(instanceName, tenant.phone_whatsapp, adminAlert).catch((e) =>
-            console.error('[Auto-WhatsApp Web Order Admin Alert]', e)
+          sendPromises.push(
+            sendWhatsAppTextMessage(instanceName, tenant.phone_whatsapp, adminAlert).catch((e) =>
+              console.error('[Auto-WhatsApp Web Order Admin Alert]', e)
+            )
           )
+        }
+
+        // Esperar el despacho para asegurar que la función serverless de Netlify complete la llamada antes de terminar
+        if (sendPromises.length > 0) {
+          await Promise.allSettled(sendPromises)
         }
       }
     } catch (waErr) {

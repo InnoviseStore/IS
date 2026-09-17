@@ -417,8 +417,8 @@ export async function POST(req: Request) {
             `✨ ¡Muchas gracias por tu compra!`,
           ].filter(Boolean).join('\n')
 
-          // Envío en segundo plano
-          sendWhatsAppTextMessage(instanceName, targetPhone, invoiceMsg).catch((err) =>
+          // Envío automático garantizado antes de cerrar la función serverless
+          await sendWhatsAppTextMessage(instanceName, targetPhone, invoiceMsg).catch((err) =>
             console.error('[Auto-WhatsApp] Error sending invoice:', err)
           )
         }
