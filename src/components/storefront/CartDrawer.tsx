@@ -25,6 +25,8 @@ import Image from 'next/image';
 import { useCart } from '@/contexts/CartContext';
 import {
   buildWhatsAppCheckoutUrl,
+  normalizeWhatsAppPhone,
+  COUNTRY_CODES,
   type DeliveryMethod,
   type ShippingAgency,
 } from '@/lib/whatsapp';
@@ -94,10 +96,26 @@ export default function CartDrawer({
 
   // Form state
   const [fullName, setFullName] = useState('');
+  const [countryCode, setCountryCode] = useState('58');
   const [phone, setPhone] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Restaurar cliente de localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('is_saved_checkout_customer');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.fullName) setFullName(parsed.fullName);
+        if (parsed.phone) setPhone(parsed.phone);
+        if (parsed.idNumber) setIdNumber(parsed.idNumber);
+        if (parsed.address) setAddress(parsed.address);
+        if (parsed.countryCode) setCountryCode(parsed.countryCode);
+      }
+    } catch {}
+  }, []);
 
   // Delivery options state (Excluyentes: solo una activa a la vez)
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery_bqto');
@@ -231,11 +249,13 @@ export default function CartDrawer({
     setIsSubmitting(true);
 
     // Guardar datos en localStorage para compras futuras del cliente
+    const cleanCustomerPhone = normalizeWhatsAppPhone(phone.trim(), countryCode || '58');
     try {
       localStorage.setItem(
         'is_saved_checkout_customer',
         JSON.stringify({
           fullName: fullName.trim(),
+          countryCode,
           phone: phone.trim(),
           idNumber: idNumber.trim(),
           address: address.trim(),
@@ -257,7 +277,7 @@ export default function CartDrawer({
             tenantSlug,
             customer: {
               fullName: fullName.trim(),
-              phone: phone.trim(),
+              phone: cleanCustomerPhone,
               idNumber: idNumber.trim(),
               address: address.trim(),
               notes: notes.trim(),
@@ -287,7 +307,7 @@ export default function CartDrawer({
         items,
         customer: {
           fullName: fullName.trim(),
-          phone: phone.trim(),
+          phone: cleanCustomerPhone,
           idNumber: idNumber.trim(),
           address: address.trim(),
           notes: notes.trim(),
@@ -587,26 +607,43 @@ export default function CartDrawer({
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Teléfono WhatsApp *
                 </label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    if (errors.phone) setErrors((prev) => ({ ...prev, phone: undefined }));
-                  }}
-                  placeholder="04121234567"
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.phone
-                      ? 'border-rose-400 dark:border-rose-600'
-                      : 'border-slate-200 dark:border-slate-700'
-                  }`}
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="px-2.5 py-2.5 rounded-xl border text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    title="Código de país"
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} +{c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (errors.phone) setErrors((prev) => ({ ...prev, phone: undefined }));
+                    }}
+                    placeholder="04121234567 o 4121234567"
+                    className={`flex-1 px-3.5 py-2.5 rounded-xl border text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.phone
+                        ? 'border-rose-400 dark:border-rose-600'
+                        : 'border-slate-200 dark:border-slate-700'
+                    }`}
+                  />
+                </div>
                 {errors.phone && (
                   <p className="flex items-center gap-1 text-xs text-rose-500 mt-1 font-medium">
                     <AlertCircle className="h-3 w-3" />
                     {errors.phone}
                   </p>
                 )}
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                  Código de país internacional para contacto directo por WhatsApp.
+                </p>
               </div>
 
               {/* ─── Opciones de Entrega (Mutuamente Excluyentes) ─── */}

@@ -30,6 +30,7 @@ import { generateOrderPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
 import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
+import { WhatsAppOrderContactModal } from '@/components/admin/WhatsAppOrderContactModal'
 
 interface OrderItem {
   id: string
@@ -83,6 +84,15 @@ export default function AdminOrdersPage() {
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [abonoOrder, setAbonoOrder] = useState<OrderRecord | null>(null)
   const [authOrderForEdit, setAuthOrderForEdit] = useState<OrderRecord | null>(null)
+  const [whatsAppOrder, setWhatsAppOrder] = useState<OrderRecord | null>(null)
+  const [generalStats, setGeneralStats] = useState<{
+    pendingCount: number
+    pendingUsd: number
+    creditCount: number
+    creditUsd: number
+    completedCount: number
+    completedUsd: number
+  } | null>(null)
 
   const loadOrders = useCallback(async (isRefresh = false) => {
     if (!tenant) return
@@ -94,6 +104,9 @@ export default function AdminOrdersPage() {
       const data = await res.json()
       if (res.ok && Array.isArray(data.orders)) {
         setOrders(data.orders)
+        if (data.stats) {
+          setGeneralStats(data.stats)
+        }
       } else {
         console.error('Error fetching orders:', data.error)
       }
@@ -107,6 +120,15 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     loadOrders()
+  }, [loadOrders])
+
+  // Escuchar notificaciones en vivo de nuevos pedidos para refrescar de inmediato
+  useEffect(() => {
+    const handleNewOrder = () => {
+      loadOrders(true)
+    }
+    window.addEventListener('is_new_order_received', handleNewOrder)
+    return () => window.removeEventListener('is_new_order_received', handleNewOrder)
   }, [loadOrders])
 
   // Toggle card item expand
@@ -128,8 +150,10 @@ export default function AdminOrdersPage() {
     })
   }, [orders, searchQuery])
 
-  // Estadísticas rápidas
+  // Estadísticas generales de la tienda (desacopladas de la pestaña activa en la tabla)
   const stats = useMemo(() => {
+    if (generalStats) return generalStats
+
     let pendingCount = 0
     let pendingUsd = 0
     let creditCount = 0
@@ -153,7 +177,7 @@ export default function AdminOrdersPage() {
     })
 
     return { pendingCount, pendingUsd, creditCount, creditUsd, completedCount, completedUsd }
-  }, [orders])
+  }, [generalStats, orders])
 
   // Cancelar orden (marcar como cancelada)
   const handleCancelOrder = async (orderId: string, orderNumber: string) => {
@@ -557,18 +581,15 @@ export default function AdminOrdersPage() {
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-slate-400">Teléfono:</span>
                         <span className="font-mono text-slate-700 dark:text-slate-300">{cust.phone}</span>
-                        {waChatUrl && (
-                          <a
-                            href={waChatUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 text-[11px] font-bold hover:bg-emerald-100 transition"
-                            title="Chatear por WhatsApp"
-                          >
-                            <MessageCircle className="w-3 h-3" />
-                            <span>WhatsApp</span>
-                          </a>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setWhatsAppOrder(order)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 text-[11px] font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition cursor-pointer"
+                          title="Contactar al cliente por WhatsApp (con código de país y emojis para PC)"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>WhatsApp</span>
+                        </button>
                       </div>
                     )}
 
@@ -772,12 +793,22 @@ export default function AdminOrdersPage() {
           isOpen={Boolean(authOrderForEdit)}
           onClose={() => setAuthOrderForEdit(null)}
           title={`Editar Factura #${authOrderForEdit.order_number}`}
-          description={`Para modificar productos, precios, cliente o pagos de la factura #${authOrderForEdit.order_number}, ingresa la Clave de Administrador de la tienda.`}
           onSuccess={(pin) => {
             const editId = authOrderForEdit.id
             setAuthOrderForEdit(null)
             router.push(`/admin/pos?editOrder=${editId}&authPin=${encodeURIComponent(pin)}`)
           }}
+        />
+      )}
+
+      {/* Modal de Contacto por WhatsApp */}
+      {whatsAppOrder && (
+        <WhatsAppOrderContactModal
+          isOpen={Boolean(whatsAppOrder)}
+          onClose={() => setWhatsAppOrder(null)}
+          order={whatsAppOrder}
+          tenantName={tenant?.name || 'IS System'}
+          exchangeRate={exchangeRate}
         />
       )}
     </div>

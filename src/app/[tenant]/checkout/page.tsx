@@ -8,8 +8,9 @@ import {
   User, MapPin, CreditCard, Truck, Store, Package, 
   ChevronLeft, ChevronRight, Check, Copy, Loader2, 
   ShoppingBag, AlertCircle, CheckCircle2, MessageCircle, 
-  Phone, Hash, Building2, Wallet, QrCode
+  Phone, Hash, Building2, Wallet, QrCode, Globe
 } from 'lucide-react'
+import { COUNTRY_CODES, normalizeWhatsAppPhone } from '@/lib/whatsapp'
 
 // Interfaces
 interface StorefrontPaymentAccount {
@@ -41,6 +42,7 @@ interface CustomerData {
   full_name: string
   id_prefix: string
   id_number: string
+  country_code: string
   phone: string
   address: string
   notes: string
@@ -83,6 +85,7 @@ export default function CheckoutPage() {
     full_name: '',
     id_prefix: 'V-',
     id_number: '',
+    country_code: '58',
     phone: '',
     address: '',
     notes: ''
@@ -226,7 +229,7 @@ export default function CheckoutPage() {
         customer: {
           full_name: customer.full_name,
           id_number: `${customer.id_prefix}${customer.id_number}`,
-          phone: customer.phone,
+          phone: normalizeWhatsAppPhone(customer.phone, customer.country_code || '58'),
           address: customer.address,
           notes: customer.notes
         },
@@ -448,16 +451,33 @@ export default function CheckoutPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Teléfono (WhatsApp) <span className="text-rose-500">*</span></label>
-                    <input 
-                      type="tel" 
-                      value={customer.phone}
-                      onChange={e => setCustomer({...customer, phone: e.target.value})}
-                      className={`w-full px-4 py-3 rounded-xl border bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${
-                        errorsCustomer.phone ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
-                      placeholder="04141234567"
-                    />
+                    <div className="flex gap-2">
+                      <select 
+                        value={customer.country_code || '58'}
+                        onChange={e => setCustomer({...customer, country_code: e.target.value})}
+                        className="px-3 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs sm:text-sm font-medium"
+                        title="Código de país internacional"
+                      >
+                        {COUNTRY_CODES.map(c => (
+                          <option key={c.code} value={c.code}>
+                            {c.flag} +{c.code}
+                          </option>
+                        ))}
+                      </select>
+                      <input 
+                        type="tel" 
+                        value={customer.phone}
+                        onChange={e => setCustomer({...customer, phone: e.target.value})}
+                        className={`flex-1 px-4 py-3 rounded-xl border bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${
+                          errorsCustomer.phone ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
+                        placeholder="04141234567 o 4141234567"
+                      />
+                    </div>
                     {errorsCustomer.phone && <p className="text-rose-500 text-sm mt-1">{errorsCustomer.phone}</p>}
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                      Elige el código de tu país para coordinar tu entrega y pago sin errores.
+                    </p>
                   </div>
 
                   <div>

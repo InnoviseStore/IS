@@ -88,6 +88,7 @@ export function SplitPaymentModal({
   const [isCredit, setIsCredit] = useState(false)
   const [creditDays, setCreditDays] = useState<number>(initialCreditDays || 7)
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false)
+  const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null)
   const [showCollectionModal, setShowCollectionModal] = useState(false)
   const [registeredSaleData, setRegisteredSaleData] = useState<InitialCreditSaleInfo | null>(null)
   const [payments, setPayments] = useState<PaymentRow[]>([
@@ -559,16 +560,27 @@ export function SplitPaymentModal({
                       {selectedCustomer.address ? ` · 📍 ${selectedCustomer.address}` : ''}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCustomer(null)
-                      setCustomerSearch('')
-                    }}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2 py-1 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition cursor-pointer"
-                  >
-                    Cambiar
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setCustomerToEdit(selectedCustomer)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200 px-2.5 py-1 rounded-lg bg-amber-100/70 hover:bg-amber-100 dark:bg-amber-950/70 dark:hover:bg-amber-900/60 transition cursor-pointer border border-amber-300/80 dark:border-amber-800 shadow-2xs"
+                      title="Editar información del cliente (nombre, cédula, teléfono, dirección, límite de crédito)"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Editar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(null)
+                        setCustomerSearch('')
+                      }}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2 py-1 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition cursor-pointer"
+                    >
+                      Cambiar
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="relative flex items-center gap-2">
@@ -1011,6 +1023,18 @@ export function SplitPaymentModal({
             setSelectedCustomer(newCust)
             setCustomerSearch(newCust.full_name)
             setCustomerResults([])
+          }}
+        />
+      )}
+
+      {customerToEdit && tenant && (
+        <CustomerModal
+          tenantId={tenant.id}
+          customer={customerToEdit}
+          onClose={() => setCustomerToEdit(null)}
+          onSaved={(savedCust) => {
+            setSelectedCustomer(savedCust)
+            setCustomerToEdit(null)
           }}
         />
       )}

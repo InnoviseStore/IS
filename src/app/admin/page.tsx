@@ -63,7 +63,17 @@ export default function AdminDashboard() {
   const [lowStock, setLowStock] = useState(0)
   const [pendingCredits, setPendingCredits] = useState(0)
   const [cashClosed, setCashClosed] = useState<boolean | null>(null)
-  const [recentOrders, setRecentOrders] = useState<{ id: string; order_number: string; total_usd: number; status: string; created_at: string }[]>([])
+  const [recentOrders, setRecentOrders] = useState<{
+    id: string
+    order_number: string
+    total_usd: number
+    total_ves?: number
+    status: string
+    payment_condition?: string
+    payment_breakdown?: any[]
+    due_date?: string | null
+    created_at: string
+  }[]>([])
 
   // Modal de anulación de orden con clave admin
   const [orderToDelete, setOrderToDelete] = useState<{ id: string; order_number: string; total_usd: number; status: string } | null>(null)
@@ -95,7 +105,7 @@ export default function AdminDashboard() {
       { count: creditCount },
       { data: closing }
     ] = await Promise.all([
-      supabase.from('orders').select('total_usd, order_number, status, created_at, id')
+      supabase.from('orders').select('id, order_number, total_usd, total_ves, status, payment_condition, payment_breakdown, due_date, created_at')
         .eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10),
       supabase.from('orders').select('total_usd')
         .eq('tenant_id', tenant.id).gte('created_at', todayStartIso).neq('status', 'cancelled'),
@@ -126,6 +136,15 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadData()
+  }, [loadData])
+
+  // Escuchar notificaciones en vivo de nuevos pedidos para refrescar dashboard
+  useEffect(() => {
+    const handleNewOrder = () => {
+      loadData()
+    }
+    window.addEventListener('is_new_order_received', handleNewOrder)
+    return () => window.removeEventListener('is_new_order_received', handleNewOrder)
   }, [loadData])
 
   async function confirmDeleteOrder() {
@@ -477,17 +496,56 @@ export default function AdminDashboard() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {recentOrders.map((o) => {
-                  const s = statusLabel[o.status] ?? { label: o.status, cls: '' }
+                  const breakdown = Array.isArray(o.payment_breakdown) ? o.payment_breakdown : []
+                  const pagadoUsd = breakdown.reduce((acc: number, it: any) => {
+                    if (it.method === 'credit_7d') return acc
+                    return acc + (Number(it.amount_usd) || 0)
+                  }, 0)
+                  const totalUsd = Number(o.total_usd) || 0
+                  const saldoPendienteUsd = Math.max(0, totalUsd - pagadoUsd)
+                  const isCreditSale = o.status === 'credit' || o.payment_condition === 'credit_7d'
+
                   return (
                     <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
                       <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">{o.order_number}</td>
                       <td className="py-3 px-4 text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                         {formatDateTime(o.created_at)}
                       </td>
-                      <td className="py-3 px-4 font-extrabold text-slate-900 dark:text-white">${o.total_usd.toFixed(2)}</td>
-                      <td className="py-3 px-4 font-semibold text-blue-600 dark:text-blue-400">Bs. {(o.total_usd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                      <td className="py-3 px-4 font-extrabold text-slate-900 dark:text-white">${totalUsd.toFixed(2)}</td>
+                      <td className="py-3 px-4 font-semibold text-blue-600 dark:text-blue-400">Bs. {(totalUsd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                       <td className="py-3 px-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${s.cls}`}>{s.label}</span>
+                        {o.status === 'cancelled' ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900">
+                            Anulada
+                          </span>
+                        ) : isCreditSale ? (
+                          saldoPendienteUsd > 0.01 ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                <Clock className="w-3 h-3" />
+                                Crédito: Debe ${saldoPendienteUsd.toFixed(2)}
+                              </span>
+                              {o.due_date && (
+                                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                  Vence: {formatDate(o.due_date)}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              Crédito Liquidado
+                            </span>
+                          )
+                        ) : o.status === 'pending' ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200 dark:border-amber-900">
+                            Pendiente Web
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
+                            Completada
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button

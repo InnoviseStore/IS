@@ -35,6 +35,37 @@ export async function GET(req: Request) {
     }
 
     const supabase = getAdminClient()
+
+    // 2. Obtener estadísticas generales del tenant (desacopladas de los filtros de vista)
+    const { data: allStatsOrders } = await supabase
+      .from('orders')
+      .select('status, payment_condition, total_usd, payment_breakdown')
+      .eq('tenant_id', tenantId)
+
+    let pendingCount = 0
+    let pendingUsd = 0
+    let creditCount = 0
+    let creditUsd = 0
+    let completedCount = 0
+    let completedUsd = 0
+
+    ;(allStatsOrders || []).forEach((o: any) => {
+      if (o.status === 'pending') {
+        pendingCount++
+        pendingUsd += Number(o.total_usd) || 0
+      } else if (o.status === 'credit' || o.payment_condition === 'credit_7d') {
+        creditCount++
+        const breakdown = Array.isArray(o.payment_breakdown) ? o.payment_breakdown : []
+        const pagado = breakdown.reduce((acc: number, it: any) => it.method === 'credit_7d' ? acc : acc + (Number(it.amount_usd) || 0), 0)
+        creditUsd += Math.max(0, (Number(o.total_usd) || 0) - pagado)
+      } else if (o.status === 'completed') {
+        completedCount++
+        completedUsd += Number(o.total_usd) || 0
+      }
+    })
+
+    const generalStats = { pendingCount, pendingUsd, creditCount, creditUsd, completedCount, completedUsd }
+
     let query = supabase
       .from('orders')
       .select('*, customer:customers(*), order_items(*)')
@@ -49,7 +80,7 @@ export async function GET(req: Request) {
     const { data, error } = await query
     if (error) throw new Error(error.message)
 
-    return NextResponse.json({ orders: data || [] })
+    return NextResponse.json({ orders: data || [], stats: generalStats })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al obtener órdenes.'
     return NextResponse.json({ error: message }, { status: 500 })

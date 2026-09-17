@@ -16,6 +16,7 @@ import { EdithAssistantModal } from '@/components/admin/EdithAssistantModal'
 import { getPlanLabel } from '@/lib/formatters'
 import { useTheme } from '@/components/common/ThemeProvider'
 import { getRoleLabel, type UserRole } from '@/types/database'
+import { LiveOrderNotification } from '@/components/admin/LiveOrderNotification'
 
 // Mapeo exhaustivo de módulos y permisos por rol (RBAC)
 interface NavItemConfig {
@@ -481,6 +482,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* Asistente IA Edith */}
         <EdithAssistantModal />
+
+        {/* Notificaciones en Vivo de Nuevos Pedidos (Sonido y Banner) */}
+        <LiveOrderNotification />
 
         {/* Full-screen animated overlay on logout */}
         {isLoggingOut && (

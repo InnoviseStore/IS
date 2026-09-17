@@ -14,16 +14,30 @@ function formatVes(val: number | string | null | undefined): string {
 }
 
 function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return new Date().toLocaleDateString('es-VE')
+  if (!dateStr) return '—'
   try {
     const d = new Date(dateStr)
-    return d.toLocaleDateString('es-VE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    if (isNaN(d.getTime())) return dateStr
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    const hour = String(d.getHours()).padStart(2, '0')
+    const minute = String(d.getMinutes()).padStart(2, '0')
+    return `${day}-${month}-${year} ${hour}:${minute}`
+  } catch {
+    return dateStr
+  }
+}
+
+function formatCreditDueDate(dateStr?: string | null): string {
+  if (!dateStr) return '—'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}-${month}-${year}`
   } catch {
     return dateStr
   }
@@ -232,7 +246,7 @@ export async function generateOrderPdf({
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(180, 83, 9)
-    doc.text(`Vence: ${new Date(order.due_date).toLocaleDateString('es-VE')}`, 192, currentY + 11.5, { align: 'right' })
+    doc.text(`Vence: ${formatCreditDueDate(order.due_date)}`, 192, currentY + 11.5, { align: 'right' })
   }
 
   doc.setFont('helvetica', 'bold')

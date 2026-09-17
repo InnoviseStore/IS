@@ -155,15 +155,77 @@ export function generateWhatsAppMessage(
 }
 
 /**
- * Encodes a WhatsApp message into a wa.me deep-link URL.
- * @param phone  - E.164 digits only, e.g. "584121234567"
- * @param message - Plain text message to pre-fill
+ * Common country codes for Latin America and International
  */
-export function createWhatsAppUrl(phone: string, message: string): string {
-  // Strip any non-digit characters from phone
-  const cleanPhone = phone.replace(/\D/g, '');
-  const encoded = encodeURIComponent(message);
-  return `https://wa.me/${cleanPhone}?text=${encoded}`;
+export const COUNTRY_CODES = [
+  { code: '58', flag: '🇻🇪', label: 'Venezuela (+58)' },
+  { code: '1', flag: '🇺🇸', label: 'EE.UU. / Canadá (+1)' },
+  { code: '57', flag: '🇨🇴', label: 'Colombia (+57)' },
+  { code: '34', flag: '🇪🇸', label: 'España (+34)' },
+  { code: '56', flag: '🇨🇱', label: 'Chile (+56)' },
+  { code: '507', flag: '🇵🇦', label: 'Panamá (+507)' },
+  { code: '51', flag: '🇵🇪', label: 'Perú (+51)' },
+  { code: '54', flag: '🇦🇷', label: 'Argentina (+54)' },
+  { code: '52', flag: '🇲🇽', label: 'México (+52)' },
+  { code: '55', flag: '🇧🇷', label: 'Brasil (+55)' },
+  { code: '593', flag: '🇪🇨', label: 'Ecuador (+593)' },
+  { code: '1809', flag: '🇩🇴', label: 'Rep. Dominicana (+1809)' },
+]
+
+/**
+ * Normalizes any phone number into full international digits for WhatsApp.
+ * Fixes typical Venezuelan formats:
+ * - 04121234567 -> 584121234567
+ * - 4121234567 -> 584121234567
+ * - +58 412-1234567 -> 584121234567
+ */
+export function normalizeWhatsAppPhone(phone?: string | null, defaultCountryCode = '58'): string {
+  if (!phone) return ''
+  let digits = phone.replace(/\D/g, '')
+  if (!digits) return ''
+
+  // If starts with 0 and followed by 4 (typical Venezuelan mobile 0412, 0414, 0424, 0416, 0426)
+  if (digits.startsWith('0') && digits.length >= 10) {
+    digits = digits.replace(/^0+/, '')
+    return `${defaultCountryCode}${digits}`
+  }
+
+  // If 10 digits starting with 4 (e.g. 4121234567)
+  if (digits.length === 10 && digits.startsWith('4')) {
+    return `${defaultCountryCode}${digits}`
+  }
+
+  // If it doesn't have country code (e.g. 7-10 digits without leading 58/1/57/etc)
+  if (digits.length <= 10 && !digits.startsWith(defaultCountryCode)) {
+    return `${defaultCountryCode}${digits}`
+  }
+
+  return digits
+}
+
+/**
+ * Encodes a WhatsApp message into a deep-link URL.
+ * Uses api.whatsapp.com/send to prevent emoji loss and double-redirect issues on PC.
+ */
+export function createWhatsAppUrl(phone: string, message: string, preferWeb = false): string {
+  const cleanPhone = normalizeWhatsAppPhone(phone)
+  const encoded = encodeURIComponent(message)
+  
+  if (preferWeb) {
+    return `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+  }
+  
+  // api.whatsapp.com is more reliable on desktop than wa.me which double-redirects
+  return `https://api.whatsapp.com/send/?phone=${cleanPhone}&text=${encoded}&type=phone_number&app_absent=0`
+}
+
+/**
+ * Direct WhatsApp Web URL (specifically for PC / Desktop browsers)
+ */
+export function createWhatsAppWebUrl(phone: string, message: string): string {
+  const cleanPhone = normalizeWhatsAppPhone(phone)
+  const encoded = encodeURIComponent(message)
+  return `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
 }
 
 /**
@@ -181,3 +243,4 @@ export function buildWhatsAppCheckoutUrl(payload: WhatsAppOrderPayload): string 
   );
   return createWhatsAppUrl(payload.config.phone, message);
 }
+

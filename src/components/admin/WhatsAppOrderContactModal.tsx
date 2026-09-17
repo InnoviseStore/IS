@@ -1,0 +1,223 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle } from 'lucide-react'
+import { COUNTRY_CODES, normalizeWhatsAppPhone, createWhatsAppWebUrl, createWhatsAppUrl } from '@/lib/whatsapp'
+
+interface Props {
+  isOpen: boolean
+  onClose: () => void
+  order: any
+  tenantName: string
+  exchangeRate: number
+}
+
+export function WhatsAppOrderContactModal({
+  isOpen,
+  onClose,
+  order,
+  tenantName,
+  exchangeRate,
+}: Props) {
+  if (!isOpen || !order) return null
+
+  // Extraer datos del cliente
+  const customerName = order.customer?.full_name || 'Cliente'
+  const rawPhone = order.customer?.phone || ''
+
+  // Determinar código de país inicial y número local
+  const initialCountry = useMemo(() => {
+    const digits = rawPhone.replace(/\D/g, '')
+    const matched = COUNTRY_CODES.find((c) => digits.startsWith(c.code))
+    return matched ? matched.code : '58'
+  }, [rawPhone])
+
+  const [countryCode, setCountryCode] = useState(initialCountry)
+  
+  // Limpiar dígitos locales (eliminar prefijo de país si ya lo tenía, y eliminar el 0 inicial)
+  const initialLocalNumber = useMemo(() => {
+    let digits = rawPhone.replace(/\D/g, '')
+    if (digits.startsWith(countryCode)) {
+      digits = digits.slice(countryCode.length)
+    }
+    if (digits.startsWith('0')) {
+      digits = digits.replace(/^0+/, '')
+    }
+    return digits
+  }, [rawPhone, countryCode])
+
+  const [localNumber, setLocalNumber] = useState(initialLocalNumber)
+  const [copied, setCopied] = useState(false)
+
+  // Armar mensaje predeterminado
+  const fullPhone = `${countryCode}${localNumber.replace(/^0+/, '')}`
+  const normalizedFullPhone = normalizeWhatsAppPhone(fullPhone, countryCode)
+
+  const defaultMessage = useMemo(() => {
+    const items = Array.isArray(order.order_items) ? order.order_items : []
+    const lines: string[] = []
+
+    lines.push(`🛒 *¡Hola ${customerName}!* Te escribimos de *${tenantName}* referente a tu solicitud de pedido *#${order.order_number}*.`)
+    lines.push('')
+
+    if (items.length > 0) {
+      lines.push('📦 *Detalle de tu pedido:*')
+      items.forEach((it: any) => {
+        lines.push(`• ${it.quantity}x ${it.product_name} — $${(Number(it.subtotal_usd) || 0).toFixed(2)} USD`)
+      })
+      lines.push('')
+    }
+
+    const totalUsd = Number(order.total_usd) || 0
+    const totalVes = Number(order.total_ves) || totalUsd * exchangeRate
+
+    lines.push(`💰 *Total a pagar: $${totalUsd.toFixed(2)} USD* | Bs. ${totalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+    lines.push(`📊 Tasa BCV aplicada: Bs. ${exchangeRate.toFixed(2)}/USD`)
+    lines.push('')
+    lines.push('Por favor confírmanos tu método de pago o comprobante de transferencia para despachar tu pedido. ¡Muchas gracias!')
+
+    return lines.join('\n')
+  }, [customerName, tenantName, order, exchangeRate])
+
+  const [message, setMessage] = useState(defaultMessage)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleOpenWeb = () => {
+    const url = createWhatsAppWebUrl(normalizedFullPhone, message)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleOpenApp = () => {
+    const url = createWhatsAppUrl(normalizedFullPhone, message)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={onClose} />
+
+      <div className="relative z-10 w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-emerald-500 text-white">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-white/20 rounded-xl">
+              <MessageCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base">Enviar WhatsApp al Cliente</h3>
+              <p className="text-xs text-emerald-100">
+                Pedido #{order.order_number} · {customerName}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-xl hover:bg-white/20 transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 sm:p-6 space-y-4">
+          {/* Selector de Código de País y Teléfono */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Teléfono de WhatsApp del Cliente
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value)}
+                className="px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+              >
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.flag} +{c.code}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel"
+                value={localNumber}
+                onChange={(e) => setLocalNumber(e.target.value)}
+                placeholder="Ej. 4121234567"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Número internacional a contactar:{' '}
+              <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                +{normalizedFullPhone || '—'}
+              </strong>
+            </p>
+          </div>
+
+          {/* Mensaje */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Mensaje a Enviar (Personalizable)
+              </label>
+              <span className="text-[11px] text-slate-400">Emojis y saltos de línea listos</span>
+            </div>
+            <textarea
+              rows={7}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500 outline-none resize-none leading-relaxed"
+            />
+          </div>
+
+          {/* Tips para PC */}
+          <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-2.5 text-xs text-blue-800 dark:text-blue-300">
+            <Monitor className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+            <p className="leading-snug">
+              <strong>Consejo para PC:</strong> Al usar <em>WhatsApp Web</em> los emojis se cargarán directamente en el chat. Si tu navegador tiene bloqueadores o desajustes, pulsa <em>Copiar Mensaje</em> y pégalo directamente en la conversación.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+          >
+            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+            <span>{copied ? '¡Mensaje Copiado! ✓' : 'Copiar Mensaje'}</span>
+          </button>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleOpenWeb}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/25 active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
+              title="Abrir en WhatsApp Web en una nueva pestaña de la PC"
+            >
+              <Monitor className="w-4 h-4" />
+              <span>WhatsApp Web (PC)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenApp}
+              className="px-3 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Abrir con la app de WhatsApp de escritorio o móvil"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>App</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
