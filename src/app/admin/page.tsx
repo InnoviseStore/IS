@@ -108,7 +108,7 @@ export default function AdminDashboard() {
       supabase.from('orders').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant.id).eq('payment_condition', 'credit_7d').eq('status', 'credit'),
       supabase.from('cash_closings').select('id')
-        .eq('tenant_id', tenant.id).eq('closing_date', localToday).eq('status', 'closed').maybeSingle(),
+        .eq('tenant_id', tenant.id).gte('created_at', todayStartIso).eq('status', 'closed').maybeSingle(),
     ])
 
     const totalToday = (ordersTodayData ?? []).reduce((s, o) => s + (o.total_usd ?? 0), 0)

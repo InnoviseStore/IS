@@ -32,15 +32,17 @@ export default function CashClosingPage() {
   const [alreadyClosed, setAlreadyClosed] = useState(false)
   const [closedAt, setClosedAt] = useState<string | null>(null)
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
   const now = new Date()
   const startOfToday = new Date(now)
   startOfToday.setHours(0, 0, 0, 0)
   const todayStartIso = startOfToday.toISOString()
-  const localToday = `${startOfToday.getFullYear()}-${String(startOfToday.getMonth() + 1).padStart(2, '0')}-${String(startOfToday.getDate()).padStart(2, '0')}`
 
   const loadOrders = useCallback(async () => {
     if (!tenant) return
     setLoading(true)
+    setErrorMsg(null)
     const supabase = createClient()
 
     // Check if already closed today
@@ -48,13 +50,15 @@ export default function CashClosingPage() {
       .from('cash_closings')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('closing_date', localToday)
       .eq('status', 'closed')
+      .gte('created_at', todayStartIso)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (existing) {
       setAlreadyClosed(true)
-      setClosedAt(existing.created_at)
+      setClosedAt(existing.closed_at || existing.created_at)
       setLoading(false)
       return
     }
@@ -70,7 +74,7 @@ export default function CashClosingPage() {
 
     setOrders((data ?? []) as Order[])
     setLoading(false)
-  }, [tenant, localToday, todayStartIso])
+  }, [tenant, todayStartIso])
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
@@ -84,26 +88,40 @@ export default function CashClosingPage() {
   async function handleClose() {
     if (!tenant || !profile) return
     setClosing(true)
-    const supabase = createClient()
+    setErrorMsg(null)
 
-    await supabase.from('cash_closings').insert({
-      tenant_id: tenant.id,
-      closing_date: localToday,
-      status: 'closed',
-      summary_by_method: summary,
-      subtotal_usd: parseFloat(subtotalUsd.toFixed(4)),
-      igtf_total: parseFloat(igtfTotal.toFixed(4)),
-      total_usd: parseFloat(grandTotalUsd.toFixed(4)),
-      total_ves: parseFloat(grandTotalVes.toFixed(2)),
-      order_count: orders.length,
-      exchange_rate_used: exchangeRate,
-      notes: closingNotes || null,
-      closed_by: profile.id,
-    })
+    try {
+      const res = await fetch('/api/admin/cash-closing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          summary,
+          subtotal_usd: parseFloat(subtotalUsd.toFixed(4)),
+          igtf_total: parseFloat(igtfTotal.toFixed(4)),
+          total_usd: parseFloat(grandTotalUsd.toFixed(4)),
+          total_ves: parseFloat(grandTotalVes.toFixed(2)),
+          order_count: orders.length,
+          exchange_rate: exchangeRate,
+          notes: closingNotes.trim() || null,
+        }),
+      })
 
-    setAlreadyClosed(true)
-    setClosedAt(new Date().toISOString())
-    setClosing(false)
+      const data = await res.json()
+
+      if (!res.ok) {
+        setErrorMsg(data.error || 'No se pudo guardar el cierre de caja.')
+        setClosing(false)
+        return
+      }
+
+      setAlreadyClosed(true)
+      setClosedAt(data.closing?.closed_at || data.closing?.created_at || new Date().toISOString())
+      setClosing(false)
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error de conexión al cerrar la caja.')
+      setClosing(false)
+    }
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -126,6 +144,14 @@ export default function CashClosingPage() {
           Actualizar
         </button>
       </div>
+
+      {/* Error banner */}
+      {errorMsg && (
+        <div className="flex items-center gap-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 px-5 py-4 text-rose-800 dark:text-rose-200 text-sm font-semibold">
+          <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 flex-shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
 
       {/* Already closed banner */}
       {alreadyClosed && (

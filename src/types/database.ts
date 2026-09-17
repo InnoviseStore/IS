@@ -257,19 +257,26 @@ export interface CashClosingSummaryItem {
 export interface CashClosing {
   id: string
   tenant_id: string
-  closing_date: string              // YYYY-MM-DD
+  closing_number?: string
+  opened_at?: string
+  closed_at?: string
+  closing_date?: string              // YYYY-MM-DD
   status: 'open' | 'closed'
-  summary_by_method: CashClosingSummaryItem[]
-  subtotal_usd: number              // Ventas brutas sin IGTF
-  igtf_total: number                // Total IGTF del día
-  total_usd: number                 // subtotal_usd + igtf_total
-  total_ves: number
-  order_count: number
-  exchange_rate_used: number
+  breakdown_by_method?: CashClosingSummaryItem[] | Record<string, unknown>
+  summary_by_method?: CashClosingSummaryItem[]
+  total_sales_usd?: number
+  total_sales_ves?: number
+  sales_count?: number
+  subtotal_usd?: number              // Ventas brutas sin IGTF
+  igtf_total?: number                // Total IGTF del día
+  total_usd?: number                 // subtotal_usd + igtf_total
+  total_ves?: number
+  order_count?: number
+  exchange_rate_used?: number
   notes: string | null
   closed_by: string | null
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
 // ─── Expense ──────────────────────────────────────────────────────────────────
