@@ -284,17 +284,17 @@ export default function SettingsPage() {
     }
   }
 
-  // Cargar estado real de WhatsApp al abrir la pestaña
+  // Cargar estado real de WhatsApp al abrir la sección
   useEffect(() => {
-    if (activeSection === 'whatsapp' && tenant) {
+    if (openSections.whatsapp && tenant) {
       handleRefreshQr()
     }
-  }, [activeSection, tenant?.id])
+  }, [openSections.whatsapp, tenant?.id])
 
   // Sondeo automático cada 4 segundos mientras se esté esperando el escaneo del QR
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null
-    if (activeSection === 'whatsapp' && waStatus === 'connecting' && tenant) {
+    if (openSections.whatsapp && waStatus === 'connecting' && tenant) {
       timer = setInterval(async () => {
         try {
           const res = await fetch(`/api/admin/whatsapp/instance?tenant_id=${tenant.id}`)
@@ -315,7 +315,7 @@ export default function SettingsPage() {
     return () => {
       if (timer) clearInterval(timer)
     }
-  }, [activeSection, waStatus, tenant?.id, waQrCode])
+  }, [openSections.whatsapp, waStatus, tenant?.id, waQrCode])
 
 
   async function handleSendTestMessage() {
