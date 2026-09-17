@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+import { getTenantFeatures } from '@/lib/planLimits'
+import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -138,7 +140,7 @@ export async function POST(req: Request) {
     if (effectiveCustomerId) {
       const { data: cust } = await supabase
         .from('customers')
-        .select('current_debt_usd')
+        .select('full_name, phone, current_debt_usd')
         .eq('id', effectiveCustomerId)
         .single()
 
@@ -149,6 +151,48 @@ export async function POST(req: Request) {
           .from('customers')
           .update({ current_debt_usd: updatedCustomerDebt })
           .eq('id', effectiveCustomerId)
+
+        // 6. Envío automático por WhatsApp en Plan Enterprise
+        try {
+          const { data: tenantData } = await supabase
+            .from('tenants')
+            .select('name, slug, settings')
+            .eq('id', tenant_id)
+            .single()
+
+          const features = getTenantFeatures(tenantData)
+          const tSettings = (tenantData?.settings || {}) as Record<string, any>
+          const waSettings = tSettings.whatsapp_automation || {}
+
+          if (features.hasWhatsAppAutomation && waSettings.enabled && waSettings.auto_send_abono && cust.phone) {
+            const instanceName = waSettings.instance_name || `tenant_${tenantData?.slug}`
+            const abonoMsg = [
+              `🧾 *COMPROBANTE DE ABONO RECIBIDO*`,
+              `🏪 *${tenantData?.name || 'Comercio'}*`,
+              `📄 *Factura:* #${order.order_number}`,
+              `📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}`,
+              ``,
+              `👤 *Cliente:* ${cust.full_name}`,
+              `💵 *Monto Abonado:* $${numericAmountUsd.toFixed(2)} USD`,
+              `🇻🇪 *Equivalente en Bs.:* Bs. ${(Number(amount_ves) || numericAmountUsd * (Number(exchange_rate) || 1)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              `📈 *Tasa BCV del día:* Bs. ${Number(exchange_rate || 1).toFixed(2)}/USD`,
+              `💳 *Método:* ${payment_method || 'Abono'}`,
+              reference ? `🔢 *Referencia:* ${reference}` : '',
+              ``,
+              isFullyPaid
+                ? `🎉 *¡FACTURA TOTALMENTE PAGADA!* Saldo restante: $0.00 USD`
+                : `⚠️ *Nuevo Saldo Restante:* $${remainingUsd.toFixed(2)} USD (Bs. ${(remainingUsd * (Number(exchange_rate) || 1)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+              ``,
+              `¡Muchas gracias por tu pago y preferencia!`,
+            ].filter(Boolean).join('\n')
+
+            sendWhatsAppTextMessage(instanceName, cust.phone, abonoMsg).catch((err) =>
+              console.error('[Auto-WhatsApp] Error sending abono receipt:', err)
+            )
+          }
+        } catch (waErr) {
+          console.warn('[Auto-WhatsApp] Error sending abono receipt:', waErr)
+        }
       }
     }
 

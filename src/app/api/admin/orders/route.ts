@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+import { getTenantFeatures } from '@/lib/planLimits'
+import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -363,6 +365,66 @@ export async function POST(req: Request) {
       } catch (e) {
         console.warn('customer debt update error:', e)
       }
+    }
+
+    // 4. Disparo Automático de WhatsApp en Plan Enterprise
+    try {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('name, slug, settings')
+        .eq('id', tenant_id)
+        .single()
+
+      const features = getTenantFeatures(tenantData)
+      const tSettings = (tenantData?.settings || {}) as Record<string, any>
+      const waSettings = tSettings.whatsapp_automation || {}
+
+      if (features.hasWhatsAppAutomation && waSettings.enabled && waSettings.auto_send_invoice) {
+        // Obtener teléfono del cliente
+        let targetPhone = body.customer_phone || null
+        let customerName = 'Cliente'
+        if (customer_id) {
+          const { data: cData } = await supabase
+            .from('customers')
+            .select('full_name, phone')
+            .eq('id', customer_id)
+            .single()
+          if (cData) {
+            customerName = cData.full_name || customerName
+            targetPhone = targetPhone || cData.phone
+          }
+        }
+
+        if (targetPhone) {
+          const instanceName = waSettings.instance_name || `tenant_${tenantData?.slug}`
+          const itemsText = (items || [])
+            .map((it: any) => `• ${it.quantity}x ${it.name} — $${(Number(it.subtotal_usd) || it.quantity * it.unit_price_usd).toFixed(2)} USD`)
+            .join('\n')
+
+          const invoiceMsg = [
+            `🧾 *FACTURA / COMPROBANTE DE VENTA*`,
+            `🏪 *${tenantData?.name || 'Comercio'}*`,
+            `📄 *Factura:* #${order.order_number}`,
+            `📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}`,
+            ``,
+            `👤 *Cliente:* ${customerName}`,
+            itemsText ? `\n📦 *Productos:*\n${itemsText}\n` : '',
+            `💰 *Total Facturado:* $${Number(total_usd).toFixed(2)} USD`,
+            `🇻🇪 *Equivalente en Bs.:* Bs. ${Number(total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            `📈 *Tasa Oficial BCV:* Bs. ${Number(exchange_rate_at_sale).toFixed(2)}/USD`,
+            isCredit ? `\n⚠️ *Condición a Crédito:* Saldo pendiente por liquidar.` : `\n💳 *Estado:* Pagada con éxito.`,
+            ``,
+            `✨ ¡Muchas gracias por tu compra!`,
+          ].filter(Boolean).join('\n')
+
+          // Envío en segundo plano
+          sendWhatsAppTextMessage(instanceName, targetPhone, invoiceMsg).catch((err) =>
+            console.error('[Auto-WhatsApp] Error sending invoice:', err)
+          )
+        }
+      }
+    } catch (waErr) {
+      console.warn('[Auto-WhatsApp] Error checking enterprise automation:', waErr)
     }
 
     return NextResponse.json({ success: true, order })

@@ -16,6 +16,7 @@ export interface PlanFeatures {
   hasCustomDomain: boolean
   hasDirectCheckout: boolean
   maxPaymentMethods: number
+  hasWhatsAppAutomation: boolean
 }
 
 export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
@@ -35,6 +36,7 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     hasCustomDomain: false,
     hasDirectCheckout: false,
     maxPaymentMethods: 0,
+    hasWhatsAppAutomation: false,
   },
   pro: {
     planId: 'pro',
@@ -52,6 +54,7 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     hasCustomDomain: false,
     hasDirectCheckout: true,
     maxPaymentMethods: 2,
+    hasWhatsAppAutomation: false,
   },
   enterprise: {
     planId: 'enterprise',
@@ -69,6 +72,7 @@ export const PLAN_CONFIG: Record<PlanType, PlanFeatures> = {
     hasCustomDomain: true,
     hasDirectCheckout: true,
     maxPaymentMethods: Infinity,
+    hasWhatsAppAutomation: true,
   },
 }
 

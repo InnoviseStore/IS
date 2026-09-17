@@ -37,6 +37,19 @@ export interface StorefrontPaymentAccount {
   instructions?: string
 }
 
+// ─── WhatsApp Automation (Enterprise) ────────────────────────────────────────
+export interface WhatsAppAutomationSettings {
+  enabled: boolean
+  instance_name: string
+  status: 'disconnected' | 'connecting' | 'connected'
+  auto_send_invoice: boolean
+  auto_send_abono: boolean
+  auto_send_web_order: boolean
+  auto_send_credit_reminders: boolean
+  connected_phone?: string | null
+  last_connected_at?: string | null
+}
+
 // ─── Tenant ────────────────────────────────────────────────────────────────────
 export interface Tenant {
   id: string

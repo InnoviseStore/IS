@@ -16,7 +16,17 @@ interface TenantContextValue {
   switchTenant: (newTenant: Tenant) => void
   switchTenantById: (tenantId: string) => void
   refreshTenants: () => Promise<void>
-  updateTenantSettings: (params: { phone_whatsapp?: string; currency_rate_bcv?: number; name?: string; plan?: string; about?: Record<string, unknown>; admin_security_pin?: string }) => Promise<{ success: boolean; error?: string }>
+  updateTenantSettings: (params: { 
+    phone_whatsapp?: string; 
+    currency_rate_bcv?: number; 
+    name?: string; 
+    plan?: string; 
+    about?: Record<string, unknown>; 
+    admin_security_pin?: string;
+    checkout_mode?: string;
+    payment_accounts?: any[];
+    whatsapp_automation?: any;
+  }) => Promise<{ success: boolean; error?: string }>
   isLoading: boolean
 }
 
@@ -53,6 +63,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     admin_security_pin?: string;
     checkout_mode?: string;
     payment_accounts?: any[];
+    whatsapp_automation?: any;
   }) => {
     if (!tenant) return { success: false, error: 'No hay tienda activa' }
     try {

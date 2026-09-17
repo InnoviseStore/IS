@@ -30,11 +30,14 @@ import {
   ChevronRight,
   Sliders,
   Layers,
+  MessageSquare,
+  Bot,
+  Send,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
 
-type SectionKey = 'identity' | 'payments' | 'security' | 'about' | 'plan'
+type SectionKey = 'identity' | 'payments' | 'security' | 'about' | 'plan' | 'whatsapp'
 
 export default function SettingsPage() {
   const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
@@ -55,6 +58,7 @@ export default function SettingsPage() {
     security: false,
     about: false,
     plan: false,
+    whatsapp: false,
   })
 
   function toggleSection(key: SectionKey) {
@@ -71,6 +75,7 @@ export default function SettingsPage() {
       security: open,
       about: open,
       plan: open,
+      whatsapp: open,
     })
   }
 
@@ -87,6 +92,19 @@ export default function SettingsPage() {
   // Estados de Métodos de Pago y Checkout del Catálogo
   const [checkoutMode, setCheckoutMode] = useState<'whatsapp_only' | 'direct_payment'>('direct_payment')
   const [paymentAccounts, setPaymentAccounts] = useState<any[]>([])
+
+  // Estados de WhatsApp Automático (Enterprise)
+  const [waAutoEnabled, setWaAutoEnabled] = useState(true)
+  const [waAutoInvoice, setWaAutoInvoice] = useState(true)
+  const [waAutoAbono, setWaAutoAbono] = useState(true)
+  const [waAutoWebOrder, setWaAutoWebOrder] = useState(true)
+  const [waAutoCreditReminders, setWaAutoCreditReminders] = useState(true)
+  const [waStatus, setWaStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connected')
+  const [waQrCode, setWaQrCode] = useState<string | null>(null)
+  const [waLoading, setWaLoading] = useState(false)
+  const [testPhone, setTestPhone] = useState('')
+  const [sendingTest, setSendingTest] = useState(false)
+  const [testSuccess, setTestSuccess] = useState<string | null>(null)
 
   const features = getTenantFeatures(tenant)
 
@@ -141,6 +159,16 @@ export default function SettingsPage() {
         ])
       }
 
+      // Sincronizar configuración de WhatsApp Automático
+      const wa = (settings.whatsapp_automation || {}) as Record<string, any>
+      setWaAutoEnabled(wa.enabled !== undefined ? Boolean(wa.enabled) : true)
+      setWaAutoInvoice(wa.auto_send_invoice !== undefined ? Boolean(wa.auto_send_invoice) : true)
+      setWaAutoAbono(wa.auto_send_abono !== undefined ? Boolean(wa.auto_send_abono) : true)
+      setWaAutoWebOrder(wa.auto_send_web_order !== undefined ? Boolean(wa.auto_send_web_order) : true)
+      setWaAutoCreditReminders(wa.auto_send_credit_reminders !== undefined ? Boolean(wa.auto_send_credit_reminders) : true)
+      setWaStatus(wa.status || (tenant.phone_whatsapp ? 'connected' : 'disconnected'))
+      setTestPhone(tenant.phone_whatsapp || '')
+
       setAboutTitle(about.title || `Sobre ${tenant.name}`)
       setAboutDescription(
         about.description ||
@@ -181,10 +209,21 @@ export default function SettingsPage() {
       admin_security_pin?: string
       checkout_mode?: string
       payment_accounts?: any[]
+      whatsapp_automation?: any
     } = {
       phone_whatsapp: phone.trim(),
       checkout_mode: checkoutMode,
       payment_accounts: paymentAccounts,
+      whatsapp_automation: {
+        enabled: waAutoEnabled,
+        auto_send_invoice: waAutoInvoice,
+        auto_send_abono: waAutoAbono,
+        auto_send_web_order: waAutoWebOrder,
+        auto_send_credit_reminders: waAutoCreditReminders,
+        status: waStatus,
+        connected_phone: phone.trim() || '584245259193',
+        last_connected_at: new Date().toISOString(),
+      },
       about: {
         title: aboutTitle.trim(),
         description: aboutDescription.trim(),
@@ -222,6 +261,55 @@ export default function SettingsPage() {
       setRate(res.rate.toString())
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
+    }
+  }
+
+  async function handleRefreshQr() {
+    if (!tenant) return
+    setWaLoading(true)
+    try {
+      const res = await fetch(`/api/admin/whatsapp/instance?tenant_id=${tenant.id}`)
+      const data = await res.json()
+      if (data.qrcode) {
+        setWaQrCode(data.qrcode)
+        setWaStatus('connecting')
+      } else if (data.status === 'connected') {
+        setWaStatus('connected')
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setWaLoading(false)
+    }
+  }
+
+  async function handleSendTestMessage() {
+    if (!tenant || !testPhone.trim()) {
+      alert('Por favor ingresa un número de teléfono de prueba.')
+      return
+    }
+    setSendingTest(true)
+    setTestSuccess(null)
+    try {
+      const res = await fetch('/api/admin/whatsapp/test-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          test_phone: testPhone.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTestSuccess('¡Mensaje de prueba enviado con éxito!')
+        setTimeout(() => setTestSuccess(null), 4000)
+      } else {
+        alert(data.error || 'No se pudo enviar el mensaje de prueba.')
+      }
+    } catch (e: any) {
+      alert(e.message || 'Error de conexión.')
+    } finally {
+      setSendingTest(false)
     }
   }
 
@@ -1100,11 +1188,236 @@ export default function SettingsPage() {
                   <li>Pagos Divididos multimoneda: <strong>{features.hasSplitPayments ? 'Habilitado' : '1 método por venta en Básico'}</strong></li>
                   <li>Importación masiva Excel: <strong>{features.hasBulkImport ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
                   <li>Checkout Directo en Catálogo: <strong>{features.hasDirectCheckout ? 'Habilitado' : 'Exclusivo Plan Pro / Enterprise'}</strong></li>
+                  <li>WhatsApp Automático (Facturación & Cobranzas): <strong>{features.hasWhatsAppAutomation ? 'Habilitado' : 'Exclusivo Plan Enterprise'}</strong></li>
                 </ul>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 italic border-t border-slate-200/60 dark:border-slate-700/40">
                   ℹ️ Los cambios de plan y activación de módulos adicionales son gestionados exclusivamente por el Administrador de la plataforma desde el Panel Master.
                 </p>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* ========================================================================= */}
+        {/* BOTÓN DESPLEGABLE 6: WHATSAPP AUTOMÁTICO (ENTERPRISE) */}
+        {/* ========================================================================= */}
+        <div className="border border-slate-200/80 dark:border-slate-800/80 rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-900/50 backdrop-blur-md shadow-sm transition-all">
+          <button
+            type="button"
+            onClick={() => toggleSection('whatsapp')}
+            className="w-full flex items-center justify-between p-4 sm:p-5 text-left bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-800/40 dark:hover:bg-slate-800/70 transition cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>6. WhatsApp Automático (Gateway QR)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    Enterprise
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Envío automático de facturas POS, comprobantes de abono, pedidos web y recordatorios de cobro
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                waStatus === 'connected' 
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200' 
+                  : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${waStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                {waStatus === 'connected' ? '🟢 Conectado' : '🔴 Desconectado'}
+              </span>
+              <div className="p-1 rounded-lg text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                {openSections.whatsapp ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </div>
+            </div>
+          </button>
+
+          {openSections.whatsapp && (
+            <div className="p-5 sm:p-6 border-t border-slate-200/80 dark:border-slate-800/80 space-y-5 animate-in fade-in duration-150 text-xs">
+              {!features.hasWhatsAppAutomation && profile?.role !== 'superadmin' ? (
+                <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-purple-900 dark:text-purple-200">
+                    <AlertCircle className="w-4 h-4 text-purple-600" />
+                    <span>Módulo Exclusivo del Plan Enterprise</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    La automatización integral de WhatsApp permite que tu tienda envíe facturas y cobros en segundo plano mediante un Gateway con Código QR sin tocar un solo botón. Solicita la actualización al Plan Enterprise con el Administrador.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Estado de Conexión y Vinculación QR */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row items-center gap-5 justify-between">
+                    <div className="space-y-1.5 max-w-md">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">
+                          Línea de WhatsApp Vinculada:
+                        </span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-black text-sm bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                          +{phone || '584245259193'}
+                        </span>
+                      </div>
+                      <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed">
+                        {waStatus === 'connected'
+                          ? 'Tu número de WhatsApp Business está sincronizado y listo para enviar notificaciones automáticas 24/7.'
+                          : 'Escanea el código QR desde tu aplicación de WhatsApp en "Dispositivos vinculados" para activar la sincronización.'}
+                      </p>
+                      <div className="pt-1 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleRefreshQr}
+                          disabled={waLoading}
+                          className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {waLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 text-blue-500" />}
+                          <span>{waStatus === 'connected' ? 'Verificar Conexión' : 'Generar Código QR'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* QR Code Container */}
+                    <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm shrink-0">
+                      {waStatus === 'connected' ? (
+                        <div className="w-36 h-36 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-col items-center justify-center text-center p-2">
+                          <Check className="w-10 h-10 text-emerald-600 dark:text-emerald-400 mb-1" />
+                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                            Sesión Activa
+                          </span>
+                          <span className="text-[10px] text-slate-400">WhatsApp Web Conectado</span>
+                        </div>
+                      ) : (
+                        <div className="w-36 h-36 flex flex-col items-center justify-center">
+                          {waQrCode ? (
+                            <img src={waQrCode} alt="Código QR WhatsApp" className="w-32 h-32 rounded-lg" />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
+                              <QrCode className="w-10 h-10 mb-1 opacity-50" />
+                              <span className="text-[10px]">Pulsa en Generar QR</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Interruptores de Automatización */}
+                  <div className="space-y-3">
+                    <h3 className="font-extrabold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                      Eventos y Disparadores Automáticos:
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Facturación POS */}
+                      <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/60 transition cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={waAutoInvoice}
+                          onChange={(e) => setWaAutoInvoice(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                            Facturación POS Automática
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Envía el comprobante detallado con productos y tasa BCV al cliente registrado al cobrar.
+                          </span>
+                        </div>
+                      </label>
+
+                      {/* Abonos */}
+                      <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/60 transition cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={waAutoAbono}
+                          onChange={(e) => setWaAutoAbono(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                            Comprobante de Abonos
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Envía el recibo de pago y el nuevo saldo pendiente cuando se registre un abono.
+                          </span>
+                        </div>
+                      </label>
+
+                      {/* Pedidos Web */}
+                      <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/60 transition cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={waAutoWebOrder}
+                          onChange={(e) => setWaAutoWebOrder(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                            Pedidos del Catálogo Web
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Notifica confirmación al cliente y alerta al dueño de la tienda al registrarse un pedido.
+                          </span>
+                        </div>
+                      </label>
+
+                      {/* Cobranza de Créditos */}
+                      <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/60 transition cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={waAutoCreditReminders}
+                          onChange={(e) => setWaAutoCreditReminders(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                            Recordatorios de Cobro Automáticos
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Envía aviso preventivo (2 días antes), al vencer y en mora a clientes con saldo adeudado.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Prueba de Envío */}
+                  <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 space-y-2">
+                    <label className="block font-bold text-blue-900 dark:text-blue-200 text-xs">
+                      Probar Envío de Mensaje de Verificación:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="tel"
+                        value={testPhone}
+                        onChange={(e) => setTestPhone(e.target.value)}
+                        placeholder="Ej. 04245259193 o 584245259193"
+                        className="flex-1 px-3 py-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSendTestMessage}
+                        disabled={sendingTest}
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                      >
+                        {sendingTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        <span>Enviar Prueba</span>
+                      </button>
+                    </div>
+                    {testSuccess && (
+                      <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" /> {testSuccess}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

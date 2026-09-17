@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getTenantFeatures } from '@/lib/planLimits'
+import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -95,7 +97,7 @@ export async function POST(req: Request) {
     // 1. Obtener tenant por slug
     const { data: tenant, error: tenantErr } = await supabase
       .from('tenants')
-      .select('id, name, currency_rate_bcv')
+      .select('id, name, slug, phone_whatsapp, currency_rate_bcv, settings')
       .eq('slug', tenantSlug)
       .single()
 
@@ -270,6 +272,60 @@ export async function POST(req: Request) {
     const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload)
     if (itemsErr) {
       console.warn('Warning inserting order_items for web order:', itemsErr.message)
+    }
+
+    // 6. Envío Automático de WhatsApp en Plan Enterprise
+    try {
+      const features = getTenantFeatures(tenant)
+      const tSettings = (tenant?.settings || {}) as Record<string, any>
+      const waSettings = tSettings.whatsapp_automation || {}
+
+      if (features.hasWhatsAppAutomation && waSettings.enabled && waSettings.auto_send_web_order) {
+        const instanceName = waSettings.instance_name || `tenant_${tenant.slug}`
+
+        // Mensaje al Cliente
+        if (cleanPhone) {
+          const clientMsg = [
+            `🛒 *¡PEDIDO RECIBIDO CON ÉXITO!*`,
+            `🏪 *${tenant.name}*`,
+            `🔖 *Orden:* #${order.order_number}`,
+            `👤 *Cliente:* ${cleanFullName}`,
+            ``,
+            `📦 *Resumen:*`,
+            `• Cantidad de Productos: ${items.length}`,
+            `💰 *Total:* $${finalTotalUsd.toFixed(2)} USD (Bs. ${finalTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+            `📈 *Tasa BCV:* Bs. ${rate.toFixed(2)}/USD`,
+            deliverySummary ? `📍 ${deliverySummary}` : '',
+            paymentReference ? `🔢 Referencia de Pago: ${paymentReference}` : '',
+            ``,
+            `Estamos verificando tu solicitud para preparar tu despacho. ¡Muchas gracias por tu compra!`,
+          ].filter(Boolean).join('\n')
+
+          sendWhatsAppTextMessage(instanceName, cleanPhone, clientMsg).catch((e) =>
+            console.error('[Auto-WhatsApp Web Order Client]', e)
+          )
+        }
+
+        // Alerta al Dueño de la Tienda
+        if (tenant.phone_whatsapp) {
+          const adminAlert = [
+            `🔔 *¡NUEVO PEDIDO EN CATÁLOGO WEB!*`,
+            `🏪 *${tenant.name}*`,
+            `🔖 *Orden:* #${order.order_number}`,
+            `👤 *Cliente:* ${cleanFullName} (${cleanPhone || 'Sin teléfono'})`,
+            `💰 *Monto:* $${finalTotalUsd.toFixed(2)} USD (Bs. ${finalTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`,
+            paymentMethod ? `💳 Método: ${paymentMethod.toUpperCase()}` : '',
+            paymentReference ? `🔢 Ref: ${paymentReference}` : '',
+            `\nRevisa el panel de pedidos para procesarlo.`
+          ].filter(Boolean).join('\n')
+
+          sendWhatsAppTextMessage(instanceName, tenant.phone_whatsapp, adminAlert).catch((e) =>
+            console.error('[Auto-WhatsApp Web Order Admin Alert]', e)
+          )
+        }
+      }
+    } catch (waErr) {
+      console.warn('[Auto-WhatsApp] Error sending web order notification:', waErr)
     }
 
     return NextResponse.json({
