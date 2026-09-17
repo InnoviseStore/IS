@@ -250,28 +250,37 @@ export async function POST(req: Request) {
 
     // 9. Ejecutar la respuesta según la intención detectada
 
-    // A) CONSULTA DE SALDO O ABONO
-    if (isBalanceQuery) {
-      if (!customer) {
-        // Cliente no registrado
-        const msgText =
-          `👋 ¡Hola! Gracias por comunicarte con *${tenant.name}*.\n\n` +
-          `🔍 Consultamos en nuestro sistema pero no encontramos una cuenta de cliente registrada con este número telefónico (*+${senderDigits}*).\n\n` +
-          `📌 Si eres cliente y tienes compras pendientes o deseas consultar tu cuenta, por favor indícanos tu *Nombre completo* y *Cédula/RIF* y con gusto te asistiremos.\n\n` +
-          `🛍️ También puedes ver nuestros productos escribiendo *CATALOGO*.`
+    // A) SALUDO / MENSAJE DE BIENVENIDA ("HOLA", "BUENAS", ETC.)
+    // La tienda responde únicamente con el catálogo virtual para invitar a comprar
+    if (isGreetingOrHelp) {
+      const catalogUrl = `https://system-is.netlify.app/${tenant.slug}`
+      const greetingMsg =
+        `👋 ¡Hola! Bienvenido a *${tenant.name}* ✨\n\n` +
+        `Te invitamos a explorar nuestra vitrina virtual con todos nuestros productos disponibles y precios actualizados en USD y Bolívares:\n\n` +
+        `👉 *${catalogUrl}*\n\n` +
+        `¡Puedes armar tu pedido directamente en línea de forma rápida y sencilla!`
 
-        await sendWhatsAppTextMessage(instanceName, senderDigits, msgText)
-        return NextResponse.json({
-          status: 'customer_not_found_responded',
-          debug: {
-            senderDigits,
-            tenantId: tenant.id,
-            tenantCustomersCount: tenantCustomers?.length,
-            firstFew: tenantCustomers?.slice(0, 3).map((c: any) => ({ name: c.full_name, phone: c.phone }))
-          }
-        })
-      }
+      await sendWhatsAppTextMessage(instanceName, senderDigits, greetingMsg)
+      return NextResponse.json({ status: 'greeting_catalog_responded' })
+    }
 
+    // B) VALIDACIÓN DE SEGURIDAD: CONSULTA DE SALDO O DATOS DE PAGO
+    // Si el cliente NO está registrado en el sistema, NO se le envía información bancaria ni de saldos
+    if ((isBalanceQuery || isPaymentInfoQuery) && !customer) {
+      const catalogUrl = `https://system-is.netlify.app/${tenant.slug}`
+      const unregisteredMsg =
+        `👋 ¡Hola! Gracias por comunicarte con *${tenant.name}*.\n\n` +
+        `🔒 La consulta de estados de cuenta y cuentas bancarias oficiales está reservada para clientes registrados que hayan realizado al menos una compra en nuestra tienda.\n\n` +
+        `🛍️ Si deseas realizar tu primera compra, te invitamos a explorar nuestro catálogo virtual y hacer tu pedido en línea:\n` +
+        `👉 *${catalogUrl}*\n\n` +
+        `Si ya realizaste una compra previamente y necesitas asistencia con tu cuenta, por favor indícanos tu *Nombre completo* y *Cédula/RIF* y un asesor te atenderá con gusto.`
+
+      await sendWhatsAppTextMessage(instanceName, senderDigits, unregisteredMsg)
+      return NextResponse.json({ status: 'unregistered_customer_blocked' })
+    }
+
+    // C) CONSULTA DE SALDO O ABONO (CLIENTE REGISTRADO)
+    if (isBalanceQuery && customer) {
       const debtUsd = Number(customer.current_debt_usd || 0)
 
       if (debtUsd <= 0.01) {
@@ -284,7 +293,7 @@ export async function POST(req: Request) {
           `━━━━━━━━━━━━━━━━━━\n` +
           `📌 *Opciones Disponibles:*\n` +
           `• Escribe *CATALOGO* para ver novedades y productos.\n` +
-          `• Escribe *PAGO* para consultar cuentas bancarias.`
+          `• Escribe *PAGOS* para consultar cuentas bancarias.`
 
         await sendWhatsAppTextMessage(instanceName, senderDigits, alDiaText)
         return NextResponse.json({ status: 'balance_al_dia_responded' })
@@ -312,8 +321,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'balance_debt_responded' })
     }
 
-    // B) CONSULTA DE DATOS DE PAGO
-    if (isPaymentInfoQuery) {
+    // D) CONSULTA DE DATOS DE PAGO (CLIENTE REGISTRADO)
+    if (isPaymentInfoQuery && customer) {
       const paymentMsg =
         `💳 *Métodos y Cuentas de Pago Oficiales*\n*${tenant.name}*\n\n` +
         `📊 *Tasa Oficial BCV del día:* **Bs. ${exchangeRate.toFixed(4)}/USD**\n\n` +
@@ -326,32 +335,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'payment_methods_responded' })
     }
 
-    // C) CONSULTA DE CATÁLOGO
+    // E) CONSULTA DE CATÁLOGO
     if (isCatalogQuery) {
       const catalogUrl = `https://system-is.netlify.app/${tenant.slug}`
       const catalogMsg =
         `🛍️ *Catálogo Virtual • ${tenant.name}*\n\n` +
         `Explora todos nuestros productos con disponibilidad en tiempo real y precios actualizados en USD y Bolívares:\n\n` +
         `👉 *${catalogUrl}*\n\n` +
-        `¡Arma tu pedido directamente en la vitrina web sin necesidad de escribir la lista a mano!\n\n` +
-        `• Escribe *SALDO* para consultar tu estado de cuenta.`
+        `¡Arma tu pedido directamente en la vitrina web sin necesidad de escribir la lista a mano!` +
+        (customer ? `\n\n• Escribe *SALDO* para consultar tu estado de cuenta.` : '')
 
       await sendWhatsAppTextMessage(instanceName, senderDigits, catalogMsg)
       return NextResponse.json({ status: 'catalog_responded' })
-    }
-
-    // D) MENÚ O BIENVENIDA AUTOMÁTICA
-    if (isGreetingOrHelp) {
-      const greetingMsg =
-        `👋 ¡Hola! Bienvenido a la atención automatizada de *${tenant.name}*.\n\n` +
-        `¿En qué podemos ayudarte el día de hoy?\n\n` +
-        `1️⃣ Escribe *SALDO* para consultar tu monto pendiente y conversión en Bs.\n` +
-        `2️⃣ Escribe *PAGO* para ver los datos bancarios y Pago Móvil.\n` +
-        `3️⃣ Escribe *CATALOGO* para ingresar a nuestra tienda virtual.\n\n` +
-        `O si lo prefieres, déjanos tu mensaje y un asesor te atenderá a la brevedad. 😊`
-
-      await sendWhatsAppTextMessage(instanceName, senderDigits, greetingMsg)
-      return NextResponse.json({ status: 'greeting_responded' })
     }
 
     return NextResponse.json({ status: 'unhandled' })

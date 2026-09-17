@@ -157,6 +157,7 @@ export function WhatsAppInvoiceModal({
         lines.push(`• 📅 *Fecha Límite de Pago:* ${creditDueDate}`)
       }
       lines.push(`• 💡 *Nota:* Futuros abonos en Bolívares se calculan a la *tasa oficial del BCV del día* en que realices el pago.`)
+      lines.push(`• 📲 *Autoservicio WhatsApp:* Escribe *SALDO* para consultar cuánto debes actualizado a la tasa del día, o escribe *PAGOS* para recibir los datos de Pago Móvil y cuentas bancarias.`)
     }
 
     lines.push('')

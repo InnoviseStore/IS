@@ -174,6 +174,8 @@ ${discountLine}
 
 ${bcvNotice}
 
+💡 *Autoservicio WhatsApp:* Puedes responder en cualquier momento con la palabra *SALDO* para saber cuánto debes en Bs a la tasa oficial del día, o escribir *PAGOS* para recibir los datos de Pago Móvil y cuentas bancarias.
+
 Agradecemos tu confirmación para conciliar tu cuenta. Si ya realizaste el pago, por favor haznos llegar el comprobante. ¡Muchas gracias por tu confianza! 🙌`
     }
 
@@ -209,7 +211,7 @@ ${saleDetails.discountAmountUsd > 0 ? `• 🎉 Descuento Aplicado: -$${saleDeta
 
 ${bcvNotice}
 
-💡 *Autoservicio:* Responde con la palabra *SALDO* o *ABONAR* en cualquier momento para conocer tu monto actualizado en Bs a la tasa oficial del día.
+💡 *Autoservicio WhatsApp:* Puedes responder en cualquier momento con la palabra *SALDO* para saber cuánto debes en Bs a la tasa oficial del día, o escribir *PAGOS* para recibir los datos de Pago Móvil y cuentas bancarias.
 
 Puedes realizar tu abono mediante Zelle, Pago Móvil o Efectivo. Agradecemos nos envíes el comprobante al completar tu transferencia. ¡Feliz día y gracias por preferirnos! ✨`
   }, [customer.full_name, tenant?.name, saleDetails, exchangeRate, includeDetails])
