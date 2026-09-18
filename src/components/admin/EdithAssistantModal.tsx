@@ -12,8 +12,7 @@ import {
   Home,
   BarChart3,
   RotateCcw,
-  Lock,
-  MoveHorizontal
+  Lock
 } from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 import { getTenantFeatures } from '@/lib/planLimits'
@@ -60,57 +59,6 @@ export function EdithAssistantModal() {
   const [input, setInput] = useState('')
 
   const features = getTenantFeatures(tenant)
-
-  // Desplazamiento horizontal por el borde inferior (arrastrable)
-  const [rightOffset, setRightOffset] = useState<number>(24)
-  const [isDragging, setIsDragging] = useState(false)
-  const dragStartXRef = useRef<number>(0)
-  const initialRightRef = useRef<number>(24)
-  const hasMovedRef = useRef<boolean>(false)
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('edith_fab_right')
-      if (saved) {
-        const val = parseInt(saved, 10)
-        if (!isNaN(val)) setRightOffset(val)
-      }
-    }
-  }, [])
-
-  function handlePointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    setIsDragging(true)
-    dragStartXRef.current = e.clientX
-    initialRightRef.current = rightOffset
-    hasMovedRef.current = false
-  }
-
-  function handlePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
-    if (!isDragging) return
-    const deltaX = dragStartXRef.current - e.clientX
-    if (Math.abs(deltaX) > 4) {
-      hasMovedRef.current = true
-      const maxRight = typeof window !== 'undefined' ? window.innerWidth - 76 : 300
-      const newRight = Math.max(16, Math.min(maxRight, initialRightRef.current + deltaX))
-      setRightOffset(newRight)
-    }
-  }
-
-  function handlePointerUp(e: React.PointerEvent<HTMLButtonElement>) {
-    if (!isDragging) return
-    setIsDragging(false)
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    } catch {}
-    if (!hasMovedRef.current) {
-      setIsOpen((prev) => !prev)
-    } else {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('edith_fab_right', rightOffset.toString())
-      }
-    }
-  }
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -187,42 +135,37 @@ export function EdithAssistantModal() {
 
   return (
     <>
-      {/* Botón Flotante Circular (FAB) Desplazable por el borde inferior */}
+      {/* Pestaña Lateral Discreta de Edith (Acoplada al borde derecho sin tapar botones) */}
       <button
         type="button"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={() => setIsDragging(false)}
-        style={{ right: `${rightOffset}px`, touchAction: 'none' }}
-        className="fixed bottom-6 z-50 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 dark:from-white dark:via-slate-100 dark:to-slate-200 text-white dark:text-slate-950 shadow-2xl shadow-indigo-950/50 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform duration-150 border-2 border-indigo-400/40 dark:border-slate-300 cursor-grab active:cursor-grabbing group select-none"
-        aria-label={isOpen ? 'Cerrar asistente Edith' : 'Abrir copiloto inteligente Edith'}
-        title="Copiloto Inteligente Edith (IA) — Mantén presionado y arrastra para reubicar"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`fixed right-0 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-1 py-3 pl-2.5 pr-1.5 rounded-l-2xl border-l border-y shadow-2xl transition-all duration-200 cursor-pointer select-none group ${
+          isOpen
+            ? 'bg-gradient-to-l from-indigo-700 to-blue-700 text-white border-indigo-400 shadow-indigo-500/30'
+            : 'bg-gradient-to-l from-slate-950 via-slate-900 to-indigo-950 dark:from-slate-900 dark:to-indigo-950 text-white border-indigo-400/30 hover:pl-3.5 hover:border-indigo-400 shadow-slate-950/40 backdrop-blur-md'
+        }`}
+        aria-label={isOpen ? 'Cerrar copiloto Edith' : 'Abrir copiloto inteligente Edith'}
+        title="Copiloto Inteligente Edith (IA) — Asistente de negocio"
       >
-        {/* Glow ambient pulse */}
-        <span className="absolute -inset-1 rounded-full bg-indigo-500/20 animate-pulse pointer-events-none" />
-
         {isOpen ? (
-          <X className="w-5 h-5 transition-transform duration-200 group-hover:rotate-90 pointer-events-none" />
+          <X className="w-5 h-5 text-indigo-200 group-hover:rotate-90 transition-transform" />
         ) : (
-          <div className="relative flex items-center justify-center pointer-events-none">
-            <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-300 dark:text-indigo-600 transition-transform duration-200 group-hover:scale-110" />
-            <Sparkles className="w-3 h-3 text-amber-400 dark:text-amber-500 absolute -top-1.5 -right-1.5 animate-pulse" />
-          </div>
+          <>
+            <div className="relative flex items-center justify-center">
+              <Bot className="w-5 h-5 text-indigo-300 group-hover:scale-110 transition-transform" />
+              <Sparkles className="w-2.5 h-2.5 text-amber-400 absolute -top-1.5 -right-1.5 animate-pulse" />
+            </div>
+            <span className="text-[9px] font-black tracking-widest text-indigo-200 uppercase leading-none mt-0.5">
+              IA
+            </span>
+          </>
         )}
       </button>
 
       {/* Ventana Desplegable de Edith */}
       {isOpen && (
         <div
-          style={{
-            right: `${Math.min(typeof window !== 'undefined' ? window.innerWidth - 380 : 24, Math.max(16, rightOffset - 20))}px`,
-            width: 'calc(100vw - 2rem)',
-            maxWidth: '410px',
-            height: '540px',
-            maxHeight: '80vh',
-          }}
-          className="fixed bottom-22 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all animate-in fade-in slide-in-from-bottom-5 duration-200"
+          className="fixed bottom-20 md:bottom-6 right-2 sm:right-6 z-50 w-[calc(100vw-1rem)] sm:w-[410px] max-w-[420px] h-[520px] max-h-[75vh] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all animate-in fade-in slide-in-from-bottom-5 duration-200"
         >
           {/* Header */}
           <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/50 flex-shrink-0">

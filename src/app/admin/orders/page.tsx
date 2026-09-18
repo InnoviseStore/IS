@@ -530,6 +530,9 @@ export default function AdminOrdersPage() {
             const isCreditSale = order.status === 'credit' || order.payment_condition === 'credit_7d'
             const canAbonar = isCreditSale || (order.status !== 'cancelled' && saldoPendienteUsd > 0.01)
 
+            const creditBreakdownItem = breakdown.find((item: any) => item.method === 'credit_7d')
+            const installmentsPlan = creditBreakdownItem?.installments_plan
+
             let creditDaysCount = 7
             if (order.due_date && order.created_at) {
               const diffMs = new Date(order.due_date).getTime() - new Date(order.created_at).getTime()
@@ -564,7 +567,11 @@ export default function AdminOrdersPage() {
                     {isCreditSale && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60">
                         <CreditCard className="w-3 h-3" />
-                        <span>A Crédito ({creditDaysCount} días)</span>
+                        <span>
+                          {installmentsPlan
+                            ? `Plan ${installmentsPlan.total_installments} Cuotas (${installmentsPlan.frequency})`
+                            : `A Crédito (${creditDaysCount} días)`}
+                        </span>
                       </span>
                     )}
 
@@ -587,7 +594,7 @@ export default function AdminOrdersPage() {
                     <span className="text-xs text-slate-500 dark:text-slate-400">{formatDateTime(order.created_at)}</span>
                     {isCreditSale && order.due_date && (
                       <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400">
-                        Vence: {formatDate(order.due_date)}
+                        {installmentsPlan ? 'Próx. Cuota: ' : 'Vence: '}{formatDate(order.due_date)}
                       </span>
                     )}
                   </div>

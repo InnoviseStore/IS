@@ -8,7 +8,8 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users,
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
   RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette,
-  UserCheck, ShieldCheck, Loader2, ChevronDown, Barcode
+  UserCheck, ShieldCheck, Loader2, ChevronDown, Barcode, Download, Smartphone,
+  PanelLeftClose, PanelLeftOpen, PanelLeft
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
@@ -47,38 +48,65 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
 function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, setExchangeRate, allTenants, switchTenantById } = useTenant()
+  const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, setExchangeRate, allTenants, switchTenantById, isLoading } = useTenant()
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [editingRate, setEditingRate] = useState(false)
   const [rateInput, setRateInput] = useState('')
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [storeSelectorOpen, setStoreSelectorOpen] = useState(false)
 
-  const userRole = (profile?.role || 'admin') as UserRole
+  // Cargar preferencia guardada de sidebar colapsado
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('is_admin_sidebar_collapsed')
+      if (saved === 'true') {
+        setSidebarCollapsed(true)
+      }
+    }
+  }, [])
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('is_admin_sidebar_collapsed', String(next))
+      }
+      return next
+    })
+  }
+
+  // Determinar rol sólo cuando profile ya cargó. NUNCA asumir 'admin' mientras carga para evitar parpadeo de menús.
+  const userRole = (profile?.role || null) as UserRole | null
   const isSuperAdmin = userRole === 'superadmin'
 
-  // Filtrar elementos de navegación según el rol del usuario
+  // Filtrar elementos de navegación según el rol verificado del usuario (vacío mientras carga)
   const navItems = useMemo(() => {
+    if (!userRole) return []
     return ALL_NAV_ITEMS.filter((item) => {
       if (item.href === '/admin/master') return isSuperAdmin
       return item.roles.includes(userRole)
     })
   }, [userRole, isSuperAdmin])
 
-  // Page Guard: Protección de rutas según rol (redirige si no tiene permiso)
-  useEffect(() => {
-    if (!profile) return
+  const isCurrentAllowed = useMemo(() => {
+    if (!userRole) return false
     const allowedHrefs = navItems.map((n) => n.href.split('?')[0])
-    const isCurrentAllowed = allowedHrefs.some(
+    return allowedHrefs.some(
       (href) => pathname === href || (href !== '/admin' && pathname.startsWith(href))
     )
+  }, [userRole, navItems, pathname])
+
+  // Page Guard: Redirigir de inmediato si el rol no tiene permiso para la ruta actual
+  useEffect(() => {
+    if (isLoading || !profile || !userRole) return
     if (!isCurrentAllowed && navItems.length > 0) {
       // Redirigir al primer módulo disponible para su rol (ej. POS para cajero, Inventario para almacén)
       router.replace(navItems[0].href)
     }
-  }, [pathname, profile, navItems, router])
+  }, [pathname, profile, userRole, isCurrentAllowed, navItems, router, isLoading])
 
   // Registro de Service Worker para PWA y notificaciones del sistema
   useEffect(() => {
@@ -190,12 +218,23 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
 
+          {/* Botón Cerrar en Móvil */}
           <button
             onClick={() => setSidebarOpen(false)}
             className="md:hidden p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition cursor-pointer"
             aria-label="Cerrar menú lateral"
           >
             <X className="w-5 h-5" />
+          </button>
+
+          {/* Botón Ocultar en Computadora */}
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            className="hidden md:flex p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            title="Ocultar menú lateral (Más espacio)"
+          >
+            <PanelLeftClose className="w-4 h-4" />
           </button>
         </div>
 
@@ -246,8 +285,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      {/* Current logged-in user profile pill */}
-      {profile && (
+      {/* Current logged-in user profile pill or skeleton */}
+      {isLoading || !profile ? (
+        <div className="px-3 py-2.5 rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 flex items-center gap-2.5 animate-pulse">
+          <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-700 shrink-0" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="h-3 w-24 rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="h-2 w-16 rounded bg-slate-200 dark:bg-slate-700" />
+          </div>
+        </div>
+      ) : (
         <div className="px-3 py-2.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center text-slate-800 dark:text-slate-100 font-bold text-xs shadow-2xs flex-shrink-0">
@@ -267,7 +314,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                     ? 'text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800/60'
                     : 'text-blue-700 dark:text-blue-300 bg-blue-100/90 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/60'
                 }`}>
-                  {getRoleLabel(userRole)}
+                  {userRole ? getRoleLabel(userRole) : 'Usuario'}
                 </span>
               </div>
             </div>
@@ -275,61 +322,94 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Nav */}
-      <nav className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
-        {navItems.map(({ href, label, icon: Icon, proBadge, scanBadge }) => {
-          const isRegister = href.includes('mode=register')
-          const isMaster = href === '/admin/master'
-          const active = isRegister
-            ? pathname === '/admin/inventory' && typeof window !== 'undefined' && window.location.search.includes('mode=register')
-            : (pathname === href || (href !== '/admin' && !href.includes('?') && pathname.startsWith(href)))
+      {/* Nav o Skeleton Shimmer mientras se valida el rol */}
+      {isLoading || !profile ? (
+        <div className="flex-1 flex flex-col gap-2.5 pr-1 animate-pulse">
+          <div className="h-3 w-20 rounded bg-slate-200/60 dark:bg-slate-800/60 mb-1 ml-2" />
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-10 rounded-xl bg-slate-200/50 dark:bg-slate-800/50" />
+          ))}
+        </div>
+      ) : (
+        <nav className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
+          {navItems.map(({ href, label, icon: Icon, proBadge, scanBadge }) => {
+            const isRegister = href.includes('mode=register')
+            const isMaster = href === '/admin/master'
+            const active = isRegister
+              ? pathname === '/admin/inventory' && typeof window !== 'undefined' && window.location.search.includes('mode=register')
+              : (pathname === href || (href !== '/admin' && !href.includes('?') && pathname.startsWith(href)))
 
-          return (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                active
-                  ? isMaster
-                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  active
+                    ? isMaster
+                      ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
+                      : isRegister
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                      : 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                    : isMaster
+                    ? 'text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/40 border border-amber-300/70 dark:border-amber-800/60 font-bold hover:bg-amber-200 dark:hover:bg-amber-900/60'
                     : isRegister
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
-                    : 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : isMaster
-                  ? 'text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/40 border border-amber-300/70 dark:border-amber-800/60 font-bold hover:bg-amber-200 dark:hover:bg-amber-900/60'
-                  : isRegister
-                  ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-bold'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Icon className={`w-4 h-4 ${isMaster && !active ? 'text-amber-600 dark:text-amber-400' : isRegister && !active ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
-                <span>{label}</span>
-              </div>
-              {isMaster ? (
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
-                  active ? 'bg-white/25 text-white' : 'bg-amber-500 text-white shadow-xs'
-                }`}>
-                  MASTER
-                </span>
-              ) : isRegister || scanBadge ? (
-                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
-                  active ? 'bg-white/25 text-white' : 'bg-emerald-600 text-white shadow-xs'
-                }`}>
-                  IA / SCAN
-                </span>
-              ) : proBadge ? (
-                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
-                  active ? 'bg-white/20 text-white' : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
-                }`}>
-                  PRO
-                </span>
-              ) : null}
-            </Link>
-          )
-        })}
-      </nav>
+                    ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-bold'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className={`w-4 h-4 ${isMaster && !active ? 'text-amber-600 dark:text-amber-400' : isRegister && !active ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
+                  <span>{label}</span>
+                </div>
+                {isMaster ? (
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                    active ? 'bg-white/25 text-white' : 'bg-amber-500 text-white shadow-xs'
+                  }`}>
+                    MASTER
+                  </span>
+                ) : isRegister || scanBadge ? (
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                    active ? 'bg-white/25 text-white' : 'bg-emerald-600 text-white shadow-xs'
+                  }`}>
+                    IA / SCAN
+                  </span>
+                ) : proBadge ? (
+                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
+                    active ? 'bg-white/20 text-white' : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
+                  }`}>
+                    PRO
+                  </span>
+                ) : null}
+              </Link>
+            )
+          })}
+        </nav>
+      )}
+
+      {/* Botón Instalar App Móvil en Sidebar */}
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={() => {
+            setSidebarOpen(false)
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('open-pwa-install'))
+            }
+          }}
+          className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 transition text-left cursor-pointer group"
+          title="Instalar app oficial con el logo de tu empresa"
+        >
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+            <Smartphone className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold leading-tight truncate">Instalar App</p>
+            <p className="text-[10px] text-blue-600/75 dark:text-blue-400/75 truncate">{tenant?.name || 'Tu tienda'}</p>
+          </div>
+          <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 group-hover:translate-y-0.5 transition-transform" />
+        </button>
+      </div>
 
       {/* Logout */}
       <button
@@ -357,8 +437,14 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="aurora-blob-3" />
       </div>
 
-      {/* Desktop Sidebar */}
-      <div className="hidden md:flex relative z-10 flex-shrink-0">{Sidebar}</div>
+      {/* Desktop Sidebar con transición fluida colapsable */}
+      <div 
+        className={`hidden md:flex relative z-10 flex-shrink-0 transition-all duration-300 ease-in-out ${
+          sidebarCollapsed ? 'w-0 -translate-x-full opacity-0 pointer-events-none' : 'w-72 sm:w-64 translate-x-0 opacity-100'
+        }`}
+      >
+        {Sidebar}
+      </div>
 
       {/* Mobile Sidebar overlay with smooth slide-in */}
       <div 
@@ -383,12 +469,37 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
         <header className="flex items-center justify-between px-3 sm:px-6 h-16 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-lg flex-shrink-0 gap-2">
+          {/* Botón Menú Móvil */}
           <button
             className="md:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition cursor-pointer"
             onClick={() => setSidebarOpen(true)}
             aria-label="Abrir menú"
           >
             <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Botón Desktop para Ocultar / Mostrar Menú (Más Espacio de Trabajo) */}
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer active:scale-95 ${
+              sidebarCollapsed
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20 hover:bg-blue-700'
+                : 'border-slate-200 dark:border-slate-700/80 bg-white/70 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
+            }`}
+            title={sidebarCollapsed ? 'Mostrar menú lateral (Expandir)' : 'Ocultar menú lateral (Más espacio)'}
+          >
+            {sidebarCollapsed ? (
+              <>
+                <PanelLeftOpen className="w-4 h-4" />
+                <span>Mostrar Menú</span>
+              </>
+            ) : (
+              <>
+                <PanelLeftClose className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Ocultar</span>
+              </>
+            )}
           </button>
 
           <div className="hidden md:block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -448,6 +559,22 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
+            {/* Botón Directo Instalar App Oficial */}
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('open-pwa-install'))
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+              title="Descargar e instalar la app con el logo de tu empresa en tu teléfono o PC"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Instalar App</span>
+              <span className="sm:hidden text-[11px]">App</span>
+            </button>
+
             {/* Ver Tienda Pública */}
             {tenant?.slug && (
               <a
@@ -485,69 +612,86 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* Page content con padding ergonómico adaptado a teléfono y PC */}
+        {/* Page content con protección contra parpadeo mientras valida el rol */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 md:pb-6">
-          {children}
+          {isLoading || !profile ? (
+            <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] gap-3 text-slate-400 animate-in fade-in duration-300">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Verificando permisos y cargando tu panel...
+              </p>
+            </div>
+          ) : !isCurrentAllowed && navItems.length > 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] gap-3 text-slate-400 animate-in fade-in duration-300">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Accediendo a tu módulo de trabajo...
+              </p>
+            </div>
+          ) : (
+            children
+          )}
         </main>
 
-        {/* Barra de Navegación Rápida Móvil (Optimización para Teléfonos) */}
+        {/* Barra de Navegación Rápida Móvil (Dinámica según el Rol verificado) */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl">
-          <Link
-            href="/admin"
-            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
-              pathname === '/admin'
-                ? 'text-blue-600 dark:text-blue-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="text-[10px] mt-0.5">Inicio</span>
-          </Link>
+          {isLoading || !profile ? (
+            <div className="flex items-center justify-around w-full py-2 animate-pulse">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="w-10 h-8 rounded-lg bg-slate-200/60 dark:bg-slate-800/60" />
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Módulos principales autorizados para el rol del usuario */}
+              {navItems.slice(0, 3).map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
+                const isPos = item.href === '/admin/pos'
 
-          <Link
-            href="/admin/orders"
-            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
-              pathname.startsWith('/admin/orders')
-                ? 'text-blue-600 dark:text-blue-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <ClipboardList className="w-5 h-5" />
-            <span className="text-[10px] mt-0.5">Pedidos</span>
-          </Link>
+                if (isPos) {
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex flex-col items-center justify-center -mt-3.5 p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/35 active:scale-95 transition ${
+                        isActive ? 'ring-2 ring-blue-400' : ''
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="text-[9px] font-extrabold mt-0.5">POS</span>
+                    </Link>
+                  )
+                }
 
-          {/* Botón Central Destacado POS */}
-          <Link
-            href="/admin/pos"
-            className={`flex flex-col items-center justify-center -mt-4 p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/35 active:scale-95 transition ${
-              pathname.startsWith('/admin/pos') ? 'ring-2 ring-blue-400' : ''
-            }`}
-            title="Punto de Venta"
-          >
-            <ShoppingCart className="w-5 h-5" />
-            <span className="text-[9px] font-extrabold mt-0.5">POS</span>
-          </Link>
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition ${
+                      isActive
+                        ? 'text-blue-600 dark:text-blue-400 font-bold'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="text-[10px] mt-0.5 max-w-[60px] truncate text-center">{item.label}</span>
+                  </Link>
+                )
+              })}
 
-          <Link
-            href="/admin/inventory"
-            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
-              pathname.startsWith('/admin/inventory')
-                ? 'text-blue-600 dark:text-blue-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <Package className="w-5 h-5" />
-            <span className="text-[10px] mt-0.5">Stock</span>
-          </Link>
-
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer"
-          >
-            <Menu className="w-5 h-5" />
-            <span className="text-[10px] mt-0.5">Menú</span>
-          </button>
+              {/* Botón Menú Completo Lateral */}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer"
+              >
+                <Menu className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Menú</span>
+              </button>
+            </>
+          )}
         </nav>
 
         {/* Asistente IA Edith */}

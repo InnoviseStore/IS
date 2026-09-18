@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
-import type { Customer } from '@/types/database'
+import type { Customer, InstallmentsPlan } from '@/types/database'
 import { 
   X, 
   MessageCircle, 
@@ -37,6 +37,7 @@ export interface InitialCreditSaleInfo {
   discountAmountUsd?: number
   items: { name: string; quantity: number; unitPrice: number }[]
   payments: { method: string; amountUsd: number }[]
+  installmentsPlan?: InstallmentsPlan
 }
 
 interface Props {
@@ -60,6 +61,7 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
     pendingDebtUsd: number
     dueDateStr: string
     discountAmountUsd: number
+    installmentsPlan?: InstallmentsPlan
   }>({
     items: initialSaleInfo?.items ?? [],
     payments: initialSaleInfo?.payments ?? [],
@@ -68,6 +70,7 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
     pendingDebtUsd: initialSaleInfo?.creditAmountUsd ?? customer.current_debt_usd,
     dueDateStr: initialSaleInfo?.dueDate ? formatDate(initialSaleInfo.dueDate) : formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
     discountAmountUsd: initialSaleInfo?.discountAmountUsd ?? 0,
+    installmentsPlan: initialSaleInfo?.installmentsPlan,
   })
 
   // Cargar órdenes a crédito históricas si no viene de una venta inmediata
@@ -98,8 +101,13 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
 
         // Recopilar abonos/pagos realizados en la orden
         const paymentsList: { method: string; amountUsd: number; date?: string }[] = []
+        let foundInstallmentsPlan: InstallmentsPlan | undefined = undefined
+
         if (Array.isArray(activeOrder.payment_breakdown)) {
           activeOrder.payment_breakdown.forEach((p: any) => {
+            if (p.method === 'credit_7d' && p.installments_plan) {
+              foundInstallmentsPlan = p.installments_plan
+            }
             if (p.method !== 'credit_7d' && (Number(p.amount_usd) || 0) > 0) {
               paymentsList.push({
                 method: p.method,
@@ -125,6 +133,7 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
           pendingDebtUsd: customer.current_debt_usd > 0 ? customer.current_debt_usd : Math.max(0, totalOrder - totalPaid),
           dueDateStr: dueDateFormatted,
           discountAmountUsd: Number(activeOrder.discount_total_usd) || 0,
+          installmentsPlan: foundInstallmentsPlan,
         })
       }
     } catch (e) {
@@ -163,14 +172,31 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
       : ''
     const bcvNotice = `💡 *Condición de Abono:* Todo abono o pago en Bolívares se liquida a la *tasa oficial del BCV del día* en que realices el pago.`
 
+    let installmentsBlock = ''
+    if (saleDetails.installmentsPlan?.schedule && saleDetails.installmentsPlan.schedule.length > 0) {
+      const plan = saleDetails.installmentsPlan
+      const freqLabel = plan.frequency === 'semanal'
+        ? 'Semanales'
+        : plan.frequency === 'quincenal'
+        ? 'Quincenales'
+        : plan.frequency === 'mensual'
+        ? 'Mensuales'
+        : `cada ${plan.frequency_days} días`
+      const schedLines = plan.schedule.map((it) => {
+        const itVes = (it.amount_usd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        const st = it.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
+        return `• Cuota #${it.installment_number}: *$${it.amount_usd.toFixed(2)} USD* (Bs. ${itVes}) — Vence: ${formatDate(it.due_date)} [${st}]`
+      }).join('\n')
+      installmentsBlock = `🗓️ *Cronograma de Cobro (${plan.total_installments} cuotas ${freqLabel}):*\n${schedLines}\n`
+    }
+
     if (!includeDetails) {
       // Formato Resumen
       return `👋 Hola *${customer.full_name}*, te saludamos cordialmente de *${storeName}*.
 
 Te recordamos que mantienes un saldo pendiente a crédito en nuestro comercio por un total de:
 💰 *${formattedUsd}* (Aprox. Bs. ${pendingVes} a tasa oficial BCV).
-${discountLine}
-📅 *Fecha límite de pago:* ${saleDetails.dueDateStr}
+${discountLine}${installmentsBlock ? `\n${installmentsBlock}\n` : ''}📅 *Próximo vencimiento de pago:* ${saleDetails.dueDateStr}
 
 ${bcvNotice}
 
@@ -203,11 +229,11 @@ Agradecemos tu confirmación para conciliar tu cuenta. Si ya realizaste el pago,
 Compartimos contigo el estado detallado de tu compra a crédito:
 
 ${itemsBlock ? `${itemsBlock}\n` : ''}${paymentsBlock}
-📊 *Resumen de Cuenta:*
+${installmentsBlock ? `${installmentsBlock}\n` : ''}📊 *Resumen de Cuenta:*
 • Total Compra: $${saleDetails.totalPurchaseUsd.toFixed(2)} USD
-${saleDetails.discountAmountUsd > 0 ? `• 🎉 Descuento Aplicado: -$${saleDetails.discountAmountUsd.toFixed(2)} USD\n` : ''}• Total Abonado: $${saleDetails.totalPaidUsd.toFixed(2)} USD
-• 💰 *Saldo Pendiente por Pagar: ${formattedUsd}* (Bs. ${pendingVes})
-• 📅 *Fecha Límite de Pago:* ${saleDetails.dueDateStr}
+${saleDetails.discountAmountUsd > 0 ? `• 🎉 Descuento Aplicado: -$${saleDetails.discountAmountUsd.toFixed(2)} USD\n` : ''}• Total Abonado (Inicial): $${saleDetails.totalPaidUsd.toFixed(2)} USD
+• 💰 *Saldo Restante por Pagar: ${formattedUsd}* (Bs. ${pendingVes})
+• 📅 *Próxima Fecha de Pago:* ${saleDetails.dueDateStr}
 
 ${bcvNotice}
 

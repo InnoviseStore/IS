@@ -70,28 +70,64 @@ async function handleCollections(req: Request) {
 
       const rate = Number(tenant.currency_rate_bcv) || 91.5
       const remainingVes = remainingDebtUsd * rate
-      const dueDate = order.due_date ? new Date(order.due_date) : new Date(new Date(order.created_at).getTime() + 7 * 86400000)
 
-      // Diferencia en días
-      const diffMs = dueDate.getTime() - now.getTime()
+      // Detectar si la orden tiene plan de cobro por cuotas
+      const creditItem = breakdown.find((it: any) => it.method === 'credit_7d' && it.installments_plan)
+      const installmentsPlan = creditItem?.installments_plan
+      let activeInstallment: any = null
+
+      if (installmentsPlan && Array.isArray(installmentsPlan.schedule)) {
+        // Ubicar la cuota pendiente más prioritaria (que no esté pagada)
+        activeInstallment = installmentsPlan.schedule.find((s: any) => s.status === 'pending')
+      }
+
+      let effectiveDueDate = order.due_date ? new Date(order.due_date) : new Date(new Date(order.created_at).getTime() + 7 * 86400000)
+      if (activeInstallment?.due_date) {
+        effectiveDueDate = new Date(`${activeInstallment.due_date}T23:59:59`)
+      }
+
+      // Diferencia en días respecto a la fecha de cobro de la cuota / orden
+      const diffMs = effectiveDueDate.getTime() - now.getTime()
       const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
 
       let subjectPrefix = ''
       let urgencyText = ''
 
-      if (diffDays === 2 || diffDays === 1) {
-        subjectPrefix = '⏳ *RECORDATORIO PREVENTIVO DE PAGO*'
-        urgencyText = `Te recordamos que tu saldo a crédito vence el próximo *${formatDate(dueDate)}*.`
-      } else if (diffDays === 0) {
-        subjectPrefix = '📅 *HOY VENCE TU CUENTA A CRÉDITO*'
-        urgencyText = `Hoy es la fecha límite de pago acordada (${formatDate(dueDate)}).`
-      } else if (diffDays < 0) {
-        const lateDays = Math.abs(diffDays)
-        subjectPrefix = '⚠️ *ESTADO DE CUENTA VENCIDO*'
-        urgencyText = `Tu factura presenta *${lateDays} día(s) de vencimiento* (Fecha límite: ${formatDate(dueDate)}).`
+      if (activeInstallment) {
+        const instNum = activeInstallment.installment_number
+        const instTotal = installmentsPlan.total_installments
+        const instUsd = Number(activeInstallment.amount_usd) || 0
+        const instVes = (instUsd * rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+        if (diffDays === 2 || diffDays === 1) {
+          subjectPrefix = `⏳ *RECORDATORIO DE CUOTA #${instNum} DE ${instTotal}*`
+          urgencyText = `Te recordamos que tu cuota #${instNum} por *$${instUsd.toFixed(2)} USD* (Bs. ${instVes}) vence el próximo *${formatDate(effectiveDueDate)}*.`
+        } else if (diffDays === 0) {
+          subjectPrefix = `📅 *HOY VENCE TU CUOTA #${instNum} DE ${instTotal}*`
+          urgencyText = `Hoy es la fecha acordada de pago para tu cuota #${instNum} por *$${instUsd.toFixed(2)} USD* (Bs. ${instVes}).`
+        } else if (diffDays < 0) {
+          const lateDays = Math.abs(diffDays)
+          subjectPrefix = `⚠️ *CUOTA #${instNum} DE ${instTotal} VENCIDA*`
+          urgencyText = `Tu cuota #${instNum} por *$${instUsd.toFixed(2)} USD* (Bs. ${instVes}) presenta *${lateDays} día(s) de vencimiento* (Fecha límite: ${formatDate(effectiveDueDate)}).`
+        } else {
+          // Aún falta más de 2 días para esta cuota
+          continue
+        }
       } else {
-        // Aún falta más de 2 días, no molestar al cliente
-        continue
+        if (diffDays === 2 || diffDays === 1) {
+          subjectPrefix = '⏳ *RECORDATORIO PREVENTIVO DE PAGO*'
+          urgencyText = `Te recordamos que tu saldo a crédito vence el próximo *${formatDate(effectiveDueDate)}*.`
+        } else if (diffDays === 0) {
+          subjectPrefix = '📅 *HOY VENCE TU CUENTA A CRÉDITO*'
+          urgencyText = `Hoy es la fecha límite de pago acordada (${formatDate(effectiveDueDate)}).`
+        } else if (diffDays < 0) {
+          const lateDays = Math.abs(diffDays)
+          subjectPrefix = '⚠️ *ESTADO DE CUENTA VENCIDO*'
+          urgencyText = `Tu factura presenta *${lateDays} día(s) de vencimiento* (Fecha límite: ${formatDate(effectiveDueDate)}).`
+        } else {
+          // Aún falta más de 2 días, no molestar al cliente
+          continue
+        }
       }
 
       const instanceName = waSettings.instance_name || `tenant_${tenant.slug}`
@@ -102,14 +138,15 @@ async function handleCollections(req: Request) {
         `👤 *Cliente:* ${customer.full_name}`,
         ``,
         urgencyText,
-        `💰 *Saldo Pendiente: $${remainingDebtUsd.toFixed(2)} USD*`,
-        `🇻🇪 *Equivalente en Bs.:* Bs. ${remainingVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        activeInstallment ? `📌 *Monto de esta cuota:* $${Number(activeInstallment.amount_usd).toFixed(2)} USD (Bs. ${(Number(activeInstallment.amount_usd) * rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : '',
+        `💰 *Saldo Total Financiado Pendiente:* $${remainingDebtUsd.toFixed(2)} USD`,
+        `🇻🇪 *Equivalente Total en Bs.:* Bs. ${remainingVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         `📈 *Tasa Oficial BCV del día:* Bs. ${rate.toFixed(2)}/USD`,
         ``,
         `💡 *Condición de Abono:* Todo pago en Bolívares se liquida a la tasa oficial del BCV del día en que se procesa el abono.`,
         ``,
         `Por favor envíanos tu comprobante si ya efectuaste tu transferencia para conciliar tu estado de cuenta. ¡Muchas gracias!`,
-      ].join('\n')
+      ].filter(Boolean).join('\n')
 
       await sendWhatsAppTextMessage(instanceName, customer.phone, reminderMsg)
       sentCount++

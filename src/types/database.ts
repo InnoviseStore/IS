@@ -1,4 +1,4 @@
-// ─── Payment Methods ───────────────────────────────────────────────────────────
+// ─── Payment Methods & Credit Plans ───────────────────────────────────────────
 export type PaymentMethodType =
   | 'zelle'
   | 'pago_movil'
@@ -9,12 +9,37 @@ export type PaymentMethodType =
   | 'credit_7d'
   | 'binance_pay'
 
+export type CreditPlanFrequency = 'semanal' | 'quincenal' | 'mensual' | 'custom_days'
+
+export interface InstallmentScheduleItem {
+  installment_number: number
+  due_date: string // ISO string
+  amount_usd: number
+  amount_ves: number
+  status: 'pending' | 'paid'
+}
+
+export interface InstallmentsPlan {
+  mode?: 'single_due' | 'installments'
+  type?: 'single_due' | 'installments'
+  frequency: CreditPlanFrequency
+  frequency_days: number
+  total_installments: number
+  installments_count?: number
+  down_payment_usd?: number
+  financed_amount_usd?: number
+  installment_amount_usd?: number
+  amount_per_installment_usd?: number
+  schedule: InstallmentScheduleItem[]
+}
+
 export interface PaymentMethod {
   method: PaymentMethodType
   amount_usd: number
   amount_ves: number
   reference?: string
   igtf_amount?: number // IGTF (3%) aplicado a pagos en divisas cuando el comercio es agente especial
+  installments_plan?: InstallmentsPlan
 }
 
 // ─── Storefront Checkout & Payment Accounts ─────────────────────────────────
