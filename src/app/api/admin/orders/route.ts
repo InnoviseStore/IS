@@ -429,11 +429,10 @@ export async function POST(req: Request) {
               : `cada ${plan.frequency_days} días`
 
             const schedLines = plan.schedule.map((inst: any) => {
-              const instVes = (Number(inst.amount_usd) * Number(exchange_rate_at_sale)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-              return `  • Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* (Bs. ${instVes}) — Vence: ${formatDate(inst.due_date)}`
+              return `  • Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* — Vence: ${formatDate(inst.due_date)}`
             }).join('\n')
 
-            installmentsSection = `🗓️ *Cronograma de Cobro (${plan.total_installments} Cuotas ${freqLabel}):*\n${schedLines}\n`
+            installmentsSection = `🗓️ *Cronograma de Cobro (${plan.total_installments} Cuotas ${freqLabel}):*\n${schedLines}\n  📌 *(En Bolívares: Se calcula a la tasa oficial BCV del día en que realices el pago)*\n`
           }
 
           let initialPaymentsSection = ''

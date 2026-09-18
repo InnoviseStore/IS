@@ -172,14 +172,14 @@ export function WhatsAppInvoiceModal({
         lines.push('')
         lines.push(`🗓️ *Plan de Cobro Acordado (${installmentsPlan.total_installments} Cuotas ${freqLabel}):*`)
         installmentsPlan.schedule.forEach((inst) => {
-          const instVes = (Number(inst.amount_usd) * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
           const stBadge = inst.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
-          lines.push(`• Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* (Bs. ${instVes}) — Vence: ${inst.due_date} [${stBadge}]`)
+          lines.push(`• Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* — Vence: ${inst.due_date} [${stBadge}]`)
         })
+        lines.push(`📌 *(En Bolívares: Se calcula a la tasa oficial BCV del día en que realices el pago)*`)
       }
 
       lines.push('')
-      lines.push(`• 💡 *Nota:* Futuros abonos en Bolívares se calculan a la *tasa oficial del BCV del día* en que realices el pago.`)
+      lines.push(`• 💡 *Nota:* Pagos o abonos en Bolívares se calculan a la *tasa oficial del BCV del día* en que realices el pago.`)
       lines.push(`• 📲 *Autoservicio WhatsApp:* Escribe *SALDO* para consultar cuánto debes actualizado a la tasa del día, o escribe *PAGOS* para recibir los datos de Pago Móvil y cuentas bancarias.`)
     }
 

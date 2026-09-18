@@ -389,12 +389,11 @@ export async function POST(req: Request) {
             : `cada ${plan.frequency_days} días`
 
           const pendingSchedule = (plan.schedule || []).map((inst: any) => {
-            const instVes = (Number(inst.amount_usd) * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
             const stIcon = inst.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
-            return `   • Cuota #${inst.installment_number}: $${Number(inst.amount_usd).toFixed(2)} USD (Bs. ${instVes}) — Vence: ${formatDate(inst.due_date)} [${stIcon}]`
+            return `   • Cuota #${inst.installment_number}: $${Number(inst.amount_usd).toFixed(2)} USD — Vence: ${formatDate(inst.due_date)} [${stIcon}]`
           }).join('\n')
 
-          orderLine += `\n🗓️ *Plan de ${plan.total_installments} Cuotas ${freqLabel}:*\n${pendingSchedule}`
+          orderLine += `\n🗓️ *Plan de ${plan.total_installments} Cuotas ${freqLabel}:*\n${pendingSchedule}\n   📌 *(En Bolívares: Se calcula a la tasa oficial BCV del día en que realices el pago)*`
         }
 
         // Si incluye items comprados

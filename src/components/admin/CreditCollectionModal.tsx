@@ -183,11 +183,10 @@ export function CreditCollectionModal({ customer, onClose, initialSaleInfo }: Pr
         ? 'Mensuales'
         : `cada ${plan.frequency_days} días`
       const schedLines = plan.schedule.map((it) => {
-        const itVes = (it.amount_usd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         const st = it.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
-        return `• Cuota #${it.installment_number}: *$${it.amount_usd.toFixed(2)} USD* (Bs. ${itVes}) — Vence: ${formatDate(it.due_date)} [${st}]`
+        return `• Cuota #${it.installment_number}: *$${it.amount_usd.toFixed(2)} USD* — Vence: ${formatDate(it.due_date)} [${st}]`
       }).join('\n')
-      installmentsBlock = `🗓️ *Cronograma de Cobro (${plan.total_installments} cuotas ${freqLabel}):*\n${schedLines}\n`
+      installmentsBlock = `🗓️ *Cronograma de Cobro (${plan.total_installments} cuotas ${freqLabel}):*\n${schedLines}\n📌 *(En Bolívares: Se calcula a la tasa oficial BCV del día en que realices el pago)*\n`
     }
 
     if (!includeDetails) {
