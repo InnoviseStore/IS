@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
+import { formatDate } from '@/lib/formatters'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -398,8 +399,65 @@ export async function POST(req: Request) {
         if (targetPhone) {
           const instanceName = waSettings.instance_name || `tenant_${tenantData?.slug}`
           const itemsText = (items || [])
-            .map((it: any) => `• ${it.quantity}x ${it.name} — $${(Number(it.subtotal_usd) || it.quantity * it.unit_price_usd).toFixed(2)} USD`)
+            .map((it: any) => {
+              const itemName = it.product_name || it.name || 'Producto'
+              const qty = it.quantity || 1
+              const lineTotal = Number(it.subtotal_usd) || (qty * Number(it.unit_price_usd || 0))
+              return `• ${qty}x ${itemName} — $${lineTotal.toFixed(2)} USD`
+            })
             .join('\n')
+
+          // Desglose de pagos iniciales vs crédito
+          const breakdown = Array.isArray(payment_breakdown) ? payment_breakdown : []
+          const initialPayments = breakdown.filter((p: any) => p.method !== 'credit_7d' && (Number(p.amount_usd) || 0) > 0)
+          const initialPaidUsd = initialPayments.reduce((sum: number, p: any) => sum + (Number(p.amount_usd) || 0), 0)
+
+          const creditRow = breakdown.find((p: any) => p.method === 'credit_7d')
+          const isCreditSale = Boolean(isCredit || payment_condition === 'credit_7d' || creditRow)
+          const creditAmountFinancedUsd = creditRow ? (Number(creditRow.amount_usd) || 0) : Math.max(0, Number(total_usd) - initialPaidUsd)
+          const creditAmountFinancedVes = creditAmountFinancedUsd * Number(exchange_rate_at_sale)
+
+          let installmentsSection = ''
+          if (creditRow?.installments_plan?.schedule && creditRow.installments_plan.schedule.length > 0) {
+            const plan = creditRow.installments_plan
+            const freqLabel = plan.frequency === 'semanal'
+              ? 'Semanales'
+              : plan.frequency === 'quincenal'
+              ? 'Quincenales'
+              : plan.frequency === 'mensual'
+              ? 'Mensuales'
+              : `cada ${plan.frequency_days} días`
+
+            const schedLines = plan.schedule.map((inst: any) => {
+              const instVes = (Number(inst.amount_usd) * Number(exchange_rate_at_sale)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              return `  • Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* (Bs. ${instVes}) — Vence: ${formatDate(inst.due_date)}`
+            }).join('\n')
+
+            installmentsSection = `🗓️ *Cronograma de Cobro (${plan.total_installments} Cuotas ${freqLabel}):*\n${schedLines}\n`
+          }
+
+          let initialPaymentsSection = ''
+          if (initialPayments.length > 0) {
+            const paymentLines = initialPayments.map((p: any) => {
+              const mName = p.method === 'pago_movil' ? 'Pago Móvil (VES)' : p.method === 'zelle' ? 'Zelle (USD)' : p.method === 'binance_pay' ? 'Binance Pay' : p.method === 'cash_usd' ? 'Efectivo USD' : p.method
+              return `  • ${mName}: $${Number(p.amount_usd).toFixed(2)} USD`
+            }).join('\n')
+            initialPaymentsSection = `💵 *Abono Inicial Recibido Hoy:*\n${paymentLines}\n`
+          }
+
+          let creditSection = ''
+          if (isCreditSale) {
+            creditSection = [
+              `⚠️ *CONDICIÓN: VENTA A CRÉDITO*`,
+              initialPaymentsSection ? initialPaymentsSection.trim() : '',
+              `• ⏳ *Saldo Pendiente por Pagar:* $${creditAmountFinancedUsd.toFixed(2)} USD (Bs. ${creditAmountFinancedVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+              order.due_date ? `• 📅 *Próxima Fecha de Pago:* ${formatDate(order.due_date)}` : '',
+              installmentsSection ? `\n${installmentsSection.trim()}` : '',
+              ``,
+              `💡 *Condición de Abono:* Todo pago en Bolívares se liquida a la *tasa oficial del BCV del día* en que realices el pago.`,
+              `📲 *Autoservicio WhatsApp:* Puedes responder en cualquier momento con la palabra *SALDO* para consultar cuánto debes o escribir *PAGOS* para recibir los datos de transferencia.`,
+            ].filter(Boolean).join('\n')
+          }
 
           const invoiceMsg = [
             `🧾 *FACTURA / COMPROBANTE DE VENTA*`,
@@ -408,13 +466,15 @@ export async function POST(req: Request) {
             `📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}`,
             ``,
             `👤 *Cliente:* ${customerName}`,
-            itemsText ? `\n📦 *Productos:*\n${itemsText}\n` : '',
-            `💰 *Total Facturado:* $${Number(total_usd).toFixed(2)} USD`,
-            `🇻🇪 *Equivalente en Bs.:* Bs. ${Number(total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            `📈 *Tasa Oficial BCV:* Bs. ${Number(exchange_rate_at_sale).toFixed(2)}/USD`,
-            isCredit ? `\n⚠️ *Condición a Crédito:* Saldo pendiente por liquidar.` : `\n💳 *Estado:* Pagada con éxito.`,
+            itemsText ? `\n📦 *Productos Facturados:*\n${itemsText}\n` : '',
+            `📊 *Resumen de Venta:*`,
+            `• 💰 *Total Factura: $${Number(total_usd).toFixed(2)} USD*`,
+            `• 🇻🇪 *Equivalente en Bs.:* Bs. ${Number(total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            `• 📈 *Tasa Oficial BCV:* Bs. ${Number(exchange_rate_at_sale).toFixed(2)}/USD`,
             ``,
-            `✨ ¡Muchas gracias por tu compra!`,
+            isCreditSale ? creditSection : `💳 *Condición:* Pagada de Contado con éxito.`,
+            ``,
+            `✨ ¡Muchas gracias por tu compra y preferencia!`,
           ].filter(Boolean).join('\n')
 
           // Envío automático garantizado antes de cerrar la función serverless

@@ -245,6 +245,20 @@ export function SplitPaymentModal({
 
   const dueDate = formatDate(dueDateObj)
 
+  const currentInstallmentsPlan = useMemo<InstallmentsPlan | undefined>(() => {
+    if (!isCredit || creditPlanMode !== 'installments' || installmentsSchedule.length === 0) return undefined
+    return {
+      mode: 'installments',
+      frequency: installmentFrequency,
+      frequency_days: effectiveFrequencyDays,
+      total_installments: installmentsSchedule.length,
+      down_payment_usd: paidUsd > 0 ? parseFloat(paidUsd.toFixed(2)) : 0,
+      financed_amount_usd: parseFloat(creditAmountUsd.toFixed(2)),
+      installment_amount_usd: installmentsSchedule[0]?.amount_usd || 0,
+      schedule: installmentsSchedule,
+    }
+  }, [isCredit, creditPlanMode, installmentsSchedule, installmentFrequency, effectiveFrequencyDays, paidUsd, creditAmountUsd])
+
   // En modo edición de la misma factura, la deuda previa a crédito de ESTA factura
   // se deduce porque el backend la revierte automáticamente antes de aplicar la nueva.
   const previousCredit = useMemo(() => {
@@ -296,19 +310,7 @@ export function SplitPaymentModal({
       }
     })
 
-    let installmentsPlanData: InstallmentsPlan | undefined = undefined
-    if (isCredit && creditPlanMode === 'installments' && installmentsSchedule.length > 0) {
-      installmentsPlanData = {
-        mode: 'installments',
-        frequency: installmentFrequency,
-        frequency_days: effectiveFrequencyDays,
-        total_installments: installmentsSchedule.length,
-        down_payment_usd: paidUsd > 0 ? parseFloat(paidUsd.toFixed(2)) : 0,
-        financed_amount_usd: parseFloat(creditAmountUsd.toFixed(2)),
-        installment_amount_usd: installmentsSchedule[0]?.amount_usd || 0,
-        schedule: installmentsSchedule,
-      }
-    }
+    const installmentsPlanData = currentInstallmentsPlan
 
     if (isCredit && creditAmountUsd > 0) {
       paymentBreakdown.push({
@@ -568,6 +570,7 @@ export function SplitPaymentModal({
             isCredit={isCredit}
             creditDueDate={dueDate}
             creditRemainingUsd={isCredit ? creditAmountUsd : 0}
+            installmentsPlan={currentInstallmentsPlan}
             payments={payments
               .filter((p) => (parseFloat(p.amount) || 0) > 0)
               .map((p) => ({

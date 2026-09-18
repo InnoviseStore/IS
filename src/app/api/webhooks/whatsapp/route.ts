@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendWhatsAppTextMessage, sendWhatsAppButtons } from '@/lib/whatsappGateway'
+import { formatDate } from '@/lib/formatters'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -232,14 +233,14 @@ export async function POST(req: Request) {
       paymentMethodsFormatted = `🏦 *Pago Móvil Oficial:*\n• Teléfono: *${tenant.phone_whatsapp || senderDigits}*\n• Banco: *A consultar con administración*`
     }
 
-    // 8. Buscar cliente en la tienda por su número telefónico
+    // 8. Buscar clientes en la tienda que coincidan con el número telefónico del remitente
     // Obtenemos los clientes del tenant y comparamos eliminando guiones, espacios y códigos de país
     const { data: tenantCustomers } = await supabase
       .from('customers')
       .select('id, full_name, phone, current_debt_usd, is_active')
       .eq('tenant_id', tenant.id)
 
-    const customer = tenantCustomers?.find((c) => {
+    const matchingCustomers = (tenantCustomers || []).filter((c) => {
       if (!c.phone) return false
       const cleanDbPhone = c.phone.replace(/\D/g, '')
       if (!cleanDbPhone || cleanDbPhone.length < 7) return false
@@ -247,7 +248,7 @@ export async function POST(req: Request) {
       // 1. Coincidencia exacta de dígitos
       if (cleanDbPhone === senderDigits) return true
 
-      // 2. Coincidencia de los últimos 7 a 10 dígitos (ignora si tiene 0424, 58424, etc.)
+      // 2. Coincidencia de los últimos 7 a 10 dígitos (ignora 0424, 58424, etc.)
       const dbLast7 = cleanDbPhone.slice(-7)
       const senderLast7 = senderDigits.slice(-7)
       if (dbLast7 === senderLast7) return true
@@ -258,6 +259,58 @@ export async function POST(req: Request) {
 
       return false
     })
+
+    // Consultar pedidos a crédito o pendientes activos asociados a estos clientes o al teléfono
+    let activeCreditOrders: any[] = []
+    let totalOrdersDebtUsd = 0
+
+    if (matchingCustomers.length > 0) {
+      const custIds = matchingCustomers.map((c) => c.id)
+      const phoneLast7 = senderDigits.slice(-7)
+
+      const { data: foundOrders } = await supabase
+        .from('orders')
+        .select('id, order_number, total_usd, total_ves, status, payment_condition, payment_breakdown, due_date, created_at, customer_id, notes, order_items(product_name, quantity, unit_price_usd)')
+        .eq('tenant_id', tenant.id)
+        .or(`customer_id.in.(${custIds.join(',')}),notes.ilike.%${phoneLast7}%`)
+        .order('created_at', { ascending: false })
+
+      for (const ord of foundOrders || []) {
+        if (ord.status === 'cancelled') continue
+
+        const breakdown = Array.isArray(ord.payment_breakdown) ? ord.payment_breakdown : []
+        const paidInOrder = breakdown.reduce(
+          (sum: number, it: any) => (it.method !== 'credit_7d' ? sum + (Number(it.amount_usd) || 0) : sum),
+          0
+        )
+        const ordTotal = Number(ord.total_usd) || 0
+        const ordRemaining = Math.max(0, ordTotal - paidInOrder)
+        const isCreditSale = ord.status === 'credit' || ord.payment_condition === 'credit_7d' || breakdown.some((b: any) => b.method === 'credit_7d')
+
+        if ((isCreditSale || ord.status === 'pending') && ordRemaining > 0.05) {
+          totalOrdersDebtUsd += ordRemaining
+          activeCreditOrders.push({
+            ...ord,
+            remainingUsd: ordRemaining,
+            paidUsd: paidInOrder,
+          })
+        }
+      }
+    }
+
+    // Seleccionar el perfil de cliente prioritario (el que tiene pedidos activos o mayor deuda registrada)
+    const customer = matchingCustomers.length > 0
+      ? (matchingCustomers.find((c) => c.id === activeCreditOrders[0]?.customer_id)
+        || matchingCustomers.reduce((prev, curr) => (Number(curr.current_debt_usd || 0) > Number(prev.current_debt_usd || 0) ? curr : prev), matchingCustomers[0]))
+      : null
+
+    const maxProfileDebt = Math.max(0, ...matchingCustomers.map((c) => Number(c.current_debt_usd || 0)))
+    const effectiveDebtUsd = Math.max(totalOrdersDebtUsd, maxProfileDebt)
+
+    // Si el cliente tiene pedidos activos con deuda pero su current_debt_usd estaba desfasado, lo sincronizamos
+    if (customer && totalOrdersDebtUsd > 0 && Math.abs(Number(customer.current_debt_usd || 0) - totalOrdersDebtUsd) > 0.05) {
+      supabase.from('customers').update({ current_debt_usd: totalOrdersDebtUsd }).eq('id', customer.id).then(() => {})
+    }
 
     // 9. Ejecutar la respuesta según la intención detectada
 
@@ -292,9 +345,7 @@ export async function POST(req: Request) {
 
     // C) CONSULTA DE SALDO O ABONO (CLIENTE REGISTRADO)
     if (isBalanceQuery && customer) {
-      const debtUsd = Number(customer.current_debt_usd || 0)
-
-      if (debtUsd <= 0.01) {
+      if (effectiveDebtUsd <= 0.01) {
         // Cliente AL DÍA
         const alDiaText =
           `🎉 *¡Hola ${customer.full_name}!* ✨\n\n` +
@@ -310,23 +361,68 @@ export async function POST(req: Request) {
         return NextResponse.json({ status: 'balance_al_dia_responded' })
       }
 
-      // Cliente con SALDO PENDIENTE
-      const debtVes = (debtUsd * exchangeRate).toLocaleString('es-VE', {
+      // Cliente con SALDO PENDIENTE (Generar desglose por factura y plan de cuotas)
+      const debtVes = (effectiveDebtUsd * exchangeRate).toLocaleString('es-VE', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })
 
-      const debtText =
-        `👋 ¡Hola *${customer.full_name}*!\n\n` +
-        `Aquí tienes el estado actualizado de tu cuenta en *${tenant.name}*:\n\n` +
-        `💰 *Saldo pendiente:* **$${debtUsd.toFixed(2)} USD**\n` +
-        `🇻🇪 *Equivalente en Bolívares:* **Bs. ${debtVes}**\n` +
-        `📊 *Tasa Oficial BCV del día:* **Bs. ${exchangeRate.toFixed(4)}/USD**\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `💳 *DATOS PARA ABONAR O CANCELAR:*\n\n` +
-        `${paymentMethodsFormatted}\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
+      const ordersBlock: string[] = []
+      for (const ord of activeCreditOrders) {
+        const ordVes = (ord.remainingUsd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        const dueStr = ord.due_date ? formatDate(ord.due_date) : 'Acordada en tienda'
+
+        let orderLine = `📄 *Factura #${ord.order_number}*\n• Saldo pendiente: *$${ord.remainingUsd.toFixed(2)} USD* (Bs. ${ordVes})\n• Próximo vencimiento: *${dueStr}*`
+
+        // Si tiene plan de cuotas programado
+        const creditRow = (Array.isArray(ord.payment_breakdown) ? ord.payment_breakdown : []).find(
+          (b: any) => b.method === 'credit_7d' && b.installments_plan
+        )
+        if (creditRow?.installments_plan) {
+          const plan = creditRow.installments_plan
+          const freqLabel = plan.frequency === 'semanal'
+            ? 'Semanales'
+            : plan.frequency === 'quincenal'
+            ? 'Quincenales'
+            : plan.frequency === 'mensual'
+            ? 'Mensuales'
+            : `cada ${plan.frequency_days} días`
+
+          const pendingSchedule = (plan.schedule || []).map((inst: any) => {
+            const instVes = (Number(inst.amount_usd) * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            const stIcon = inst.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
+            return `   • Cuota #${inst.installment_number}: $${Number(inst.amount_usd).toFixed(2)} USD (Bs. ${instVes}) — Vence: ${formatDate(inst.due_date)} [${stIcon}]`
+          }).join('\n')
+
+          orderLine += `\n🗓️ *Plan de ${plan.total_installments} Cuotas ${freqLabel}:*\n${pendingSchedule}`
+        }
+
+        // Si incluye items comprados
+        if (ord.order_items && ord.order_items.length > 0) {
+          const itemsList = ord.order_items.map((it: any) => `   • ${it.quantity}x ${it.product_name}`).join('\n')
+          orderLine += `\n📦 *Productos:*\n${itemsList}`
+        }
+
+        ordersBlock.push(orderLine)
+      }
+
+      const debtText = [
+        `👋 ¡Hola *${customer.full_name}*!`,
+        `Te compartimos el estado actualizado de tu cuenta en *${tenant.name}*:`,
+        ``,
+        ordersBlock.length > 0 ? ordersBlock.join('\n\n') + '\n' : '',
+        `━━━━━━━━━━━━━━━━━━`,
+        `💰 *SALDO TOTAL PENDIENTE:* **$${effectiveDebtUsd.toFixed(2)} USD**`,
+        `🇻🇪 *Equivalente en Bolívares:* **Bs. ${debtVes}**`,
+        `📊 *Tasa Oficial BCV del día:* **Bs. ${exchangeRate.toFixed(4)}/USD**`,
+        `━━━━━━━━━━━━━━━━━━`,
+        ``,
+        `💳 *DATOS PARA ABONAR O CANCELAR:*\n\n${paymentMethodsFormatted}`,
+        ``,
+        `━━━━━━━━━━━━━━━━━━`,
+        `💡 *Condición de Abono:* Todo pago en Bolívares se liquida a la *tasa oficial del BCV del día* en que realices el pago.`,
         `📎 *Importante:* Al realizar tu abono o pago total, por favor envía la captura o número de referencia por este mismo chat para procesarlo y rebajarlo de tu saldo de inmediato. ¡Muchas gracias!`
+      ].filter(Boolean).join('\n')
 
       await sendWhatsAppTextMessage(instanceName, senderDigits, debtText)
       return NextResponse.json({ status: 'balance_debt_responded' })

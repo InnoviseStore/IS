@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { X, MessageCircle, Copy, Check, Monitor, Smartphone, Zap, FileText, Loader2 } from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 import { getOrderPdfBase64 } from '@/lib/pdfGenerator'
+import type { InstallmentsPlan } from '@/types/database'
 import {
   COUNTRY_CODES,
   normalizeWhatsAppPhone,
@@ -42,6 +43,7 @@ interface Props {
   creditDueDate?: string | null
   creditRemainingUsd?: number
   payments?: WhatsAppInvoicePayment[]
+  installmentsPlan?: InstallmentsPlan
 }
 
 const METHOD_NAMES: Record<string, string> = {
@@ -73,6 +75,7 @@ export function WhatsAppInvoiceModal({
   creditDueDate,
   creditRemainingUsd = 0,
   payments = [],
+  installmentsPlan,
 }: Props) {
   if (!isOpen) return null
 
@@ -156,6 +159,26 @@ export function WhatsAppInvoiceModal({
       if (creditDueDate) {
         lines.push(`• 📅 *Fecha Límite de Pago:* ${creditDueDate}`)
       }
+
+      if (installmentsPlan?.schedule && installmentsPlan.schedule.length > 0) {
+        const freqLabel = installmentsPlan.frequency === 'semanal'
+          ? 'Semanales'
+          : installmentsPlan.frequency === 'quincenal'
+          ? 'Quincenales'
+          : installmentsPlan.frequency === 'mensual'
+          ? 'Mensuales'
+          : `cada ${installmentsPlan.frequency_days} días`
+
+        lines.push('')
+        lines.push(`🗓️ *Plan de Cobro Acordado (${installmentsPlan.total_installments} Cuotas ${freqLabel}):*`)
+        installmentsPlan.schedule.forEach((inst) => {
+          const instVes = (Number(inst.amount_usd) * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          const stBadge = inst.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
+          lines.push(`• Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* (Bs. ${instVes}) — Vence: ${inst.due_date} [${stBadge}]`)
+        })
+      }
+
+      lines.push('')
       lines.push(`• 💡 *Nota:* Futuros abonos en Bolívares se calculan a la *tasa oficial del BCV del día* en que realices el pago.`)
       lines.push(`• 📲 *Autoservicio WhatsApp:* Escribe *SALDO* para consultar cuánto debes actualizado a la tasa del día, o escribe *PAGOS* para recibir los datos de Pago Móvil y cuentas bancarias.`)
     }
@@ -179,6 +202,7 @@ export function WhatsAppInvoiceModal({
     creditDueDate,
     creditRemainingUsd,
     payments,
+    installmentsPlan,
   ])
 
   const { tenant } = useTenant()
