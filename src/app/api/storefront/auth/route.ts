@@ -8,6 +8,8 @@ import {
   verifyCustomerPassword,
   generateCustomerToken,
   verifyCustomerToken,
+  parseCustomerAuth,
+  serializeCustomerNotes,
 } from '@/lib/customerUtils'
 
 function getAdminClient() {
@@ -18,41 +20,6 @@ function getAdminClient() {
   })
 }
 
-// Helper para extraer y guardar datos de autenticación en customer.notes
-function parseCustomerAuth(notesRaw?: string | null): {
-  passwordHash: string | null
-  userNotes: string
-  metadata: Record<string, any>
-} {
-  if (!notesRaw) return { passwordHash: null, userNotes: '', metadata: {} }
-  try {
-    const parsed = JSON.parse(notesRaw)
-    if (parsed && typeof parsed === 'object' && parsed.__is_customer_account) {
-      return {
-        passwordHash: parsed.password_hash || null,
-        userNotes: parsed.user_notes || '',
-        metadata: parsed.metadata || {},
-      }
-    }
-  } catch {
-    // Es texto plano normal
-  }
-  return { passwordHash: null, userNotes: notesRaw, metadata: {} }
-}
-
-function serializeCustomerNotes(
-  passwordHash: string | null,
-  userNotes: string,
-  metadata: Record<string, any> = {}
-): string {
-  return JSON.stringify({
-    __is_customer_account: true,
-    password_hash: passwordHash,
-    user_notes: userNotes,
-    metadata,
-    updated_at: new Date().toISOString(),
-  })
-}
 
 // GET: Obtener sesión de cliente autenticado, historial de compras y saldo de créditos
 export async function GET(req: Request) {

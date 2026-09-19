@@ -1,9 +1,27 @@
-'use client'
+﻿'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Customer } from '@/types/database'
-import { X, Loader2, UserPlus, AlertCircle, AlertTriangle } from 'lucide-react'
+import {
+  X,
+  Loader2,
+  UserPlus,
+  AlertCircle,
+  AlertTriangle,
+  KeyRound,
+  ShieldCheck,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Lock,
+} from 'lucide-react'
+import {
+  parseCustomerAuth,
+  serializeCustomerNotes,
+  hashCustomerPassword,
+  generateRandomCustomerPassword,
+} from '@/lib/customerUtils'
 
 interface CustomerModalProps {
   tenantId: string
@@ -13,13 +31,21 @@ interface CustomerModalProps {
 }
 
 export function CustomerModal({ tenantId, customer, onClose, onSaved }: CustomerModalProps) {
+  const existingAuth = useMemo(() => parseCustomerAuth(customer?.notes), [customer?.notes])
+
   const [fullName, setFullName] = useState(customer?.full_name ?? '')
   const [idNumber, setIdNumber] = useState(customer?.id_number ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [email, setEmail] = useState(customer?.email ?? '')
   const [address, setAddress] = useState(customer?.address ?? '')
   const [creditLimitUsd, setCreditLimitUsd] = useState(customer?.credit_limit_usd?.toString() ?? '100')
-  const [notes, setNotes] = useState(customer?.notes ?? '')
+  const [userNotes, setUserNotes] = useState(existingAuth.userNotes || '')
+
+  // Configuración de acceso web
+  const [enableWebAccess, setEnableWebAccess] = useState(!customer || existingAuth.hasAccount)
+  const [customPassword, setCustomPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
@@ -31,7 +57,8 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
     phone.trim() !== (customer?.phone ?? '') ||
     email.trim() !== (customer?.email ?? '') ||
     address.trim() !== (customer?.address ?? '') ||
-    notes.trim() !== (customer?.notes ?? '')
+    userNotes.trim() !== existingAuth.userNotes ||
+    customPassword.trim().length > 0
   )
 
   function handleAttemptClose() {
@@ -42,7 +69,7 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
     }
   }
 
-  // Interceptar tecla Escape y botón Atrás del navegador
+  // Interceptar tecla Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -54,24 +81,10 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isDirty])
 
-  useEffect(() => {
-    // Empujar estado en historial para capturar botón atrás del navegador
-    if (typeof window !== 'undefined') {
-      window.history.pushState({ modal: 'customer' }, '', window.location.href)
-      const onPopState = () => {
-        if (isDirty) {
-          window.history.pushState({ modal: 'customer' }, '', window.location.href)
-          setShowDiscardConfirm(true)
-        } else {
-          onClose()
-        }
-      }
-      window.addEventListener('popstate', onPopState)
-      return () => {
-        window.removeEventListener('popstate', onPopState)
-      }
-    }
-  }, [isDirty])
+  function handleGeneratePassword() {
+    setCustomPassword(generateRandomCustomerPassword())
+    setShowPassword(true)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -80,11 +93,31 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
       return
     }
 
+    if (enableWebAccess && customPassword && customPassword.trim().length < 4) {
+      setError('La contraseña de acceso web debe tener al menos 4 caracteres.')
+      return
+    }
+
     setLoading(true)
     setError(null)
 
     try {
       const supabase = createClient()
+
+      // Determinar hash de contraseña
+      let passwordHash = existingAuth.passwordHash
+      if (customPassword.trim().length >= 4) {
+        passwordHash = hashCustomerPassword(customPassword.trim())
+      }
+
+      // Serializar notas
+      const finalNotes = enableWebAccess || existingAuth.hasAccount || passwordHash
+        ? serializeCustomerNotes(passwordHash, userNotes.trim(), {
+            ...existingAuth.metadata,
+            last_modal_update: new Date().toISOString(),
+          })
+        : userNotes.trim() || null
+
       const payload = {
         tenant_id: tenantId,
         full_name: fullName.trim(),
@@ -93,7 +126,7 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
         email: email.trim() || null,
         address: address.trim() || null,
         credit_limit_usd: parseFloat(creditLimitUsd) || 0,
-        notes: notes.trim() || null,
+        notes: finalNotes,
         is_active: true,
       }
 
@@ -148,14 +181,14 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
                 {customer ? 'Editar Cliente' : 'Registrar Nuevo Cliente'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {customer ? 'Actualiza los datos del cliente' : 'Añade un cliente para facturación y créditos'}
+                {customer ? 'Actualiza los datos del cliente' : 'Añade un cliente para facturación, POS y catálogo'}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={handleAttemptClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -255,14 +288,77 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
             />
           </div>
 
+          {/* Sección de Acceso Web al Catálogo */}
+          <div className="p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableWebAccess}
+                  onChange={(e) => setEnableWebAccess(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+                  <KeyRound className="w-3.5 h-3.5 text-blue-500" />
+                  Acceso Web al Catálogo
+                </span>
+              </label>
+              {existingAuth.hasAccount && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold">
+                  Cuenta Activa
+                </span>
+              )}
+            </div>
+
+            {enableWebAccess && (
+              <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                    {customer && existingAuth.hasAccount
+                      ? 'Cambiar / Asignar nueva contraseña:'
+                      : 'Contraseña para inicio de sesión:'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGeneratePassword}
+                    className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Generar Clave</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={customPassword}
+                    onChange={(e) => setCustomPassword(e.target.value)}
+                    placeholder={
+                      existingAuth.hasAccount
+                        ? 'Dejar en blanco para mantener la contraseña actual'
+                        : 'ej. IS-8492 o Clave2026'
+                    }
+                    className="w-full pl-3 pr-10 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
               Notas Adicionales
             </label>
             <textarea
               rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={userNotes}
+              onChange={(e) => setUserNotes(e.target.value)}
               placeholder="Preferencias de pago, horarios o comentarios..."
               className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
@@ -272,14 +368,14 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
             <button
               type="button"
               onClick={handleAttemptClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition shadow-md shadow-blue-500/20 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition shadow-md shadow-blue-500/20 disabled:opacity-50 cursor-pointer"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               <span>{customer ? 'Guardar Cambios' : 'Registrar Cliente'}</span>
@@ -307,7 +403,7 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
                 <button
                   type="button"
                   onClick={() => setShowDiscardConfirm(false)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   Continuar Editando
                 </button>
@@ -317,7 +413,7 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
                     setShowDiscardConfirm(false)
                     onClose()
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white transition shadow-sm"
+                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white transition shadow-sm cursor-pointer"
                 >
                   Sí, Descartar
                 </button>

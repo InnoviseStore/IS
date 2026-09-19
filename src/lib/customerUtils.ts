@@ -142,3 +142,59 @@ export function verifyCustomerToken(token?: string | null): Record<string, any> 
     return null
   }
 }
+
+/**
+ * Extrae y analiza los datos de autenticación de cliente almacenados en customer.notes
+ */
+export function parseCustomerAuth(notesRaw?: string | null): {
+  hasAccount: boolean
+  passwordHash: string | null
+  userNotes: string
+  metadata: Record<string, any>
+  updatedAt: string | null
+} {
+  if (!notesRaw) {
+    return { hasAccount: false, passwordHash: null, userNotes: '', metadata: {}, updatedAt: null }
+  }
+  try {
+    const parsed = JSON.parse(notesRaw)
+    if (parsed && typeof parsed === 'object' && parsed.__is_customer_account) {
+      return {
+        hasAccount: Boolean(parsed.password_hash),
+        passwordHash: parsed.password_hash || null,
+        userNotes: parsed.user_notes || '',
+        metadata: parsed.metadata || {},
+        updatedAt: parsed.updated_at || null,
+      }
+    }
+  } catch {
+    // Es texto plano normal de notas
+  }
+  return { hasAccount: false, passwordHash: null, userNotes: notesRaw, metadata: {}, updatedAt: null }
+}
+
+/**
+ * Serializa de forma segura la estructura de autenticación en customer.notes
+ */
+export function serializeCustomerNotes(
+  passwordHash: string | null,
+  userNotes: string = '',
+  metadata: Record<string, any> = {}
+): string {
+  return JSON.stringify({
+    __is_customer_account: true,
+    password_hash: passwordHash,
+    user_notes: userNotes,
+    metadata,
+    updated_at: new Date().toISOString(),
+  })
+}
+
+/**
+ * Genera una contraseña segura y fácil de dictar o compartir con el cliente
+ */
+export function generateRandomCustomerPassword(prefix = 'IS'): string {
+  const digits = Math.floor(1000 + Math.random() * 9000)
+  return `${prefix}-${digits}`
+}
+
