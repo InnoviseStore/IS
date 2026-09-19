@@ -1205,12 +1205,5 @@ function DetailRow({ label, value, id, onCopy, copied, highlight = false }: { la
 }
 
 export default function CheckoutPage() {
-  const params = useParams()
-  const tenantSlug = (params?.tenant as string) || ''
-
-  return (
-    <CustomerProvider tenantSlug={tenantSlug}>
-      <CheckoutInner />
-    </CustomerProvider>
-  )
+  return <CheckoutInner />
 }

@@ -22,6 +22,7 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import { CartProvider, useCart } from '@/contexts/CartContext'
+import { CustomerProvider, useCustomer } from '@/contexts/CustomerContext'
 import OrderGuideModal from '@/components/storefront/OrderGuideModal'
 import StorefrontSearchModal, { type SearchProductItem } from '@/components/storefront/StorefrontSearchModal'
 import CartDrawer from '@/components/storefront/CartDrawer'
@@ -68,6 +69,7 @@ function StorefrontHeader({
   onOpenGuide: () => void
 }) {
   const { itemCount, openCart } = useCart()
+  const { customer, logout } = useCustomer()
   const [isDark, setIsDark] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
@@ -270,15 +272,19 @@ function StorefrontHeader({
                 </span>
               </button>
 
-              {/* Botón Iniciar Sesión */}
+              {/* Botón Iniciar Sesión / Nombre de Usuario */}
               <Link
                 href={`/${store.slug}/cuenta`}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition active:scale-95 text-xs font-bold shadow-md shadow-blue-500/20 shrink-0"
-                aria-label="Iniciar Sesión"
-                title="Iniciar Sesión / Mi Cuenta"
+                aria-label={customer ? `Mi Cuenta (${customer.full_name})` : "Iniciar Sesión"}
+                title={customer ? `Sesión iniciada como ${customer.full_name}` : "Iniciar Sesión / Mi Cuenta"}
               >
                 <User className="w-3.5 h-3.5 text-white shrink-0" />
-                <span>Iniciar Sesión</span>
+                <span className="line-clamp-1 max-w-[110px] sm:max-w-[160px]">
+                  {customer
+                    ? (customer.full_name.split(' ')[0] ? `Hola, ${customer.full_name.split(' ')[0]}` : customer.full_name)
+                    : 'Iniciar Sesión'}
+                </span>
               </Link>
 
               <button
@@ -357,23 +363,63 @@ function StorefrontHeader({
 
             {/* Navigation & Categories */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Botón Destacado Mi Cuenta en Móvil */}
-              <Link
-                href={`/${store.slug}/cuenta`}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white shadow-md shadow-indigo-500/25 active:scale-98 transition"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
-                    <User className="w-4 h-4 text-white" />
+              {/* Tarjeta de Cuenta en Menú Móvil */}
+              {customer ? (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white shadow-md shadow-blue-500/25 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center font-bold text-xs">
+                        {customer.full_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-white leading-tight line-clamp-1">
+                          {customer.full_name}
+                        </p>
+                        <p className="text-[10px] text-emerald-200 font-semibold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                          Sesión Iniciada
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        logout()
+                        setIsMobileMenuOpen(false)
+                      }}
+                      className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white transition cursor-pointer"
+                      title="Cerrar sesión"
+                    >
+                      Salir
+                    </button>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-black text-white leading-tight">Iniciar Sesión / Mi Cuenta</p>
-                    <p className="text-[11px] text-white/85">Consulta tus pedidos y compras</p>
-                  </div>
+                  <Link
+                    href={`/${store.slug}/cuenta`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition"
+                  >
+                    <span>Ver Mi Cuenta y Pedidos</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
-                <ArrowRight className="w-4 h-4 text-white/80" />
-              </Link>
+              ) : (
+                <Link
+                  href={`/${store.slug}/cuenta`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white shadow-md shadow-indigo-500/25 active:scale-98 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                      <User className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-black text-white leading-tight">Iniciar Sesión / Mi Cuenta</p>
+                      <p className="text-[11px] text-white/85">Consulta tus pedidos y compras</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-white/80" />
+                </Link>
+              )}
 
               {/* Search button in mobile drawer */}
               <button
@@ -677,15 +723,17 @@ export default function StorefrontLayoutClient({
   children,
 }: Props) {
   return (
-    <CartProvider tenantSlug={store.slug} exchangeRate={exchangeRate}>
-      <StorefrontShell
-        store={store}
-        categories={categories}
-        searchProducts={searchProducts}
-        exchangeRate={exchangeRate}
-      >
-        {children}
-      </StorefrontShell>
-    </CartProvider>
+    <CustomerProvider tenantSlug={store.slug}>
+      <CartProvider tenantSlug={store.slug} exchangeRate={exchangeRate}>
+        <StorefrontShell
+          store={store}
+          categories={categories}
+          searchProducts={searchProducts}
+          exchangeRate={exchangeRate}
+        >
+          {children}
+        </StorefrontShell>
+      </CartProvider>
+    </CustomerProvider>
   )
 }

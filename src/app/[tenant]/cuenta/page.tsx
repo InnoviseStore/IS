@@ -660,20 +660,15 @@ function CustomerPortalInner() {
 }
 
 export default function CustomerPortalPage() {
-  const params = useParams()
-  const tenantSlug = params.tenant as string
-
   return (
-    <CustomerProvider tenantSlug={tenantSlug}>
-      <Suspense
-        fallback={
-          <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          </div>
-        }
-      >
-        <CustomerPortalInner />
-      </Suspense>
-    </CustomerProvider>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      }
+    >
+      <CustomerPortalInner />
+    </Suspense>
   )
 }
