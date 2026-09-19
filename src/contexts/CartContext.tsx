@@ -94,6 +94,8 @@ interface CartContextValue {
   setIsCartOpen: (open: boolean) => void
   openCart: () => void
   closeCart: () => void
+  lastAddedToast: { item: CartItem; id: number } | null
+  dismissToast: () => void
 }
 
 const CartContext = createContext<CartContextValue | null>(null)
@@ -111,6 +113,7 @@ export function CartProvider({
   const [state, dispatch] = useReducer(cartReducer, initialState)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
+  const [lastAddedToast, setLastAddedToast] = useState<{ item: CartItem; id: number } | null>(null)
 
   // 1. Hydrate from localStorage on client mount
   useEffect(() => {
@@ -142,12 +145,28 @@ export function CartProvider({
   // ── Actions ────────────────────────────────────────────────────────────────
   const addItem = useCallback(
     (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
+      const qty = item.quantity || 1
       dispatch({ type: 'ADD_ITEM', payload: item })
-      // Automatically open cart drawer for immediate tactile feedback
-      setIsCartOpen(true)
+      // Disparar notificación visual interactiva en vez de abrir el drawer
+      setLastAddedToast({
+        item: {
+          id: item.id,
+          product_id: item.product_id,
+          name: item.name,
+          sku: item.sku,
+          unit_price_usd: item.unit_price_usd,
+          quantity: qty,
+          image_url: item.image_url,
+        },
+        id: Date.now(),
+      })
     },
     []
   )
+
+  const dismissToast = useCallback(() => {
+    setLastAddedToast(null)
+  }, [])
 
   const removeItem = useCallback((id: string) => {
     dispatch({ type: 'REMOVE_ITEM', payload: { id } })
@@ -188,6 +207,8 @@ export function CartProvider({
       setIsCartOpen,
       openCart,
       closeCart,
+      lastAddedToast,
+      dismissToast,
     }),
     [
       state.items,
@@ -202,6 +223,8 @@ export function CartProvider({
       setIsCartOpen,
       openCart,
       closeCart,
+      lastAddedToast,
+      dismissToast,
     ]
   )
 

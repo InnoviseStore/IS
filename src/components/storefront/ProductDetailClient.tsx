@@ -179,8 +179,7 @@ export function ProductDetailClient({
     setJustAdded(true)
     setTimeout(() => {
       setJustAdded(false)
-      openCart()
-    }, 600)
+    }, 1500)
   }
 
   function handleAskWhatsApp() {

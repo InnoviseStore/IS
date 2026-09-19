@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useCart } from '@/contexts/CartContext';
+import { useCustomer } from '@/contexts/CustomerContext';
 import {
   buildWhatsAppCheckoutUrl,
   normalizeWhatsAppPhone,
@@ -96,6 +97,7 @@ export default function CartDrawer({
     isCartOpen,
     setIsCartOpen,
   } = useCart();
+  const { customer } = useCustomer();
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -105,20 +107,35 @@ export default function CartDrawer({
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Restaurar cliente de localStorage
+  // Autocompletar datos si el cliente tiene sesión iniciada o desde localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('is_saved_checkout_customer');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.fullName) setFullName(parsed.fullName);
-        if (parsed.phone) setPhone(parsed.phone);
-        if (parsed.idNumber) setIdNumber(parsed.idNumber);
-        if (parsed.address) setAddress(parsed.address);
-        if (parsed.countryCode) setCountryCode(parsed.countryCode);
+    if (customer) {
+      if (customer.full_name) setFullName(customer.full_name);
+      if (customer.id_number) setIdNumber(customer.id_number);
+      if (customer.address) setAddress(customer.address);
+      if (customer.phone) {
+        let p = customer.phone.replace(/\D/g, '');
+        if (p.startsWith('58') && p.length > 10) {
+          setCountryCode('58');
+          setPhone(p.slice(2));
+        } else {
+          setPhone(p);
+        }
       }
-    } catch {}
-  }, []);
+    } else {
+      try {
+        const saved = localStorage.getItem('is_saved_checkout_customer');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.fullName) setFullName(parsed.fullName);
+          if (parsed.phone) setPhone(parsed.phone);
+          if (parsed.idNumber) setIdNumber(parsed.idNumber);
+          if (parsed.address) setAddress(parsed.address);
+          if (parsed.countryCode) setCountryCode(parsed.countryCode);
+        }
+      } catch {}
+    }
+  }, [customer]);
 
   // Delivery options state (Excluyentes: solo una activa a la vez)
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery_bqto');
@@ -604,9 +621,25 @@ export default function CartDrawer({
             {/* Customer & Delivery Form: Only shown in whatsapp_only mode. In direct_payment mode, the user enters this cleanly in /[tenant]/checkout */}
             {checkoutMode === 'whatsapp_only' ? (
               <form onSubmit={handleSubmit} className="p-4 space-y-4">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Datos de Entrega
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Datos de Entrega y Facturación
+                  </span>
+                  {customer && (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      ✓ Autocompletado
+                    </span>
+                  )}
+                </div>
+
+                {customer && (
+                  <div className="p-3 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/80 flex items-center gap-2.5 text-xs text-emerald-900 dark:text-emerald-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      Sesión iniciada como <strong>{customer.full_name}</strong>. Tus datos están listos para enviar tu pedido en 1 clic.
+                    </span>
+                  </div>
+                )}
 
                 {/* Nombre y Cédula en dos columnas o apilados */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -1,9 +1,9 @@
 'use client'
 
-import { useRef } from 'react'
+import { useState, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Sparkles, Package, ShoppingCart } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sparkles, Package, ShoppingCart, Check } from 'lucide-react'
 import type { Product } from '@/components/storefront/ProductGrid'
 import { useCart } from '@/contexts/CartContext'
 
@@ -16,6 +16,7 @@ interface Props {
 export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { addItem } = useCart()
+  const [addedProductId, setAddedProductId] = useState<string | null>(null)
 
   // Solo mostrar productos con stock
   const inStockProducts = products.filter((p) => p.stock_quantity == null || p.stock_quantity > 0)
@@ -126,7 +127,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
                   </div>
 
                   <button
-                    onClick={() =>
+                    onClick={() => {
                       addItem({
                         id: p.id,
                         product_id: p.id,
@@ -136,12 +137,22 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
                         image_url: p.image_url,
                         quantity: 1,
                       })
-                    }
-                    className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-500/20 active:scale-90 transition-all cursor-pointer"
-                    title="Añadir al carrito"
+                      setAddedProductId(p.id)
+                      setTimeout(() => setAddedProductId((curr) => (curr === p.id ? null : curr)), 1200)
+                    }}
+                    className={`p-2.5 rounded-xl text-white shadow-sm active:scale-90 transition-all cursor-pointer ${
+                      addedProductId === p.id
+                        ? 'bg-emerald-600 shadow-emerald-500/30 scale-105'
+                        : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                    }`}
+                    title={addedProductId === p.id ? '¡Agregado!' : 'Añadir al carrito'}
                     aria-label="Añadir al carrito"
                   >
-                    <ShoppingCart className="w-4 h-4" />
+                    {addedProductId === p.id ? (
+                      <Check className="w-4 h-4 text-white animate-in zoom-in" />
+                    ) : (
+                      <ShoppingCart className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
               </div>

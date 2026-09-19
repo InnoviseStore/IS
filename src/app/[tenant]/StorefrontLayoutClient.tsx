@@ -26,6 +26,7 @@ import { CustomerProvider, useCustomer } from '@/contexts/CustomerContext'
 import OrderGuideModal from '@/components/storefront/OrderGuideModal'
 import StorefrontSearchModal, { type SearchProductItem } from '@/components/storefront/StorefrontSearchModal'
 import CartDrawer from '@/components/storefront/CartDrawer'
+import AddToCartToast from '@/components/storefront/AddToCartToast'
 
 export interface StoreData {
   id: string
@@ -68,12 +69,22 @@ function StorefrontHeader({
   onOpenSearch: () => void
   onOpenGuide: () => void
 }) {
-  const { itemCount, openCart } = useCart()
+  const { itemCount, openCart, lastAddedToast } = useCart()
   const { customer, logout } = useCustomer()
   const [isDark, setIsDark] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
+  const [animateCart, setAnimateCart] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Disparar animación de rebote y destello al agregar al carrito
+  useEffect(() => {
+    if (lastAddedToast) {
+      setAnimateCart(true)
+      const timer = setTimeout(() => setAnimateCart(false), 900)
+      return () => clearTimeout(timer)
+    }
+  }, [lastAddedToast])
 
   // Sync dark class on client
   useEffect(() => {
@@ -300,13 +311,22 @@ function StorefrontHeader({
               <button
                 type="button"
                 onClick={openCart}
-                className="relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+                className={`relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-300 ${
+                  animateCart
+                    ? 'scale-110 ring-4 ring-emerald-400 ring-offset-2 dark:ring-offset-slate-900 shadow-emerald-500/30'
+                    : ''
+                }`}
                 aria-label="Abrir carrito"
+                title="Abrir carrito de compras"
               >
-                <ShoppingCart className="h-4 w-4" />
+                <ShoppingCart className={`h-4 w-4 transition-transform duration-300 ${animateCart ? 'scale-125 rotate-12 text-emerald-200' : ''}`} />
                 <span className="hidden sm:inline">Carrito</span>
                 {itemCount > 0 && (
-                  <span className="h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center shadow-xs">
+                  <span
+                    className={`h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center shadow-xs transition-all duration-300 ${
+                      animateCart ? 'scale-125 bg-emerald-500 animate-pulse' : ''
+                    }`}
+                  >
                     {itemCount > 99 ? '99+' : itemCount}
                   </span>
                 )}
@@ -711,6 +731,9 @@ function StorefrontShell({
         storeName={store.name}
         checkoutMode={store.checkout_mode || 'direct_payment'}
       />
+
+      {/* Floating Add to Cart Toast Animation */}
+      <AddToCartToast exchangeRate={exchangeRate} />
     </div>
   )
 }
