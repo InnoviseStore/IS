@@ -203,16 +203,23 @@ export function SplitPaymentModal({
 
   const creditAmountUsd = isCredit ? Math.max(0, parseFloat((grandTotalUsd - paidUsd).toFixed(4))) : 0
 
+  const maxInstallments = useMemo(() => {
+    if (installmentFrequency === 'semanal') return 20
+    if (installmentFrequency === 'quincenal') return 15
+    if (installmentFrequency === 'mensual') return 6
+    return 20
+  }, [installmentFrequency])
+
   const effectiveFrequencyDays = useMemo(() => {
     if (installmentFrequency === 'semanal') return 7
     if (installmentFrequency === 'quincenal') return 15
     if (installmentFrequency === 'mensual') return 30
-    return Math.max(1, customFrequencyDays || 1)
-  }, [installmentFrequency, customFrequencyDays])
+    return 7
+  }, [installmentFrequency])
 
   const installmentsSchedule = useMemo(() => {
     if (creditPlanMode !== 'installments' || creditAmountUsd <= 0) return []
-    const count = Math.max(2, Math.min(36, installmentsCount || 2))
+    const count = Math.max(1, Math.min(maxInstallments, installmentsCount || 2))
     const baseUsd = Math.floor((creditAmountUsd / count) * 100) / 100
     const items: InstallmentScheduleItem[] = []
     let acc = 0
@@ -234,7 +241,7 @@ export function SplitPaymentModal({
       })
     }
     return items
-  }, [creditPlanMode, creditAmountUsd, installmentsCount, effectiveFrequencyDays, exchangeRate])
+  }, [creditPlanMode, creditAmountUsd, installmentsCount, maxInstallments, effectiveFrequencyDays, exchangeRate])
 
   const dueDateObj = useMemo(() => {
     if (creditPlanMode === 'installments' && installmentsSchedule.length > 0) {
@@ -877,13 +884,19 @@ export function SplitPaymentModal({
                             { key: 'semanal', label: 'Semanal (7d)' },
                             { key: 'quincenal', label: 'Quincenal (15d)' },
                             { key: 'mensual', label: 'Mensual (30d)' },
-                            { key: 'custom_days', label: 'Personalizado' },
                           ].map((f) => (
                             <button
                               key={f.key}
                               type="button"
-                              onClick={() => setInstallmentFrequency(f.key as CreditPlanFrequency)}
-                              className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                              onClick={() => {
+                                const newFreq = f.key as CreditPlanFrequency
+                                setInstallmentFrequency(newFreq)
+                                const max = newFreq === 'semanal' ? 20 : newFreq === 'quincenal' ? 15 : 6
+                                if (installmentsCount > max) {
+                                  setInstallmentsCount(max)
+                                }
+                              }}
+                              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
                                 installmentFrequency === f.key
                                   ? 'bg-purple-600 text-white shadow-xs'
                                   : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50'
@@ -893,21 +906,6 @@ export function SplitPaymentModal({
                             </button>
                           ))}
                         </div>
-
-                        {installmentFrequency === 'custom_days' && (
-                          <div className="mt-2 flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 w-fit">
-                            <span className="text-xs text-slate-600 dark:text-slate-300">Cobrar cada:</span>
-                            <input
-                              type="number"
-                              min="1"
-                              max="180"
-                              value={customFrequencyDays}
-                              onChange={(e) => setCustomFrequencyDays(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-12 text-center font-bold text-purple-600 dark:text-purple-400 bg-transparent outline-none text-xs"
-                            />
-                            <span className="text-xs text-slate-500">días</span>
-                          </div>
-                        )}
                       </div>
 
                       {/* Cantidad de cuotas */}
@@ -915,11 +913,17 @@ export function SplitPaymentModal({
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-slate-700 dark:text-slate-300 font-bold">Número de Cuotas:</span>
                           <span className="text-[11px] font-bold text-purple-700 dark:text-purple-400">
-                            {installmentsCount} cuotas
+                            {installmentsCount} cuotas (Máx: {maxInstallments} {installmentFrequency === 'semanal' ? 'semanas' : installmentFrequency === 'quincenal' ? 'quincenas' : 'meses'})
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {[2, 3, 4, 6].map((num) => (
+                          {(
+                            installmentFrequency === 'semanal'
+                              ? [2, 4, 8, 12, 16, 20]
+                              : installmentFrequency === 'quincenal'
+                              ? [2, 4, 6, 10, 15]
+                              : [2, 3, 4, 6]
+                          ).map((num) => (
                             <button
                               key={num}
                               type="button"
@@ -937,10 +941,13 @@ export function SplitPaymentModal({
                             <span className="text-[11px] text-slate-500 font-medium">Otras:</span>
                             <input
                               type="number"
-                              min="2"
-                              max="36"
+                              min="1"
+                              max={maxInstallments}
                               value={installmentsCount}
-                              onChange={(e) => setInstallmentsCount(Math.max(2, Math.min(36, parseInt(e.target.value) || 2)))}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1
+                                setInstallmentsCount(Math.max(1, Math.min(maxInstallments, val)))
+                              }}
                               className="w-10 text-center font-bold text-slate-800 dark:text-slate-100 bg-transparent outline-none text-xs"
                             />
                             <span className="text-[11px] text-slate-500">cuotas</span>

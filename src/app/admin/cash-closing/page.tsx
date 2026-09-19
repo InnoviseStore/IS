@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { PaymentMethodType, Order, CashClosingSummaryItem } from '@/types/database'
@@ -31,6 +31,11 @@ export default function CashClosingPage() {
   const [closingNotes, setClosingNotes] = useState('')
   const [alreadyClosed, setAlreadyClosed] = useState(false)
   const [closedAt, setClosedAt] = useState<string | null>(null)
+  const [savedClosing, setSavedClosing] = useState<any | null>(null)
+
+  // Arqueo físico de caja (efectivo contado por el cajero)
+  const [actualCashUsdInput, setActualCashUsdInput] = useState('')
+  const [actualCashVesInput, setActualCashVesInput] = useState('')
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -45,7 +50,7 @@ export default function CashClosingPage() {
     setErrorMsg(null)
     const supabase = createClient()
 
-    // Check if already closed today
+    // 1. Verificar si ya se realizó el cierre de hoy
     const { data: existing } = await supabase
       .from('cash_closings')
       .select('*')
@@ -59,31 +64,76 @@ export default function CashClosingPage() {
     if (existing) {
       setAlreadyClosed(true)
       setClosedAt(existing.closed_at || existing.created_at)
+      setSavedClosing(existing)
       setLoading(false)
       return
     }
 
-    // Load today's completed orders
-    const { data } = await supabase
+    // 2. Cargar todas las órdenes completadas y a crédito de hoy
+    const { data, error } = await supabase
       .from('orders')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('status', 'completed')
+      .in('status', ['completed', 'credit'])
       .gte('created_at', todayStartIso)
       .order('created_at', { ascending: false })
 
-    setOrders((data ?? []) as Order[])
+    if (error) {
+      setErrorMsg('Error al consultar órdenes: ' + error.message)
+      setOrders([])
+    } else {
+      setOrders((data ?? []) as Order[])
+    }
     setLoading(false)
   }, [tenant, todayStartIso])
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
   // ─── Compute summary from orders ─────────────────────────────────────────
-  const summary = computeSummary(orders, exchangeRate)
-  const subtotalUsd = orders.reduce((s, o) => s + o.subtotal_usd, 0)
-  const igtfTotal = orders.reduce((s, o) => s + (o.igtf_total ?? 0), 0)
-  const grandTotalUsd = orders.reduce((s, o) => s + o.total_usd, 0)
+  const summary = useMemo(() => {
+    if (alreadyClosed && savedClosing?.breakdown_by_method) {
+      return savedClosing.breakdown_by_method as CashClosingSummaryItem[]
+    }
+    return computeSummary(orders, exchangeRate)
+  }, [alreadyClosed, savedClosing, orders, exchangeRate])
+
+  const subtotalUsd = useMemo(() => {
+    if (alreadyClosed && savedClosing) {
+      return Number(savedClosing.total_sales_usd) || 0
+    }
+    return orders.reduce((s, o) => s + (Number(o.subtotal_usd) || 0), 0)
+  }, [alreadyClosed, savedClosing, orders])
+
+  const igtfTotal = useMemo(() => {
+    if (alreadyClosed && savedClosing) return 0
+    return orders.reduce((s, o) => s + (Number(o.igtf_total) || 0), 0)
+  }, [alreadyClosed, savedClosing, orders])
+
+  const grandTotalUsd = useMemo(() => {
+    if (alreadyClosed && savedClosing) {
+      return Number(savedClosing.total_sales_usd) || 0
+    }
+    return orders.reduce((s, o) => s + (Number(o.total_usd) || 0), 0)
+  }, [alreadyClosed, savedClosing, orders])
+
   const grandTotalVes = grandTotalUsd * exchangeRate
+
+  // Efectivo esperado en sistema
+  const systemCashUsd = useMemo(() => {
+    const row = summary.find((r) => r.method === 'cash_usd')
+    return row ? row.total_usd : 0
+  }, [summary])
+
+  const systemCashVes = useMemo(() => {
+    const row = summary.find((r) => r.method === 'cash_ves')
+    return row ? row.total_ves : 0
+  }, [summary])
+
+  // Diferencias de arqueo físico
+  const actualCashUsd = parseFloat(actualCashUsdInput) || 0
+  const actualCashVes = parseFloat(actualCashVesInput) || 0
+  const diffUsd = actualCashUsdInput ? actualCashUsd - systemCashUsd : 0
+  const diffVes = actualCashVesInput ? actualCashVes - systemCashVes : 0
 
   async function handleClose() {
     if (!tenant || !profile) return
@@ -103,6 +153,10 @@ export default function CashClosingPage() {
           total_ves: parseFloat(grandTotalVes.toFixed(2)),
           order_count: orders.length,
           exchange_rate: exchangeRate,
+          actual_cash_usd: actualCashUsdInput ? parseFloat(actualCashUsd.toFixed(2)) : 0,
+          actual_cash_ves: actualCashVesInput ? parseFloat(actualCashVes.toFixed(2)) : 0,
+          difference_usd: actualCashUsdInput ? parseFloat(diffUsd.toFixed(2)) : 0,
+          difference_ves: actualCashVesInput ? parseFloat(diffVes.toFixed(2)) : 0,
           notes: closingNotes.trim() || null,
         }),
       })
@@ -117,6 +171,7 @@ export default function CashClosingPage() {
 
       setAlreadyClosed(true)
       setClosedAt(data.closing?.closed_at || data.closing?.created_at || new Date().toISOString())
+      setSavedClosing(data.closing)
       setClosing(false)
     } catch (err: any) {
       setErrorMsg(err?.message || 'Error de conexión al cerrar la caja.')
@@ -255,28 +310,75 @@ export default function CashClosingPage() {
             )}
           </div>
 
-          {/* Close action */}
+          {/* Close action y Arqueo */}
           {!alreadyClosed && (
-            <div className="glass-card border border-slate-200/80 dark:border-slate-800/80 p-6 space-y-4">
+            <div className="glass-card border border-slate-200/80 dark:border-slate-800/80 p-5 sm:p-6 rounded-3xl space-y-5">
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <h2 className="font-bold text-slate-900 dark:text-white">Realizar Cierre de Caja</h2>
+                <h2 className="font-bold text-base sm:text-lg text-slate-900 dark:text-white">Arqueo de Efectivo Físico y Cierre de Turno</h2>
               </div>
-              <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
-                Al cerrar la caja, se guarda un registro inmutable del resumen financiero de hoy. Esta acción no elimina ni modifica las órdenes.
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">
+                Ingresa el conteo físico de dinero en gaveta para validar que coincida con el total esperado en el sistema.
               </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Efectivo USD en Gaveta:</span>
+                    <span className="font-mono text-slate-500">Sistema: ${systemCashUsd.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0.00 $"
+                    value={actualCashUsdInput}
+                    onChange={(e) => setActualCashUsdInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-bold font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500"
+                  />
+                  {actualCashUsdInput && (
+                    <div className={`text-[11px] font-bold flex items-center justify-between ${diffUsd === 0 ? 'text-emerald-600' : diffUsd > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                      <span>Diferencia USD:</span>
+                      <span>{diffUsd === 0 ? '✓ Cuadre exacto ($0.00)' : diffUsd > 0 ? `+ Sobrante: +$${diffUsd.toFixed(2)}` : `- Faltante: -$${Math.abs(diffUsd).toFixed(2)}`}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Efectivo VES en Gaveta:</span>
+                    <span className="font-mono text-slate-500">Sistema: Bs. {systemCashVes.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0.00 Bs."
+                    value={actualCashVesInput}
+                    onChange={(e) => setActualCashVesInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-bold font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500"
+                  />
+                  {actualCashVesInput && (
+                    <div className={`text-[11px] font-bold flex items-center justify-between ${diffVes === 0 ? 'text-emerald-600' : diffVes > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                      <span>Diferencia Bs:</span>
+                      <span>{diffVes === 0 ? '✓ Cuadre exacto (0.00 Bs)' : diffVes > 0 ? `+ Sobrante: +Bs. ${diffVes.toFixed(2)}` : `- Faltante: -Bs. ${Math.abs(diffVes).toFixed(2)}`}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <textarea
                 value={closingNotes}
                 onChange={(e) => setClosingNotes(e.target.value)}
-                placeholder="Observaciones del cierre (opcional)…"
+                placeholder="Observaciones del turno o novedades del arqueo (opcional)…"
                 rows={2}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs resize-none"
               />
               <div className="flex justify-end">
                 <button
                   onClick={handleClose}
                   disabled={closing || orders.length === 0}
-                  className="flex items-center gap-2.5 px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition-all duration-200 shadow-md shadow-indigo-500/25 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm transition-all duration-200 shadow-md shadow-indigo-500/25 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {closing
                     ? <><Loader2 className="w-4 h-4 animate-spin" />Cerrando caja…</>
@@ -285,7 +387,7 @@ export default function CashClosingPage() {
                 </button>
               </div>
               {orders.length === 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 text-center font-medium">No hay ventas hoy. El cierre está disponible cuando haya al menos una venta completada.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 text-center font-medium">No hay ventas registradas hoy. El cierre está disponible con al menos una venta completada o a crédito.</p>
               )}
             </div>
           )}

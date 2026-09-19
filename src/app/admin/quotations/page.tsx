@@ -10,6 +10,7 @@ import { formatDate, formatDateTime } from '@/lib/formatters'
 import { generateQuotationPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
+import { WhatsAppQuoteModal } from '@/components/admin/WhatsAppQuoteModal'
 
 interface QuoteCartItem {
   product: Product
@@ -24,6 +25,7 @@ export default function QuotationsPage() {
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [whatsAppQuote, setWhatsAppQuote] = useState<Quotation | null>(null)
   const [search, setSearch] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [quotationToDelete, setQuotationToDelete] = useState<Quotation | null>(null)
@@ -370,9 +372,9 @@ export default function QuotationsPage() {
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-2">
                         <button
-                          onClick={() => shareViaWhatsApp(q)}
-                          className="p-1 rounded-md text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition"
-                          title="Enviar por WhatsApp"
+                          onClick={() => setWhatsAppQuote(q)}
+                          className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition cursor-pointer"
+                          title="Enviar Cotización por WhatsApp al Cliente"
                         >
                           <Send className="w-3.5 h-3.5" />
                         </button>
@@ -796,6 +798,17 @@ export default function QuotationsPage() {
         onConfirm={confirmDeleteQuotation}
         onCancel={() => setQuotationToDelete(null)}
       />
+
+      {/* Modal de Envío de Cotización por WhatsApp */}
+      {whatsAppQuote && (
+        <WhatsAppQuoteModal
+          isOpen={Boolean(whatsAppQuote)}
+          onClose={() => setWhatsAppQuote(null)}
+          quotation={whatsAppQuote}
+          tenantName={tenant?.name || 'Innovise Store'}
+          exchangeRate={exchangeRate}
+        />
+      )}
     </div>
   )
 }

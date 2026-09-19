@@ -9,7 +9,7 @@ import {
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
   RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette,
   UserCheck, ShieldCheck, Loader2, ChevronDown, Barcode, Download, Smartphone,
-  PanelLeftClose, PanelLeftOpen, PanelLeft
+  PanelLeftClose, PanelLeftOpen, PanelLeft, TrendingUp
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
@@ -38,6 +38,7 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
   { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText, roles: ['superadmin', 'owner', 'admin', 'vendedor'] },
   { href: '/admin/inventory', label: 'Inventario', icon: Package, roles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor'] },
   { href: '/admin/cash-closing', label: 'Cierre de Caja', icon: Vault, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier'] },
+  { href: '/admin/finances', label: 'Finanzas & Balance', icon: TrendingUp, roles: ['superadmin', 'owner', 'admin'] },
   { href: '/admin/expenses', label: 'Gastos', icon: Receipt, roles: ['superadmin', 'owner', 'admin'] },
   { href: '/admin/customers', label: 'Clientes', icon: Users, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'vendedor'] },
   { href: '/admin/storefront-builder', label: 'Catálogo Web', icon: Palette, proBadge: true, roles: ['superadmin', 'owner', 'admin'] },

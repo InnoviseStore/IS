@@ -480,43 +480,6 @@ export function ProductDetailClient({
             </div>
           )}
 
-          {/* Selector de Color (si el producto tiene variantes de color) */}
-          {colors.length > 0 && (
-            <div className="space-y-2.5 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                <span className="flex items-center gap-1.5">
-                  <Palette className="w-3.5 h-3.5 text-blue-500" />
-                  Color:
-                </span>
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">{selectedColor}</span>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {colors.map((c) => {
-                  const isSelected = selectedColor === c.name
-                  return (
-                    <button
-                      key={c.name}
-                      type="button"
-                      onClick={() => handleSelectColor(c)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                        isSelected
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20 ring-2 ring-blue-400/40'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
-                      }`}
-                    >
-                      {c.hex && (
-                        <span
-                          className="w-3 h-3 rounded-full border border-black/20"
-                          style={{ backgroundColor: c.hex }}
-                        />
-                      )}
-                      <span>{c.name}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Selector de Cantidad y Botones de Compra */}
           <div className="space-y-3 pt-2">

@@ -33,6 +33,7 @@ import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
 import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
 import { WhatsAppOrderContactModal } from '@/components/admin/WhatsAppOrderContactModal'
+import { WhatsAppInvoiceModal } from '@/components/admin/WhatsAppInvoiceModal'
 
 interface OrderItem {
   id: string
@@ -87,6 +88,7 @@ export default function AdminOrdersPage() {
   const [abonoOrder, setAbonoOrder] = useState<OrderRecord | null>(null)
   const [authOrderForEdit, setAuthOrderForEdit] = useState<OrderRecord | null>(null)
   const [whatsAppOrder, setWhatsAppOrder] = useState<OrderRecord | null>(null)
+  const [invoiceWhatsAppOrder, setInvoiceWhatsAppOrder] = useState<OrderRecord | null>(null)
   const [generalStats, setGeneralStats] = useState<{
     pendingCount: number
     pendingUsd: number
@@ -528,7 +530,7 @@ export default function AdminOrdersPage() {
             const totalUsd = Number(order.total_usd) || 0
             const saldoPendienteUsd = Math.max(0, totalUsd - pagadoPrevioUsd)
             const isCreditSale = order.status === 'credit' || order.payment_condition === 'credit_7d'
-            const canAbonar = isCreditSale || (order.status !== 'cancelled' && saldoPendienteUsd > 0.01)
+            const canAbonar = order.status !== 'pending' && order.status !== 'cancelled' && (isCreditSale || saldoPendienteUsd > 0.01)
 
             const creditBreakdownItem = breakdown.find((item: any) => item.method === 'credit_7d')
             const installmentsPlan = creditBreakdownItem?.installments_plan
@@ -736,25 +738,39 @@ export default function AdminOrdersPage() {
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setGeneratingPdf(true)
-                          try {
-                            await generateOrderPdf({ order, tenant, action: 'download' })
-                          } catch (err) {
-                            console.error('Error generating PDF:', err)
-                            alert('No se pudo generar el PDF. Revisa la consola.')
-                          } finally {
-                            setGeneratingPdf(false)
-                          }
-                        }}
-                        className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                        title="Descargar Factura/Nota PDF"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        <span>PDF</span>
-                      </button>
+                      {order.status !== 'pending' && (
+                        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setGeneratingPdf(true)
+                              try {
+                                await generateOrderPdf({ order, tenant, action: 'download' })
+                              } catch (err) {
+                                console.error('Error generating PDF:', err)
+                                alert('No se pudo generar el PDF. Revisa la consola.')
+                              } finally {
+                                setGeneratingPdf(false)
+                              }
+                            }}
+                            className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                            title="Descargar Factura/Nota PDF"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            <span>PDF</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setInvoiceWhatsAppOrder(order)}
+                            className="w-full sm:w-auto px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                            title="Enviar Factura Digital con PDF por WhatsApp al Cliente"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span>WhatsApp</span>
+                          </button>
+                        </div>
+                      )}
 
                       <button
                         type="button"
@@ -864,6 +880,43 @@ export default function AdminOrdersPage() {
           order={whatsAppOrder}
           tenantName={tenant?.name || 'IS System'}
           exchangeRate={exchangeRate}
+        />
+      )}
+
+      {/* Modal de Factura con PDF por WhatsApp */}
+      {invoiceWhatsAppOrder && (
+        <WhatsAppInvoiceModal
+          isOpen={Boolean(invoiceWhatsAppOrder)}
+          onClose={() => setInvoiceWhatsAppOrder(null)}
+          orderNumber={invoiceWhatsAppOrder.order_number}
+          tenantName={tenant?.name || 'Innovise Store'}
+          exchangeRate={exchangeRate}
+          customerName={invoiceWhatsAppOrder.customer?.full_name || 'Cliente'}
+          customerPhone={invoiceWhatsAppOrder.customer?.phone}
+          customerIdNumber={invoiceWhatsAppOrder.customer?.id_number}
+          items={(invoiceWhatsAppOrder.order_items || []).map((it: any) => ({
+            name: it.product_name || it.name || 'Producto',
+            quantity: Number(it.quantity) || 1,
+            unitPriceUsd: Number(it.unit_price_usd) || 0,
+            subtotalUsd: (Number(it.unit_price_usd) || 0) * (Number(it.quantity) || 1),
+          }))}
+          totalUsd={Number(invoiceWhatsAppOrder.total_usd) || 0}
+          totalVes={Number(invoiceWhatsAppOrder.total_ves) || (Number(invoiceWhatsAppOrder.total_usd) || 0) * exchangeRate}
+          isCredit={invoiceWhatsAppOrder.status === 'credit' || invoiceWhatsAppOrder.payment_condition === 'credit_7d'}
+          creditDueDate={invoiceWhatsAppOrder.due_date ? formatDate(invoiceWhatsAppOrder.due_date) : null}
+          creditRemainingUsd={
+            (invoiceWhatsAppOrder.payment_breakdown || []).find((p: any) => p.method === 'credit_7d')?.amount_usd ?? undefined
+          }
+          installmentsPlan={
+            (invoiceWhatsAppOrder.payment_breakdown || []).find((p: any) => p.method === 'credit_7d')?.installments_plan ?? undefined
+          }
+          payments={(invoiceWhatsAppOrder.payment_breakdown || [])
+            .filter((p: any) => p.method !== 'credit_7d')
+            .map((p: any) => ({
+              method: p.method,
+              amountUsd: Number(p.amount_usd) || 0,
+              reference: p.reference,
+            }))}
         />
       )}
     </div>
