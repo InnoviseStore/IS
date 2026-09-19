@@ -224,14 +224,6 @@ function StorefrontHeader({
                 )}
               </div>
 
-              {/* Iniciar Sesión / Mi Cuenta */}
-              <Link
-                href={`/${store.slug}/cuenta`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/70 dark:border-indigo-800/70 transition shadow-2xs active:scale-95"
-              >
-                <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span>Iniciar Sesión / Mi Cuenta</span>
-              </Link>
 
               {/* Contáctanos WhatsApp Button */}
               {whatsappContactUrl && (
