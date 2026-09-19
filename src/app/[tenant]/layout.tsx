@@ -4,6 +4,9 @@ import type { Tenant } from '@/types/database'
 import { detectCategory, slugifyCategory } from '@/lib/categories'
 import StorefrontLayoutClient, { type StoreData, type StoreCategory } from './StorefrontLayoutClient'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 interface StorefrontLayoutProps {
   children: React.ReactNode
   params: Promise<{ tenant: string }>

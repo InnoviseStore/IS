@@ -15,35 +15,8 @@ import {
   TEMPLATE_DEFINITIONS,
 } from '@/types/storefrontTheme'
 
-export const revalidate = 1800 // 30 minutes ISR
-
-// generateStaticParams runs outside request scope (during build/ISR), so it must use a cookie-less client
-export async function generateStaticParams() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!url || !key || !url.startsWith('http')) {
-    // Return fallback tenant if environment variables are not injected yet during local build
-    return [{ tenant: 'innovise' }]
-  }
-
-  try {
-    const publicClient = createPublicClient(url, key)
-    const { data: tenants } = await publicClient
-      .from('tenants')
-      .select('slug')
-
-    if (!tenants || tenants.length === 0) {
-      return [{ tenant: 'innovise' }]
-    }
-
-    return tenants.map((t) => ({
-      tenant: t.slug,
-    }))
-  } catch {
-    return [{ tenant: 'innovise' }]
-  }
-}
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 async function getStorefrontData(slug: string) {
   const supabase = await createClient()

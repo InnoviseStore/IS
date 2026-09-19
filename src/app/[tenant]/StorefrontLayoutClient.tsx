@@ -230,7 +230,7 @@ function StorefrontHeader({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/70 dark:border-indigo-800/70 transition shadow-2xs active:scale-95"
               >
                 <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span>Mi Cuenta</span>
+                <span>Iniciar Sesión / Mi Cuenta</span>
               </Link>
 
               {/* Contáctanos WhatsApp Button */}
@@ -278,15 +278,15 @@ function StorefrontHeader({
                 </span>
               </button>
 
-              {/* Botón Mi Cuenta */}
+              {/* Botón Iniciar Sesión */}
               <Link
                 href={`/${store.slug}/cuenta`}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800/80 transition active:scale-95 text-xs font-bold shadow-2xs shrink-0"
-                aria-label="Mi Cuenta de Cliente"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition active:scale-95 text-xs font-bold shadow-md shadow-blue-500/20 shrink-0"
+                aria-label="Iniciar Sesión"
                 title="Iniciar Sesión / Mi Cuenta"
               >
-                <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span className="text-xs font-bold">Mi Cuenta</span>
+                <User className="w-3.5 h-3.5 text-white shrink-0" />
+                <span>Iniciar Sesión</span>
               </Link>
 
               <button
