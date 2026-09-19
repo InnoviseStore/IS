@@ -24,6 +24,7 @@ interface TenantContextValue {
     about?: Record<string, unknown>; 
     admin_security_pin?: string;
     checkout_mode?: string;
+    customer_auth_mode?: string;
     payment_accounts?: any[];
     whatsapp_automation?: any;
   }) => Promise<{ success: boolean; error?: string }>
@@ -62,6 +63,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     about?: Record<string, unknown>; 
     admin_security_pin?: string;
     checkout_mode?: string;
+    customer_auth_mode?: string;
     payment_accounts?: any[];
     whatsapp_automation?: any;
   }) => {
