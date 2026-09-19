@@ -224,6 +224,15 @@ function StorefrontHeader({
                 )}
               </div>
 
+              {/* Iniciar Sesión / Mi Cuenta */}
+              <Link
+                href={`/${store.slug}/cuenta`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/70 dark:border-indigo-800/70 transition shadow-2xs active:scale-95"
+              >
+                <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Mi Cuenta</span>
+              </Link>
+
               {/* Contáctanos WhatsApp Button */}
               {whatsappContactUrl && (
                 <a
@@ -272,14 +281,12 @@ function StorefrontHeader({
               {/* Botón Mi Cuenta */}
               <Link
                 href={`/${store.slug}/cuenta`}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-indigo-600 dark:hover:text-indigo-400 transition active:scale-95 text-xs font-semibold shadow-2xs"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800/80 transition active:scale-95 text-xs font-bold shadow-2xs shrink-0"
                 aria-label="Mi Cuenta de Cliente"
-                title="Mi Cuenta y Pedidos"
+                title="Iniciar Sesión / Mi Cuenta"
               >
-                <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span className="hidden sm:inline text-xs font-semibold text-slate-700 dark:text-slate-200">
-                  Mi Cuenta
-                </span>
+                <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="text-xs font-bold">Mi Cuenta</span>
               </Link>
 
               <button
@@ -358,6 +365,24 @@ function StorefrontHeader({
 
             {/* Navigation & Categories */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Botón Destacado Mi Cuenta en Móvil */}
+              <Link
+                href={`/${store.slug}/cuenta`}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white shadow-md shadow-indigo-500/25 active:scale-98 transition"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-black text-white leading-tight">Iniciar Sesión / Mi Cuenta</p>
+                    <p className="text-[11px] text-white/85">Consulta tus pedidos y compras</p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-white/80" />
+              </Link>
+
               {/* Search button in mobile drawer */}
               <button
                 type="button"

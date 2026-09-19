@@ -22,6 +22,7 @@ import {
   ArrowRight,
   CreditCard,
   ExternalLink,
+  User,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useCart } from '@/contexts/CartContext';
@@ -1010,6 +1011,21 @@ export default function CartDrawer({
                     <span>Completar Compra Directa</span>
                     <ArrowRight className="h-4 w-4" />
                   </button>
+
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 pt-1">
+                    <span>¿Ya tienes cuenta?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCartOpen(false);
+                        router.push(`/${tenantSlug}/cuenta?redirectTo=/${tenantSlug}/checkout`);
+                      }}
+                      className="inline-flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      <span>Iniciar Sesión / Mi Cuenta</span>
+                    </button>
+                  </div>
 
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
                     Ingresarás tus datos de entrega y método de pago (Pago Móvil, Transferencia, Binance) en el siguiente paso.

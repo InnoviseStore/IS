@@ -8,7 +8,7 @@ import type { Tenant, Product as DBProduct } from '@/types/database'
 import ProductGrid, { type Product } from '@/components/storefront/ProductGrid'
 import { ProductCarousel } from '@/components/storefront/ProductCarousel'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
-import { MessageCircle, Sparkles } from 'lucide-react'
+import { MessageCircle, Sparkles, User } from 'lucide-react'
 import {
   StorefrontThemeConfig,
   DEFAULT_THEME_CONFIG,
@@ -230,6 +230,22 @@ export default async function StorefrontPage({ params }: PageProps) {
               <p className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
                 {(settings.slogan as string) || (settings.description as string) || 'Tienda Virtual - Conectando Vidas / Creando Futuro 🚀'}
               </p>
+
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
+                <Link
+                  href={`/${tenant.slug}/cuenta`}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-500/25 transition active:scale-95 cursor-pointer"
+                >
+                  <User className="w-4 h-4" />
+                  <span>Iniciar Sesión / Mi Cuenta</span>
+                </Link>
+                <Link
+                  href={`/${tenant.slug}/nosotros`}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs sm:text-sm font-semibold transition active:scale-95"
+                >
+                  <span>Sobre Nosotros</span>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
