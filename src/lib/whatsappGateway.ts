@@ -231,7 +231,16 @@ export async function sendWhatsAppTextMessage(
       if (res.ok && (data?.key || data?.id || data?.status === 'PENDING' || data?.status === 'SUCCESS')) {
         return { success: true, messageId: data?.key?.id || data?.id }
       }
-      return { success: false, error: data?.message || data?.error || 'Error del Gateway de WhatsApp' }
+      const detailedError =
+        (Array.isArray(data?.response?.message)
+          ? data.response.message.flat().join(', ')
+          : typeof data?.response?.message === 'string'
+          ? data.response.message
+          : null) ||
+        data?.message ||
+        data?.error ||
+        'Error del Gateway de WhatsApp'
+      return { success: false, error: detailedError }
     } catch (e: any) {
       console.error('[WhatsAppGateway] Error sending text message:', e)
       return { success: false, error: e.message }
@@ -264,8 +273,16 @@ export async function sendWhatsAppDocument(
 
   const { apiUrl, apiKey, isConfigured } = getGatewayConfig()
 
-  // Limpiar encabezado data:application/pdf;base64, si viene con prefijo DataURL
-  const rawBase64 = base64Data.replace(/^data:application\/pdf;base64,/, '').trim()
+  // Limpiar cualquier prefijo DataURL (e.g. data:application/pdf;filename=...;base64,)
+  let rawBase64 = (base64Data || '').trim()
+  if (rawBase64.includes(';base64,')) {
+    rawBase64 = rawBase64.split(';base64,')[1].trim()
+  } else if (rawBase64.startsWith('data:')) {
+    const commaIdx = rawBase64.indexOf(',')
+    if (commaIdx !== -1) {
+      rawBase64 = rawBase64.slice(commaIdx + 1).trim()
+    }
+  }
 
   if (isConfigured) {
     try {
@@ -289,7 +306,18 @@ export async function sendWhatsAppDocument(
       if (res.ok && (data?.key || data?.id || data?.status === 'PENDING' || data?.status === 'SUCCESS')) {
         return { success: true, messageId: data?.key?.id || data?.id }
       }
-      return { success: false, error: data?.message || data?.error || 'Error al enviar documento PDF por WhatsApp' }
+
+      const detailedError =
+        (Array.isArray(data?.response?.message)
+          ? data.response.message.flat().join(', ')
+          : typeof data?.response?.message === 'string'
+          ? data.response.message
+          : null) ||
+        data?.message ||
+        data?.error ||
+        'Error al enviar documento PDF por WhatsApp'
+
+      return { success: false, error: detailedError }
     } catch (e: any) {
       console.error('[WhatsAppGateway] Error sending document message:', e)
       return { success: false, error: e.message }

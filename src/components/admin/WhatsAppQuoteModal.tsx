@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle, Zap, Loader2 } from 'lucide-react'
+import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle, Zap, Loader2, FileText } from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 import { COUNTRY_CODES, normalizeWhatsAppPhone, createWhatsAppWebUrl, createWhatsAppUrl } from '@/lib/whatsapp'
 import { formatDate } from '@/lib/formatters'
+import { getQuotationPdfBase64 } from '@/lib/pdfGenerator'
 import type { Quotation } from '@/types/database'
 
 interface Props {
@@ -90,6 +91,7 @@ export function WhatsAppQuoteModal({
   const { tenant } = useTenant()
   const [message, setMessage] = useState(defaultMessage)
   const [sendingDirect, setSendingDirect] = useState(false)
+  const [sendingDirectPdf, setSendingDirectPdf] = useState(false)
   const [directSuccess, setDirectSuccess] = useState<string | null>(null)
   const [directError, setDirectError] = useState<string | null>(null)
 
@@ -127,6 +129,50 @@ export function WhatsAppQuoteModal({
       setDirectError(err.message || 'Error de conexión.')
     } finally {
       setSendingDirect(false)
+    }
+  }
+
+  const handleSendDirectPdf = async () => {
+    if (!normalizedFullPhone || normalizedFullPhone.length < 10) {
+      alert('Por favor ingresa un número de teléfono válido.')
+      return
+    }
+    if (!tenant) return
+
+    setSendingDirectPdf(true)
+    setDirectSuccess(null)
+    setDirectError(null)
+
+    try {
+      const { base64, fileName } = await getQuotationPdfBase64({
+        quotation,
+        tenant,
+      })
+
+      const res = await fetch('/api/admin/whatsapp/direct-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          phone: normalizedFullPhone,
+          type: 'document',
+          media_base64: base64,
+          file_name: fileName,
+          message: `Adjunto envío el Presupuesto Formal #${quotation.quotation_number || quotation.id?.slice(0, 8)} de ${tenantName}. ¡A tu orden!`,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setDirectSuccess('¡Cotización PDF enviada exitosamente al WhatsApp del cliente! 📄✓')
+        setTimeout(() => setDirectSuccess(null), 5000)
+      } else {
+        setDirectError(data.error || 'No se pudo enviar el PDF por WhatsApp.')
+      }
+    } catch (err: any) {
+      setDirectError(err.message || 'Error al generar o enviar la cotización PDF.')
+    } finally {
+      setSendingDirectPdf(false)
     }
   }
 
@@ -254,18 +300,36 @@ export function WhatsAppQuoteModal({
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-          <button
-            onClick={handleSendDirect}
-            disabled={sendingDirect || !normalizedFullPhone}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
-          >
-            {sendingDirect ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Zap className="w-3.5 h-3.5 text-amber-300" />
-            )}
-            <span>Enviar Directo con 1 Clic</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {/* Enviar Cotización PDF Directo */}
+            <button
+              onClick={handleSendDirectPdf}
+              disabled={sendingDirectPdf || !normalizedFullPhone}
+              className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+              title="Generar y enviar presupuesto en PDF adjunto por WhatsApp"
+            >
+              {sendingDirectPdf ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 text-blue-200" />
+              )}
+              <span>{sendingDirectPdf ? 'Generando PDF...' : '📄 Cotización PDF'}</span>
+            </button>
+
+            {/* Enviar Texto Directo */}
+            <button
+              onClick={handleSendDirect}
+              disabled={sendingDirect || !normalizedFullPhone}
+              className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              {sendingDirect ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+              )}
+              <span>⚡ Enviar Texto</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button

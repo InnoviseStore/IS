@@ -417,7 +417,11 @@ export async function getOrderPdfBase64({
   tenant?: Tenant | null
 }): Promise<{ base64: string; fileName: string }> {
   const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant })
-  const base64 = doc.output('datauristring')
+  const dataUri = doc.output('datauristring')
+  const base64 = dataUri.includes(';base64,')
+    ? dataUri.split(';base64,')[1].trim()
+    : dataUri.replace(/^data:[^,]+,/, '').trim()
+
   return {
     base64,
     fileName: `Factura_${orderNumber}.pdf`,
@@ -431,11 +435,13 @@ export interface GenerateQuotationPdfOptions {
   quotation: Quotation
 }
 
-export async function generateQuotationPdf({
+export async function buildQuotationJsPdfDoc({
   quotation,
   tenant,
-  action = 'download',
-}: GenerateQuotationPdfOptions): Promise<void> {
+}: {
+  quotation: Quotation
+  tenant?: Tenant | null
+}): Promise<{ doc: jsPDF; quoteNumber: string }> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -646,12 +652,39 @@ export async function generateQuotationPdf({
   )
   doc.text('¡Estamos a su entera disposición para cualquier consulta!', 105, footerY + 3, { align: 'center' })
 
-  // Output
+  return { doc, quoteNumber }
+}
+
+export async function generateQuotationPdf({
+  quotation,
+  tenant,
+  action = 'download',
+}: GenerateQuotationPdfOptions): Promise<void> {
+  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant })
   if (action === 'print') {
     doc.autoPrint()
     const blobUrl = doc.output('bloburl')
     window.open(blobUrl, '_blank')
   } else {
     doc.save(`Cotizacion_${quoteNumber}.pdf`)
+  }
+}
+
+export async function getQuotationPdfBase64({
+  quotation,
+  tenant,
+}: {
+  quotation: Quotation
+  tenant?: Tenant | null
+}): Promise<{ base64: string; fileName: string }> {
+  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant })
+  const dataUri = doc.output('datauristring')
+  const base64 = dataUri.includes(';base64,')
+    ? dataUri.split(';base64,')[1].trim()
+    : dataUri.replace(/^data:[^,]+,/, '').trim()
+
+  return {
+    base64,
+    fileName: `Cotizacion_${quoteNumber}.pdf`,
   }
 }
