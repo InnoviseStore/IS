@@ -39,6 +39,8 @@ interface TenantData {
   settings: {
     payment_accounts?: StorefrontPaymentAccount[]
     checkout_mode?: string
+    customer_auth_mode?: string
+    [key: string]: any
   }
 }
 
@@ -79,7 +81,8 @@ function CheckoutInner() {
   const [loadingTenant, setLoadingTenant] = useState(true)
   
   const features = tenantData ? getTenantFeatures(tenantData as any) : null
-  const checkoutMode = tenantData?.settings?.checkout_mode || 'optional'
+  const checkoutMode = tenantData?.settings?.checkout_mode || 'direct_payment'
+  const customerAuthMode = tenantData?.settings?.customer_auth_mode || 'optional'
 
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -247,6 +250,10 @@ function CheckoutInner() {
   }
 
   const validateStep1 = () => {
+    if (customerAuthMode === 'customer_login_required' && !loggedCustomer) {
+      alert('Esta tienda requiere que inicies sesión o te registres con tu usuario y contraseña para continuar con tu pedido.')
+      return false
+    }
     const errors: Record<string, string> = {}
     if (!customer.full_name.trim()) errors.full_name = 'El nombre es requerido'
     if (!customer.id_number.trim()) errors.id_number = 'La cédula/RIF es requerida'
@@ -573,36 +580,37 @@ function CheckoutInner() {
                           </button>
                         </div>
                       </div>
-                    ) : (
-                      <div className="p-3.5 mb-5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5 text-xs text-blue-800 dark:text-blue-300">
-                          <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span>
-                            ¿Ya tienes cuenta en <strong>{tenantData?.name || 'la tienda'}</strong>? Inicia sesión para cargar tus datos en 1 clic.
-                          </span>
+                    ) : customerAuthMode === 'customer_login_required' ? (
+                      <div className="p-4 mb-5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs shadow-xs">
+                        <div className="flex items-center gap-2 font-bold mb-1">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Inicio de sesión requerido</span>
                         </div>
+                        <p className="mb-3 leading-relaxed">Esta tienda requiere que inicies sesión o te registres con tu cuenta de cliente para completar tu pedido.</p>
                         <Link
-                          href={`/${tenantSlug}/cuenta`}
-                          className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition shrink-0"
-                        >
-                          Iniciar Sesión / Registrarme
-                        </Link>
-                      </div>
-                    )}
-
-                    {checkoutMode === 'customer_login_required' && !loggedCustomer && (
-                      <div className="p-4 mb-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
-                        <p className="font-bold mb-1">Inicio de sesión obligatorio</p>
-                        <p className="mb-3">Esta tienda requiere que inicies sesión o te registres para realizar compras.</p>
-                        <Link
-                          href={`/${tenantSlug}/cuenta`}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs"
+                          href={`/${tenantSlug}/cuenta?redirectTo=/${tenantSlug}/checkout`}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition"
                         >
                           <span>Iniciar Sesión / Registrarme</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       </div>
-                    )}
+                    ) : customerAuthMode === 'optional' ? (
+                      <div className="p-3.5 mb-5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 text-xs text-blue-800 dark:text-blue-300">
+                          <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>
+                            ¿Ya tienes cuenta en <strong>{tenantData?.name || 'la tienda'}</strong>? Inicia sesión para cargar tus datos en 1 clic o continúa como invitado.
+                          </span>
+                        </div>
+                        <Link
+                          href={`/${tenantSlug}/cuenta?redirectTo=/${tenantSlug}/checkout`}
+                          className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition shrink-0"
+                        >
+                          Iniciar Sesión / Registrarme
+                        </Link>
+                      </div>
+                    ) : null}
                   </>
                 )}
 

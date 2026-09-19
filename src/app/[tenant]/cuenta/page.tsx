@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import React, { useState, useEffect, Suspense } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CustomerProvider, useCustomer } from '@/contexts/CustomerContext'
@@ -32,6 +32,8 @@ import { getTenantFeatures } from '@/lib/planLimits'
 function CustomerPortalInner() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('redirectTo')
   const tenantSlug = params.tenant as string
   const { customer, orders, isLoading, login, register, logout, refreshCustomer } = useCustomer()
 
@@ -81,6 +83,8 @@ function CustomerPortalInner() {
     setIsSubmittingLogin(false)
     if (!res.success) {
       setLoginError(res.error || 'Error al iniciar sesión')
+    } else if (redirectTo) {
+      router.push(redirectTo)
     }
   }
 
@@ -102,6 +106,8 @@ function CustomerPortalInner() {
     setIsSubmittingReg(false)
     if (!res.success) {
       setRegError(res.error || 'Error al registrarse')
+    } else if (redirectTo) {
+      router.push(redirectTo)
     }
   }
 
@@ -659,7 +665,15 @@ export default function CustomerPortalPage() {
 
   return (
     <CustomerProvider tenantSlug={tenantSlug}>
-      <CustomerPortalInner />
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          </div>
+        }
+      >
+        <CustomerPortalInner />
+      </Suspense>
     </CustomerProvider>
   )
 }
