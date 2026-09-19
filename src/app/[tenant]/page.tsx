@@ -162,11 +162,11 @@ export default async function StorefrontPage({ params }: PageProps) {
       />
 
       {/* Hero / Store Banner with Logo and Official Badges */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2 animate-page-enter">
-        <div className={`rounded-3xl p-6 sm:p-8 border backdrop-blur-md shadow-sm transition-all ${templateDef.previewClasses.hero}`}>
-          <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-2 animate-page-enter">
+        <div className={`rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border backdrop-blur-md shadow-xs transition-all ${templateDef.previewClasses.hero}`}>
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-4 sm:gap-6">
             {/* Logo de la tienda: Prioriza Imagotipo si existe */}
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-md flex-shrink-0 flex items-center justify-center p-2">
+            <div className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 border-2 border-white dark:border-slate-700 shadow-md shrink-0 flex items-center justify-center p-2">
               <Image
                 src={(settings.imagotype_url as string) || tenant.logo_url || '/logo.png'}
                 alt={tenant.name}
@@ -178,18 +178,18 @@ export default async function StorefrontPage({ params }: PageProps) {
               />
             </div>
 
-            <div className="flex-1 text-center md:text-left space-y-2.5">
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+            <div className="flex-1 text-center md:text-left space-y-2 sm:space-y-2.5">
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-1.5 sm:gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Tienda Abierta
                 </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300">
                   Tasa Oficial BCV
                 </span>
                 {templateId !== 'aurora' && (
                   <span
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-xs"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-bold text-white shadow-xs"
                     style={{ backgroundColor: themeConfig.primaryColor || '#2563eb' }}
                   >
                     {templateDef.badgeText}
@@ -197,7 +197,7 @@ export default async function StorefrontPage({ params }: PageProps) {
                 )}
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+              <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
                 {tenant.name}
               </h1>
 
@@ -205,11 +205,11 @@ export default async function StorefrontPage({ params }: PageProps) {
                 {(settings.slogan as string) || (settings.description as string) || 'Tienda Virtual - Conectando Vidas / Creando Futuro 🚀'}
               </p>
 
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
+              <div className="flex flex-col xs:flex-row items-stretch xs:items-center justify-center md:justify-start gap-2 sm:gap-3 pt-2">
                 <StorefrontHeroAuthButton tenantSlug={tenant.slug} />
                 <Link
                   href={`/${tenant.slug}/nosotros`}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs sm:text-sm font-semibold transition active:scale-95"
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs sm:text-sm font-semibold transition active:scale-95"
                 >
                   <span>Sobre Nosotros</span>
                 </Link>

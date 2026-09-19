@@ -350,7 +350,7 @@ export function ProductDetailClient({
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Toca cualquier color para previsualizar su foto inmediatamente arriba:
               </p>
-              <div className="flex flex-wrap gap-2.5 pt-0.5">
+              <div className="flex flex-wrap gap-2 pt-0.5">
                 {colors.map((c) => {
                   const isSelected = selectedColor === c.name
                   return (
@@ -358,24 +358,24 @@ export function ProductDetailClient({
                       key={c.name}
                       type="button"
                       onClick={() => handleSelectColor(c)}
-                      className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer border-2 ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl text-xs font-bold transition-all cursor-pointer border-2 ${
                         isSelected
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25 scale-105 ring-2 ring-blue-400/40'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25 scale-102 ring-2 ring-blue-400/40'
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400 hover:bg-blue-50/30'
                       }`}
                     >
                       {c.hex && (
                         <span
-                          className="w-3.5 h-3.5 rounded-full border border-black/20 shadow-xs flex-shrink-0"
+                          className="w-3.5 h-3.5 rounded-full border border-black/20 shadow-xs shrink-0"
                           style={{ backgroundColor: c.hex }}
                         />
                       )}
                       {c.image_url && !c.hex && (
-                        <span className="w-4 h-4 rounded-md overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-300">
+                        <span className="w-4 h-4 rounded-md overflow-hidden bg-slate-100 shrink-0 border border-slate-300">
                           <img src={c.image_url} alt="" className="w-full h-full object-cover" />
                         </span>
                       )}
-                      <span>{c.name}</span>
+                      <span className="truncate max-w-[120px]">{c.name}</span>
                     </button>
                   )
                 })}
@@ -385,17 +385,17 @@ export function ProductDetailClient({
 
           {/* DESCRIPCIÓN DEL PRODUCTO COLOCADA ABAJO DE LAS IMÁGENES */}
           {cleanDescription && (
-            <div className="p-6 sm:p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+            <div className="p-4 sm:p-7 rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2.5 sm:space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white">
                 <div className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
                   <FileText className="w-4 h-4" />
                 </div>
-                <h2 className="text-base sm:text-lg font-bold tracking-tight">
+                <h2 className="text-sm sm:text-lg font-bold tracking-tight">
                   Descripción y Detalles del Producto
                 </h2>
               </div>
               <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal whitespace-pre-line">
+                <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal whitespace-pre-line">
                   {cleanDescription}
                 </p>
               </div>
@@ -404,28 +404,28 @@ export function ProductDetailClient({
         </div>
 
         {/* Lado Derecho: Ficha Comercial y Acciones */}
-        <div className="lg:col-span-5 space-y-6 flex flex-col">
+        <div className="lg:col-span-5 space-y-4 sm:space-y-6 flex flex-col">
           <div>
-            <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+            <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
               Garantía & Disponibilidad Oficial
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1 leading-tight">
+            <h1 className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1 leading-tight">
               {product.name}
             </h1>
             {product.sku && (
-              <p className="text-xs font-mono text-slate-400 mt-1">Código SKU: {product.sku}</p>
+              <p className="text-[11px] sm:text-xs font-mono text-slate-400 mt-1">Código SKU: {product.sku}</p>
             )}
 
             {/* Insignias de Rubro Ropa / Calzado */}
             {apparel && (apparel.garmentType || apparel.gender) && (
               <div className="flex items-center gap-1.5 flex-wrap pt-2">
                 {apparel.garmentType && (
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                     {apparel.garmentType}
                   </span>
                 )}
                 {apparel.gender && (
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                     {apparel.gender}
                   </span>
                 )}
@@ -434,25 +434,25 @@ export function ProductDetailClient({
           </div>
 
           {/* Bloque de Precios en Alto Contraste */}
-          <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
+          <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Precio Oficial:</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
+              <span className="text-2xl sm:text-4xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
                 ${product.unit_price_usd.toFixed(2)}
               </span>
-              <span className="text-sm font-semibold text-slate-500">USD</span>
+              <span className="text-xs sm:text-sm font-semibold text-slate-500">USD</span>
             </div>
-            <p className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200 pt-1">
+            <p className="text-xs sm:text-base font-bold text-slate-800 dark:text-slate-200 pt-0.5">
               Bs. {priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
-            <p className="text-[11px] text-slate-400">
-              Calculado según tasa oficial del Banco Central de Venezuela (Bs. {exchangeRate.toFixed(2)}/USD).
+            <p className="text-[10px] sm:text-[11px] text-slate-400">
+              Calculado a Tasa Oficial BCV: Bs. {exchangeRate.toFixed(2)}/USD.
             </p>
           </div>
 
           {/* Selector de Tallas (si el producto tiene tallas configuradas) */}
           {apparel && apparel.sizes && apparel.sizes.length > 0 && (
-            <div className="space-y-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+            <div className="space-y-2 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                 <span>Talla Disponible:</span>
                 <span className="text-blue-600 dark:text-blue-400 font-extrabold">{selectedSize || 'Selecciona una talla'}</span>
@@ -465,7 +465,7 @@ export function ProductDetailClient({
                       key={s}
                       type="button"
                       onClick={() => setSelectedSize(s)}
-                      className={`min-w-10 h-8 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                      className={`min-w-9 h-7 sm:min-w-10 sm:h-8 px-2 sm:px-2.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                         isSelected
                           ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white shadow-xs scale-105'
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
@@ -479,20 +479,19 @@ export function ProductDetailClient({
             </div>
           )}
 
-
           {/* Selector de Cantidad y Botones de Compra */}
-          <div className="space-y-3 pt-2">
+          <div className="space-y-2.5 sm:space-y-3 pt-1">
             {!outOfStock && (
               <div className="flex items-center gap-3">
                 <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Cantidad:</span>
-                <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1">
+                <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-0.5 sm:p-1">
                   <button
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                     className="p-1.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition"
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </button>
-                  <span className="px-4 text-xs font-extrabold text-slate-900 dark:text-white">
+                  <span className="px-3 sm:px-4 text-xs font-extrabold text-slate-900 dark:text-white">
                     {quantity}
                   </span>
                   <button
@@ -506,11 +505,11 @@ export function ProductDetailClient({
               </div>
             )}
 
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={handleAddToCart}
                 disabled={outOfStock}
-                className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-md active:scale-98 cursor-pointer ${
+                className={`w-full py-3 sm:py-3.5 px-4 sm:px-6 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-md active:scale-98 cursor-pointer ${
                   outOfStock
                     ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                     : justAdded
@@ -526,17 +525,17 @@ export function ProductDetailClient({
                 ) : (
                   <>
                     <ShoppingCart className="w-4 h-4" />
-                    <span>{outOfStock ? 'Producto Agotado' : `Añadir al Carrito — $${(product.unit_price_usd * quantity).toFixed(2)}`}</span>
+                    <span className="truncate">{outOfStock ? 'Producto Agotado' : `Añadir al Carrito — $${(product.unit_price_usd * quantity).toFixed(2)}`}</span>
                   </>
                 )}
               </button>
 
               <button
                 onClick={handleAskWhatsApp}
-                className="w-full py-3 px-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-xs active:scale-98 cursor-pointer"
+                className="w-full py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-xs active:scale-98 cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4 text-emerald-500" />
-                Consultar por WhatsApp
+                <span>Consultar por WhatsApp</span>
               </button>
             </div>
           </div>

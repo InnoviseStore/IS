@@ -127,19 +127,19 @@ function StorefrontHeader({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Left: Mobile hamburger + Store Brand */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
-                className="md:hidden p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95"
+                className="md:hidden p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95 shrink-0"
                 aria-label="Abrir menú"
               >
                 <Menu className="w-5 h-5" />
               </button>
 
-              <Link href={`/${store.slug}`} className="flex items-center gap-3 group">
+              <Link href={`/${store.slug}`} className="flex items-center gap-2 sm:gap-3 group min-w-0">
                 {headerLogo ? (
-                  <div className="relative h-9 w-9 rounded-xl overflow-hidden ring-2 ring-blue-100 dark:ring-blue-900/60 group-hover:ring-blue-400 transition-all">
+                  <div className="relative h-8 w-8 sm:h-9 sm:w-9 rounded-xl overflow-hidden ring-2 ring-blue-100 dark:ring-blue-900/60 group-hover:ring-blue-400 transition-all shrink-0">
                     <Image
                       src={headerLogo}
                       alt={store.name}
@@ -151,11 +151,11 @@ function StorefrontHeader({
                     />
                   </div>
                 ) : (
-                  <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center ring-2 ring-blue-100 dark:ring-blue-900/60 group-hover:ring-blue-400 transition-all shadow-md shadow-blue-500/20">
-                    <Store className="h-5 w-5 text-white" />
+                  <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center ring-2 ring-blue-100 dark:ring-blue-900/60 group-hover:ring-blue-400 transition-all shadow-md shadow-blue-500/20 shrink-0">
+                    <Store className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                   </div>
                 )}
-                <span className="font-bold text-lg text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
+                <span className="font-bold text-sm sm:text-lg text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate max-w-[120px] xs:max-w-[160px] sm:max-w-xs">
                   {store.name}
                 </span>
               </Link>
@@ -237,7 +237,6 @@ function StorefrontHeader({
                 )}
               </div>
 
-
               {/* Contáctanos WhatsApp Button */}
               {whatsappContactUrl && (
                 <a
@@ -253,27 +252,27 @@ function StorefrontHeader({
               )}
             </nav>
 
-            {/* Right actions: Search Button + Dark Mode Toggle + Cart Button */}
-            <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Right actions: Search Button + Guía + Auth/Account + Dark Mode Toggle + Cart Button */}
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
               {/* Top Search Button */}
               <button
                 type="button"
                 onClick={onOpenSearch}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-blue-600 dark:hover:text-blue-400 transition active:scale-95"
+                className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-blue-600 dark:hover:text-blue-400 transition active:scale-95 shrink-0"
                 aria-label="Buscar productos"
                 title="Buscar en el catálogo"
               >
                 <Search className="w-4 h-4" />
-                <span className="hidden sm:inline text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <span className="hidden md:inline text-xs font-semibold text-slate-500 dark:text-slate-400">
                   Buscar...
                 </span>
               </button>
 
-              {/* Botón Guía Rápida / Pregunta */}
+              {/* Botón Guía Rápida (Desktop/Tablet) */}
               <button
                 type="button"
                 onClick={onOpenGuide}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-blue-600 dark:hover:text-blue-400 transition active:scale-95 cursor-pointer shadow-2xs"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-blue-600 dark:hover:text-blue-400 transition active:scale-95 cursor-pointer shadow-2xs shrink-0"
                 aria-label="Guía rápida: ¿Cómo comprar?"
                 title="Guía rápida: ¿Cómo hacer un pedido?"
               >
@@ -283,35 +282,41 @@ function StorefrontHeader({
                 </span>
               </button>
 
-              {/* Botón Iniciar Sesión / Nombre de Usuario */}
+              {/* Botón Iniciar Sesión / Mi Cuenta (Proporcionado en Móvil y Escritorio) */}
               <Link
                 href={`/${store.slug}/cuenta`}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition active:scale-95 text-xs font-bold shadow-md shadow-blue-500/20 shrink-0"
+                className={`flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl text-white transition active:scale-95 text-xs font-bold shadow-md shadow-blue-500/20 shrink-0 ${
+                  customer
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20'
+                }`}
                 aria-label={customer ? `Mi Cuenta (${customer.full_name})` : "Iniciar Sesión"}
                 title={customer ? `Sesión iniciada como ${customer.full_name}` : "Iniciar Sesión / Mi Cuenta"}
               >
-                <User className="w-3.5 h-3.5 text-white shrink-0" />
-                <span className="line-clamp-1 max-w-[110px] sm:max-w-[160px]">
+                <User className="w-4 h-4 text-white shrink-0" />
+                <span className="hidden sm:inline line-clamp-1 max-w-[120px] sm:max-w-[160px]">
                   {customer
                     ? (customer.full_name.split(' ')[0] ? `Hola, ${customer.full_name.split(' ')[0]}` : customer.full_name)
                     : 'Iniciar Sesión'}
                 </span>
               </Link>
 
+              {/* Modo Oscuro */}
               <button
                 type="button"
                 onClick={toggleDark}
-                className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition active:scale-95"
+                className="p-2 sm:p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition active:scale-95 shrink-0"
                 aria-label="Cambiar modo claro / oscuro"
                 title={isDark ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
               >
                 {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
               </button>
 
+              {/* Botón Carrito */}
               <button
                 type="button"
                 onClick={openCart}
-                className={`relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-300 ${
+                className={`relative flex items-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-300 shrink-0 ${
                   animateCart
                     ? 'scale-110 ring-4 ring-emerald-400 ring-offset-2 dark:ring-offset-slate-900 shadow-emerald-500/30'
                     : ''
@@ -323,7 +328,7 @@ function StorefrontHeader({
                 <span className="hidden sm:inline">Carrito</span>
                 {itemCount > 0 && (
                   <span
-                    className={`h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center shadow-xs transition-all duration-300 ${
+                    className={`h-4.5 min-w-[18px] sm:h-5 sm:min-w-5 px-1 rounded-full bg-rose-500 text-white text-[10px] sm:text-xs font-extrabold flex items-center justify-center shadow-xs transition-all duration-300 ${
                       animateCart ? 'scale-125 bg-emerald-500 animate-pulse' : ''
                     }`}
                   >

@@ -751,21 +751,22 @@ export default function CartDrawer({
                 </div>
 
                 {/* 3 Selector Tabs / Radio Cards */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setDeliveryMethod('delivery_bqto');
                       if (errors.agencyAddress) setErrors((prev) => ({ ...prev, agencyAddress: undefined }));
                     }}
-                    className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                    className={`flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border text-center transition-all cursor-pointer ${
                       deliveryMethod === 'delivery_bqto'
-                        ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 text-blue-600 dark:text-blue-400 shadow-sm ring-2 ring-blue-500/20 font-bold'
+                        ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 text-blue-600 dark:text-blue-400 shadow-xs ring-2 ring-blue-500/20 font-bold'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    <Bike className={`h-5 w-5 mb-1 ${deliveryMethod === 'delivery_bqto' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
-                    <span className="text-xs font-semibold leading-tight">Delivery en Bqto</span>
+                    <Bike className={`h-4 w-4 sm:h-5 sm:w-5 mb-1 ${deliveryMethod === 'delivery_bqto' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+                    <span className="text-[11px] sm:text-xs font-semibold leading-tight">Delivery</span>
+                    <span className="text-[9px] sm:text-[10px] opacity-75 font-normal">Barquisimeto</span>
                   </button>
 
                   <button
@@ -774,15 +775,15 @@ export default function CartDrawer({
                       setDeliveryMethod('envio_nacional');
                       if (errors.address) setErrors((prev) => ({ ...prev, address: undefined }));
                     }}
-                    className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                    className={`flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border text-center transition-all cursor-pointer ${
                       deliveryMethod === 'envio_nacional'
-                        ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-600 dark:text-indigo-400 shadow-sm ring-2 ring-indigo-500/20 font-bold'
+                        ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-600 dark:text-indigo-400 shadow-xs ring-2 ring-indigo-500/20 font-bold'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    <Truck className={`h-5 w-5 mb-1 ${deliveryMethod === 'envio_nacional' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
-                    <span className="text-xs font-semibold leading-tight">Envío Nacional</span>
-                    <span className="text-[10px] opacity-75 font-normal">Cobro Destino</span>
+                    <Truck className={`h-4 w-4 sm:h-5 sm:w-5 mb-1 ${deliveryMethod === 'envio_nacional' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                    <span className="text-[11px] sm:text-xs font-semibold leading-tight">Nacional</span>
+                    <span className="text-[9px] sm:text-[10px] opacity-75 font-normal">Cobro Destino</span>
                   </button>
 
                   <button
@@ -792,15 +793,15 @@ export default function CartDrawer({
                       if (errors.address) setErrors((prev) => ({ ...prev, address: undefined }));
                       if (errors.agencyAddress) setErrors((prev) => ({ ...prev, agencyAddress: undefined }));
                     }}
-                    className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
+                    className={`flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border text-center transition-all cursor-pointer ${
                       deliveryMethod === 'retiro_sitio'
-                        ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-sm ring-2 ring-emerald-500/20 font-bold'
+                        ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-xs ring-2 ring-emerald-500/20 font-bold'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    <Store className={`h-5 w-5 mb-1 ${deliveryMethod === 'retiro_sitio' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
-                    <span className="text-xs font-semibold leading-tight">Retiro en Sitio</span>
-                    <span className="text-[10px] opacity-75 font-normal">Acordar</span>
+                    <Store className={`h-4 w-4 sm:h-5 sm:w-5 mb-1 ${deliveryMethod === 'retiro_sitio' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
+                    <span className="text-[11px] sm:text-xs font-semibold leading-tight">En Sitio</span>
+                    <span className="text-[9px] sm:text-[10px] opacity-75 font-normal">Acordar</span>
                   </button>
                 </div>
 

@@ -68,7 +68,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
       {/* Contenedor del Carrusel con scroll suave */}
       <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto pb-4 pt-1 snap-x snap-mandatory scrollbar-none no-scrollbar"
+        className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 pt-1 snap-x snap-mandatory scrollbar-none no-scrollbar"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {inStockProducts.map((p) => {
@@ -78,7 +78,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
           return (
             <div
               key={p.id}
-              className="w-64 sm:w-72 flex-shrink-0 snap-start rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/80 shadow-md hover:shadow-xl hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-300 overflow-hidden flex flex-col group"
+              className="w-56 sm:w-64 md:w-72 shrink-0 snap-start rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/80 shadow-md hover:shadow-xl hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-300 overflow-hidden flex flex-col group"
             >
               {/* Imagen vinculada a la página de producto */}
               <Link href={productHref} prefetch={true} className="relative aspect-square bg-slate-100 dark:bg-slate-800 overflow-hidden block">
@@ -97,16 +97,16 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
                     <span className="text-[11px]">Sin imagen</span>
                   </div>
                 )}
-                <div className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow-xs">
+                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow-xs">
                   Disponible
                 </div>
               </Link>
 
               {/* Contenido */}
-              <div className="p-4 flex flex-col flex-1 justify-between gap-3">
+              <div className="p-3 sm:p-4 flex flex-col flex-1 justify-between gap-2.5 sm:gap-3">
                 <div>
                   <Link href={productHref} prefetch={true}>
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors leading-snug">
                       {p.name}
                     </h3>
                   </Link>
@@ -117,11 +117,11 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-base font-extrabold text-blue-600 dark:text-blue-400 leading-none">
+                    <p className="text-sm sm:text-base font-extrabold text-blue-600 dark:text-blue-400 leading-none">
                       ${p.unit_price_usd.toFixed(2)}
                       <span className="text-[10px] font-normal text-slate-400 ml-1">USD</span>
                     </p>
-                    <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mt-0.5">
+                    <p className="text-[10px] sm:text-[11px] font-semibold text-slate-600 dark:text-slate-300 mt-0.5">
                       Bs. {priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
@@ -140,7 +140,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
                       setAddedProductId(p.id)
                       setTimeout(() => setAddedProductId((curr) => (curr === p.id ? null : curr)), 1200)
                     }}
-                    className={`p-2.5 rounded-xl text-white shadow-sm active:scale-90 transition-all cursor-pointer ${
+                    className={`p-2 sm:p-2.5 rounded-xl text-white shadow-xs active:scale-90 transition-all cursor-pointer shrink-0 ${
                       addedProductId === p.id
                         ? 'bg-emerald-600 shadow-emerald-500/30 scale-105'
                         : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
