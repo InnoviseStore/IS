@@ -3,7 +3,6 @@
 
 [build]
   command = "npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
@@ -26,13 +25,3 @@
   for = "/api/*"
   [headers.values]
     Cache-Control = "no-store"
-
-[[redirects]]
-  from = "/_next/static/*"
-  to = "/static/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/admin"
-  to = "/admin"
-  status = 200
