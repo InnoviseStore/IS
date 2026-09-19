@@ -33,6 +33,10 @@ import {
   MessageSquare,
   Bot,
   Send,
+  UserCheck,
+  UserPlus,
+  Users,
+  LogIn,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
@@ -91,6 +95,7 @@ export default function SettingsPage() {
 
   // Estados de Métodos de Pago y Checkout del Catálogo
   const [checkoutMode, setCheckoutMode] = useState<'whatsapp_only' | 'direct_payment'>('direct_payment')
+  const [customerAuthMode, setCustomerAuthMode] = useState<'optional' | 'customer_login_required' | 'guest_only'>('optional')
   const [paymentAccounts, setPaymentAccounts] = useState<any[]>([])
 
   // Estados de WhatsApp Automático (Enterprise)
@@ -99,6 +104,7 @@ export default function SettingsPage() {
   const [waAutoAbono, setWaAutoAbono] = useState(true)
   const [waAutoWebOrder, setWaAutoWebOrder] = useState(true)
   const [waAutoCreditReminders, setWaAutoCreditReminders] = useState(true)
+  const [waAutoEmployeeLogin, setWaAutoEmployeeLogin] = useState(true)
   const [waStatus, setWaStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connected')
   const [waQrCode, setWaQrCode] = useState<string | null>(null)
   const [waLoading, setWaLoading] = useState(false)
@@ -120,6 +126,9 @@ export default function SettingsPage() {
 
       if (settings.checkout_mode) {
         setCheckoutMode(settings.checkout_mode as 'whatsapp_only' | 'direct_payment')
+      }
+      if (settings.customer_auth_mode) {
+        setCustomerAuthMode(settings.customer_auth_mode as 'optional' | 'customer_login_required' | 'guest_only')
       }
 
       if (Array.isArray(settings.payment_accounts) && settings.payment_accounts.length > 0) {
@@ -166,6 +175,7 @@ export default function SettingsPage() {
       setWaAutoAbono(wa.auto_send_abono !== undefined ? Boolean(wa.auto_send_abono) : true)
       setWaAutoWebOrder(wa.auto_send_web_order !== undefined ? Boolean(wa.auto_send_web_order) : true)
       setWaAutoCreditReminders(wa.auto_send_credit_reminders !== undefined ? Boolean(wa.auto_send_credit_reminders) : true)
+      setWaAutoEmployeeLogin(wa.auto_send_employee_login !== undefined ? Boolean(wa.auto_send_employee_login) : true)
       setWaStatus(wa.status || (tenant.phone_whatsapp ? 'connected' : 'disconnected'))
       setTestPhone(tenant.phone_whatsapp || '')
 
@@ -208,11 +218,13 @@ export default function SettingsPage() {
       about?: Record<string, unknown>
       admin_security_pin?: string
       checkout_mode?: string
+      customer_auth_mode?: string
       payment_accounts?: any[]
       whatsapp_automation?: any
     } = {
       phone_whatsapp: phone.trim(),
       checkout_mode: checkoutMode,
+      customer_auth_mode: customerAuthMode,
       payment_accounts: paymentAccounts,
       whatsapp_automation: {
         enabled: waAutoEnabled,
@@ -220,6 +232,7 @@ export default function SettingsPage() {
         auto_send_abono: waAutoAbono,
         auto_send_web_order: waAutoWebOrder,
         auto_send_credit_reminders: waAutoCreditReminders,
+        auto_send_employee_login: waAutoEmployeeLogin,
         status: waStatus,
         connected_phone: phone.trim() || '584245259193',
         last_connected_at: new Date().toISOString(),
@@ -653,6 +666,105 @@ export default function SettingsPage() {
                     <p className="text-[11px] text-slate-600 dark:text-slate-400">
                       El cliente arma su carrito y envía el pedido directamente por mensaje estructurado a tu WhatsApp oficial.
                     </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selector de Modalidad de Clientes en Catálogo (Portal de Clientes) */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/60 to-purple-50/40 dark:from-slate-800/40 dark:to-purple-950/20 border border-indigo-200/60 dark:border-indigo-900/40 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    Modalidad de Clientes en el Catálogo:
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 w-fit">
+                    {features.hasCustomerPortal ? 'Módulo Pro & Enterprise Habilitado' : 'Disponible en Planes Pro & Enterprise'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Opción 1: Híbrido (Opcional) */}
+                  <div
+                    onClick={() => {
+                      if (!features.hasCustomerPortal && profile?.role !== 'superadmin') {
+                        alert('Esta modalidad requiere Plan Pro o Plan Enterprise.')
+                        return
+                      }
+                      setCustomerAuthMode('optional')
+                    }}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      customerAuthMode === 'optional'
+                        ? 'border-indigo-600 bg-white dark:bg-slate-800 shadow-md shadow-indigo-500/10'
+                        : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-extrabold text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                          <UserCheck className="w-4 h-4" /> Híbrido (Recomendado)
+                        </span>
+                        {customerAuthMode === 'optional' && (
+                          <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                        Permite a los clientes <strong>iniciar sesión o registrarse</strong> para autocompletar sus datos, o comprar directamente como invitado.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Opción 2: Solo Registrados */}
+                  <div
+                    onClick={() => {
+                      if (!features.hasCustomerPortal && profile?.role !== 'superadmin') {
+                        alert('Esta modalidad requiere Plan Pro o Plan Enterprise.')
+                        return
+                      }
+                      setCustomerAuthMode('customer_login_required')
+                    }}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      customerAuthMode === 'customer_login_required'
+                        ? 'border-purple-600 bg-white dark:bg-slate-800 shadow-md shadow-purple-500/10'
+                        : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-extrabold text-xs text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                          <LogIn className="w-4 h-4" /> Solo Registrados
+                        </span>
+                        {customerAuthMode === 'customer_login_required' && (
+                          <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                        Obligatorio que el cliente <strong>inicie sesión o cree su cuenta</strong> con usuario y contraseña antes de generar su pedido.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Opción 3: Modo Clásico sin Login */}
+                  <div
+                    onClick={() => setCustomerAuthMode('guest_only')}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                      customerAuthMode === 'guest_only'
+                        ? 'border-slate-800 dark:border-slate-200 bg-white dark:bg-slate-800 shadow-md shadow-slate-500/10'
+                        : 'border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-extrabold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                          <UserPlus className="w-4 h-4" /> Sin Inicio de Sesión
+                        </span>
+                        {customerAuthMode === 'guest_only' && (
+                          <span className="w-2 h-2 rounded-full bg-slate-800 dark:bg-slate-200 animate-pulse" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                        Formulario tradicional sin contraseñas. El sistema <strong>verifica la cédula normalizada</strong> para evitar clientes duplicados.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1437,6 +1549,24 @@ export default function SettingsPage() {
                           </span>
                           <span className="text-[11px] text-slate-500 dark:text-slate-400">
                             Envía aviso preventivo (2 días antes), al vencer y en mora a clientes con saldo adeudado.
+                          </span>
+                        </div>
+                      </label>
+
+                      {/* Notificación de Inicio de Sesión de Empleados */}
+                      <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/60 transition cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={waAutoEmployeeLogin}
+                          onChange={(e) => setWaAutoEmployeeLogin(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                            Alerta de Inicio de Sesión de Empleados
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Envía un WhatsApp al teléfono de la tienda cada vez que un vendedor, cajero o admin inicie sesión.
                           </span>
                         </div>
                       </label>

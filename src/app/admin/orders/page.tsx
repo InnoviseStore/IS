@@ -35,6 +35,8 @@ import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
 import { WhatsAppOrderContactModal } from '@/components/admin/WhatsAppOrderContactModal'
 import { WhatsAppInvoiceModal } from '@/components/admin/WhatsAppInvoiceModal'
 
+import { getRoleLabel } from '@/types/database'
+
 interface OrderItem {
   id: string
   product_id: string | null
@@ -51,6 +53,13 @@ interface OrderCustomer {
   phone?: string | null
   email?: string | null
   address?: string | null
+}
+
+interface OrderStaff {
+  id: string
+  full_name: string
+  role: string
+  email?: string
 }
 
 interface OrderRecord {
@@ -70,6 +79,7 @@ interface OrderRecord {
   updated_at: string
   customer?: OrderCustomer | null
   order_items?: OrderItem[]
+  staff?: OrderStaff | null
 }
 
 export default function AdminOrdersPage() {
@@ -592,8 +602,17 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
 
-                  <div className="text-right flex flex-col sm:items-end">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{formatDateTime(order.created_at)}</span>
+                  <div className="text-right flex flex-col sm:items-end gap-1">
+                    <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+                      {order.staff && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700" title={`Facturado por ${order.staff.full_name}`}>
+                          <span>👤</span>
+                          <span className="font-bold">{order.staff.full_name}</span>
+                          <span className="text-[10px] opacity-75">({getRoleLabel(order.staff.role as any)})</span>
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{formatDateTime(order.created_at)}</span>
+                    </div>
                     {isCreditSale && order.due_date && (
                       <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400">
                         {installmentsPlan ? 'Próx. Cuota: ' : 'Vence: '}{formatDate(order.due_date)}

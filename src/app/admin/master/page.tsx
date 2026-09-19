@@ -43,9 +43,25 @@ export default function SuperAdminMasterPage() {
   const [selectedTenantForBranding, setSelectedTenantForBranding] = useState<Tenant | null>(null)
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [liveActiveUsers, setLiveActiveUsers] = useState<any[]>([])
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    const fetchPresence = async () => {
+      try {
+        const res = await fetch('/api/admin/presence?all=true')
+        const data = await res.json()
+        if (data.success) {
+          setLiveActiveUsers(data.users || [])
+        }
+      } catch {}
+    }
+    fetchPresence()
+    const interval = setInterval(fetchPresence, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   // Reset password modal state
@@ -334,7 +350,7 @@ export default function SuperAdminMasterPage() {
       </div>
 
       {/* Barra de Búsqueda y Métricas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Comercios Registrados</p>
           <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{tenants.length}</p>
@@ -350,6 +366,20 @@ export default function SuperAdminMasterPage() {
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Usuarios Totales (Dueños/Cajeros)</p>
           <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{profiles.length}</p>
           <p className="text-[11px] text-slate-400 mt-0.5">Cuentas vinculadas a Supabase Auth</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Sesiones En Vivo</p>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          </div>
+          <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">{liveActiveUsers.length}</p>
+          <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
+            {liveActiveUsers.length === 1 ? '1 usuario activo en red' : `${liveActiveUsers.length} usuarios activos en red`}
+          </p>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between gap-2.5">

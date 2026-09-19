@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
+import { normalizeIdNumber, normalizePhoneDigits } from '@/lib/customerUtils'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -127,27 +128,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nombre y teléfono válidos son requeridos.' }, { status: 400 })
     }
 
-    // 2. Buscar o crear cliente en la tabla customers (priorizando Cédula/RIF)
+    // 2. Buscar o crear cliente en la tabla customers (con normalización de cédula y teléfono)
+    const idInfo = normalizeIdNumber(cleanIdNumber)
+    const normalizedPhone = normalizePhoneDigits(cleanPhone)
+
     let customerId: string | null = null
     let existingCustomer: any = null
 
-    if (cleanIdNumber) {
-      const { data: byId } = await supabase
+    if (idInfo.digits && idInfo.digits.length >= 4) {
+      // Búsqueda flexible por variantes (con/sin guion, con/sin letra)
+      const { data: matches } = await supabase
         .from('customers')
         .select('*')
         .eq('tenant_id', tenantId)
-        .ilike('id_number', cleanIdNumber)
+        .in('id_number', idInfo.variants)
         .limit(1)
-        .maybeSingle()
-      existingCustomer = byId
+
+      if (matches && matches.length > 0) {
+        existingCustomer = matches[0]
+      } else {
+        // Búsqueda por coincidencia de dígitos si está guardado con formato alternativo
+        const { data: partials } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .ilike('id_number', `%${idInfo.digits}%`)
+          .limit(5)
+
+        if (partials && partials.length > 0) {
+          const exactDigitMatch = partials.find(
+            (c: any) => c.id_number?.replace(/\D/g, '') === idInfo.digits
+          )
+          if (exactDigitMatch) existingCustomer = exactDigitMatch
+        }
+      }
     }
 
-    if (!existingCustomer && cleanPhone) {
+    if (!existingCustomer && (normalizedPhone || cleanPhone)) {
+      const phoneQueries = [normalizedPhone, cleanPhone].filter(Boolean)
       const { data: byPhone } = await supabase
         .from('customers')
         .select('*')
         .eq('tenant_id', tenantId)
-        .eq('phone', cleanPhone)
+        .in('phone', phoneQueries)
         .limit(1)
         .maybeSingle()
       existingCustomer = byPhone
@@ -155,10 +178,17 @@ export async function POST(req: Request) {
 
     if (existingCustomer) {
       customerId = existingCustomer.id
-      // Actualizar datos si estaban vacíos (cédula o dirección)
+      // Actualizar datos si es necesario sin duplicar el cliente
       const updateFields: Record<string, any> = {}
-      if (!existingCustomer.id_number && cleanIdNumber) updateFields.id_number = cleanIdNumber
-      if (!existingCustomer.address && cleanAddress) updateFields.address = cleanAddress
+      if (idInfo.canonical && (!existingCustomer.id_number || existingCustomer.id_number.replace(/\D/g, '') === idInfo.digits)) {
+        if (existingCustomer.id_number !== idInfo.canonical && existingCustomer.id_number !== cleanIdNumber) {
+          updateFields.id_number = idInfo.canonical
+        }
+      }
+      if (cleanAddress && !existingCustomer.address) updateFields.address = cleanAddress
+      if (cleanFullName && (!existingCustomer.full_name || existingCustomer.full_name === 'Cliente')) {
+        updateFields.full_name = cleanFullName
+      }
       if (Object.keys(updateFields).length > 0) {
         await supabase.from('customers').update(updateFields).eq('id', customerId)
       }
@@ -168,8 +198,8 @@ export async function POST(req: Request) {
         .insert({
           tenant_id: tenantId,
           full_name: cleanFullName,
-          id_number: cleanIdNumber,
-          phone: cleanPhone,
+          id_number: idInfo.canonical || cleanIdNumber,
+          phone: normalizedPhone || cleanPhone,
           address: cleanAddress,
           notes: cleanCustomerNotes ? `Pedido web: ${cleanCustomerNotes}` : 'Registrado desde Vitrina Web',
         })

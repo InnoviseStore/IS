@@ -94,6 +94,13 @@ export default function LoginPage() {
       console.warn('Error loading welcome profile:', err)
     }
 
+    // Notificar inicio de sesión y registrar actividad
+    try {
+      fetch('/api/admin/auth/notify-login', { method: 'POST' }).catch(() => {})
+    } catch {
+      // Ignorar fallo no bloqueante
+    }
+
     // Activar animación de bienvenida
     setWelcomeData({
       storeName,

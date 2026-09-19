@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 
     // 1. Validar autenticación y pertenencia de tenant
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero', 'vendedor', 'almacen'],
       targetTenantId: tenantId,
     })
     if (errorResponse || !auth) {
@@ -83,7 +83,23 @@ export async function GET(req: Request) {
     const { data, error } = await query
     if (error) throw new Error(error.message)
 
-    return NextResponse.json({ orders: data || [], stats: generalStats })
+    // Enriquecer órdenes con perfil del empleado responsable (created_by)
+    const staffIds = Array.from(new Set((data || []).map((o: any) => o.created_by).filter(Boolean)))
+    const staffMap = new Map<string, any>()
+    if (staffIds.length > 0) {
+      const { data: staffProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, role, email')
+        .in('id', staffIds)
+      staffProfiles?.forEach((p) => staffMap.set(p.id, p))
+    }
+
+    const enrichedOrders = (data || []).map((o: any) => ({
+      ...o,
+      staff: o.created_by ? staffMap.get(o.created_by) || null : null,
+    }))
+
+    return NextResponse.json({ orders: enrichedOrders, stats: generalStats })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al obtener órdenes.'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -123,7 +139,7 @@ export async function POST(req: Request) {
 
     // 1. Validar autenticación y pertenencia de tenant
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero', 'vendedor'],
       targetTenantId: tenant_id,
     })
     if (errorResponse || !auth) {
@@ -251,7 +267,7 @@ export async function POST(req: Request) {
           payment_breakdown: payment_breakdown || [],
           due_date: finalDueDate,
           notes: finalNotes,
-          created_by: created_by || null,
+          created_by: created_by || (previousOrder?.created_by ? previousOrder.created_by : auth.userId),
           updated_at: new Date().toISOString(),
         })
         .eq('id', existing_order_id)
@@ -295,7 +311,7 @@ export async function POST(req: Request) {
         payment_breakdown: payment_breakdown || [],
         due_date: finalDueDate,
         notes: incomingNotes || null,
-        created_by: created_by || null,
+        created_by: created_by || auth.userId,
       }
 
       const { data: newOrder, error: orderError } = await supabase

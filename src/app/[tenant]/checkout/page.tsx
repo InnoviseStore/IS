@@ -2,13 +2,16 @@
 
 import React, { useState, useEffect, FormEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useCart } from '@/hooks/useCart'
+import { CustomerProvider, useCustomer } from '@/contexts/CustomerContext'
+import { getTenantFeatures } from '@/lib/planLimits'
 import { 
   User, MapPin, CreditCard, Truck, Store, Package, 
   ChevronLeft, ChevronRight, Check, Copy, Loader2, 
   ShoppingBag, AlertCircle, CheckCircle2, MessageCircle, 
-  Phone, Hash, Building2, Wallet, QrCode, Globe, Navigation, ExternalLink
+  Phone, Hash, Building2, Wallet, QrCode, Globe, Navigation, ExternalLink, Sparkles
 } from 'lucide-react'
 import { COUNTRY_CODES, normalizeWhatsAppPhone } from '@/lib/whatsapp'
 
@@ -64,16 +67,20 @@ interface PaymentData {
 
 const STORAGE_KEY = 'is_checkout_customer'
 
-export default function CheckoutPage() {
+function CheckoutInner() {
   const params = useParams()
   const router = useRouter()
   const tenantSlug = params.tenant as string
   const supabase = createClient()
   const { items, totalUsd, totalVes, itemCount, clearCart } = useCart()
+  const { customer: loggedCustomer, logout: logoutCustomer } = useCustomer()
 
   const [tenantData, setTenantData] = useState<TenantData | null>(null)
   const [loadingTenant, setLoadingTenant] = useState(true)
   
+  const features = tenantData ? getTenantFeatures(tenantData as any) : null
+  const checkoutMode = tenantData?.settings?.checkout_mode || 'optional'
+
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -93,6 +100,37 @@ export default function CheckoutPage() {
     address: '',
     notes: ''
   })
+
+  // Autocompletar datos si el cliente tiene sesión iniciada
+  useEffect(() => {
+    if (loggedCustomer) {
+      let prefix = 'V-'
+      let num = loggedCustomer.id_number || ''
+      if (num.startsWith('V-') || num.startsWith('J-') || num.startsWith('E-') || num.startsWith('G-')) {
+        prefix = num.slice(0, 2)
+        num = num.slice(2)
+      } else if (num.startsWith('V') || num.startsWith('J') || num.startsWith('E') || num.startsWith('G')) {
+        prefix = num.slice(0, 1) + '-'
+        num = num.slice(1)
+      }
+
+      let phone = loggedCustomer.phone || ''
+      let countryCode = '58'
+      if (phone.startsWith('58')) {
+        phone = phone.slice(2)
+      }
+
+      setCustomer((prev) => ({
+        ...prev,
+        full_name: loggedCustomer.full_name || prev.full_name,
+        id_prefix: prefix,
+        id_number: num || prev.id_number,
+        country_code: countryCode,
+        phone: phone || prev.phone,
+        address: loggedCustomer.address || prev.address,
+      }))
+    }
+  }, [loggedCustomer])
   const [errorsCustomer, setErrorsCustomer] = useState<Record<string, string>>({})
 
   const [delivery, setDelivery] = useState<DeliveryData>({
@@ -510,6 +548,63 @@ export default function CheckoutPage() {
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">Datos del Cliente</h2>
                 </div>
+
+                {/* Banner de Portal de Clientes (Plan Pro / Enterprise) */}
+                {features?.hasCustomerPortal && (
+                  <>
+                    {loggedCustomer ? (
+                      <div className="p-3.5 mb-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-200">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>
+                            Sesión iniciada como <strong>{loggedCustomer.full_name}</strong>. Tus datos han sido autocompletados.
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Link href={`/${tenantSlug}/cuenta`} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                            Mi Cuenta
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={logoutCustomer}
+                            className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                          >
+                            Salir
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 mb-5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 text-xs text-blue-800 dark:text-blue-300">
+                          <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>
+                            ¿Ya tienes cuenta en <strong>{tenantData?.name || 'la tienda'}</strong>? Inicia sesión para cargar tus datos en 1 clic.
+                          </span>
+                        </div>
+                        <Link
+                          href={`/${tenantSlug}/cuenta`}
+                          className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition shrink-0"
+                        >
+                          Iniciar Sesión / Registrarme
+                        </Link>
+                      </div>
+                    )}
+
+                    {checkoutMode === 'customer_login_required' && !loggedCustomer && (
+                      <div className="p-4 mb-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
+                        <p className="font-bold mb-1">Inicio de sesión obligatorio</p>
+                        <p className="mb-3">Esta tienda requiere que inicies sesión o te registres para realizar compras.</p>
+                        <Link
+                          href={`/${tenantSlug}/cuenta`}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs"
+                        >
+                          <span>Iniciar Sesión / Registrarme</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <div className="space-y-5">
                   <div>
@@ -1098,5 +1193,16 @@ function DetailRow({ label, value, id, onCopy, copied, highlight = false }: { la
         </button>
       </div>
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  const params = useParams()
+  const tenantSlug = (params?.tenant as string) || ''
+
+  return (
+    <CustomerProvider tenantSlug={tenantSlug}>
+      <CheckoutInner />
+    </CustomerProvider>
   )
 }

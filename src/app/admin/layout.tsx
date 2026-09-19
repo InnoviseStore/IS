@@ -19,6 +19,7 @@ import { useTheme } from '@/components/common/ThemeProvider'
 import { getRoleLabel, type UserRole } from '@/types/database'
 import { LiveOrderNotification } from '@/components/admin/LiveOrderNotification'
 import { PwaInstallPrompt } from '@/components/admin/PwaInstallPrompt'
+import { LivePresenceHeader } from '@/components/admin/LivePresenceHeader'
 
 // Mapeo exhaustivo de módulos y permisos por rol (RBAC)
 interface NavItemConfig {
@@ -601,6 +602,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 <span className="font-extrabold text-[11px]">Panel Master</span>
               </Link>
             )}
+
+            {/* Monitoreo en Vivo de Usuarios Conectados */}
+            <LivePresenceHeader />
 
             {/* Dark mode toggle */}
             <button

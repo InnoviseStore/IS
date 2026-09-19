@@ -20,6 +20,13 @@ import {
   Layers,
   Store,
   RefreshCw,
+  Activity,
+  BarChart2,
+  History,
+  Calendar,
+  DollarSign,
+  Receipt,
+  X,
 } from 'lucide-react'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { getRoleLabel } from '@/types/database'
@@ -96,10 +103,37 @@ export default function AdminUsersPage() {
   const [deleteModalUser, setDeleteModalUser] = useState<Profile | null>(null)
   const [isSubmittingDelete, setIsSubmittingDelete] = useState<boolean>(false)
 
+  // Modal Actividad & Rendimiento
+  const [activityModalUser, setActivityModalUser] = useState<Profile | null>(null)
+  const [activityLoading, setActivityLoading] = useState<boolean>(false)
+  const [activityData, setActivityData] = useState<any | null>(null)
+  const [activityTab, setActivityTab] = useState<'orders' | 'inventory'>('orders')
+
   const isCurrentAdmin =
     currentProfile?.role === 'superadmin' ||
     currentProfile?.role === 'owner' ||
     currentProfile?.role === 'admin'
+
+  const openActivityModal = async (user: Profile) => {
+    setActivityModalUser(user)
+    setActivityLoading(true)
+    setActivityData(null)
+    setActivityTab(user.role === 'almacen' ? 'inventory' : 'orders')
+    try {
+      const url = `/api/admin/team/activity?user_id=${user.id}${tenant?.id ? `&tenant_id=${tenant.id}` : ''}`
+      const res = await fetch(url)
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setActivityData(data)
+      } else {
+        alert(data.error || 'No se pudo cargar la actividad.')
+      }
+    } catch (e: any) {
+      alert(e.message || 'Error al consultar actividad.')
+    } finally {
+      setActivityLoading(false)
+    }
+  }
 
   const fetchTeam = useCallback(async () => {
     try {
@@ -556,6 +590,16 @@ export default function AdminUsersPage() {
                       {/* Actions */}
                       <td className="py-3.5 px-5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Historial & Rendimiento */}
+                          <button
+                            onClick={() => openActivityModal(user)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-semibold transition"
+                            title="Ver resumen de actividad, ventas y movimientos"
+                          >
+                            <Activity className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            <span>Rendimiento</span>
+                          </button>
+
                           {/* Cambiar Rol */}
                           {!isOwner && isCurrentAdmin && (
                             <button
@@ -885,6 +929,274 @@ export default function AdminUsersPage() {
         onConfirm={handleDeleteUser}
         onCancel={() => setDeleteModalUser(null)}
       />
+
+      {/* MODAL: Rendimiento & Historial del Colaborador */}
+      {activityModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-indigo-500/20">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>{activityModalUser.full_name || 'Colaborador'}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      {getRoleLabel((activityModalUser.role as UserRole) || 'cajero')}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Historial de ventas, pedidos facturados y movimientos de stock en {tenant?.name || 'la tienda'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActivityModalUser(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+              {activityLoading ? (
+                <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                  <p className="text-xs font-semibold">Consultando historial y métricas del colaborador...</p>
+                </div>
+              ) : activityData ? (
+                <>
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                    <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block mb-1">
+                        Total Facturado ($)
+                      </span>
+                      <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 font-mono">
+                        ${activityData.metrics?.totalSalesUsd?.toFixed(2) || '0.00'}
+                      </p>
+                      <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 font-mono">
+                        Bs. {activityData.metrics?.totalSalesVes?.toFixed(2) || '0.00'}
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 block mb-1">
+                        Facturas Emitidas
+                      </span>
+                      <p className="text-lg font-black text-blue-700 dark:text-blue-300 font-mono">
+                        {activityData.metrics?.completedOrdersCount || 0}
+                      </p>
+                      <p className="text-[10px] text-blue-600/80 dark:text-blue-400/80 mt-0.5">
+                        {activityData.metrics?.totalOrdersCount || 0} órdenes en total
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 block mb-1">
+                        Ticket Promedio
+                      </span>
+                      <p className="text-lg font-black text-purple-700 dark:text-purple-300 font-mono">
+                        ${activityData.metrics?.averageTicketUsd?.toFixed(2) || '0.00'}
+                      </p>
+                      <p className="text-[10px] text-purple-600/80 dark:text-purple-400/80 mt-0.5">
+                        por venta concretada
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 block mb-1">
+                        Movs. de Inventario
+                      </span>
+                      <p className="text-lg font-black text-amber-700 dark:text-amber-300 font-mono">
+                        {activityData.metrics?.inventoryLogsCount || 0}
+                      </p>
+                      <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
+                        ajustes y salidas
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tabs selector */}
+                  <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                    <button
+                      onClick={() => setActivityTab('orders')}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activityTab === 'orders'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <span>Órdenes Facturadas ({activityData.orders?.length || 0})</span>
+                    </button>
+                    <button
+                      onClick={() => setActivityTab('inventory')}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activityTab === 'inventory'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      <span>Movimientos de Stock ({activityData.inventory_logs?.length || 0})</span>
+                    </button>
+                  </div>
+
+                  {/* Tab 1: Orders */}
+                  {activityTab === 'orders' && (
+                    <div className="space-y-3">
+                      {(!activityData.orders || activityData.orders.length === 0) ? (
+                        <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-slate-400 text-xs">
+                          Este colaborador aún no ha emitido órdenes o facturas.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold">
+                              <tr>
+                                <th className="p-3">Nro. Orden</th>
+                                <th className="p-3">Cliente</th>
+                                <th className="p-3">Fecha</th>
+                                <th className="p-3">Condición</th>
+                                <th className="p-3 text-right">Total ($)</th>
+                                <th className="p-3 text-right">Total (Bs.)</th>
+                                <th className="p-3 text-center">Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {activityData.orders.map((ord: any) => (
+                                <tr key={ord.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                                  <td className="p-3 font-mono font-bold text-slate-900 dark:text-white">
+                                    {ord.order_number}
+                                  </td>
+                                  <td className="p-3 text-slate-700 dark:text-slate-200">
+                                    {ord.customer_name}
+                                  </td>
+                                  <td className="p-3 text-slate-500 dark:text-slate-400">
+                                    {new Date(ord.created_at).toLocaleString('es-VE', {
+                                      dateStyle: 'short',
+                                      timeStyle: 'short',
+                                    })}
+                                  </td>
+                                  <td className="p-3">
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                      {ord.payment_condition === 'credit_7d' ? 'Crédito' : 'Contado'}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                    ${Number(ord.total_usd).toFixed(2)}
+                                  </td>
+                                  <td className="p-3 text-right font-mono text-slate-600 dark:text-slate-300">
+                                    Bs. {Number(ord.total_ves).toFixed(2)}
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      ord.status === 'completed'
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                                        : ord.status === 'credit'
+                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                                        : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300'
+                                    }`}>
+                                      {ord.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab 2: Inventory */}
+                  {activityTab === 'inventory' && (
+                    <div className="space-y-3">
+                      {(!activityData.inventory_logs || activityData.inventory_logs.length === 0) ? (
+                        <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-slate-400 text-xs">
+                          No hay movimientos de inventario registrados por este usuario.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold">
+                              <tr>
+                                <th className="p-3">Producto</th>
+                                <th className="p-3">Tipo Movimiento</th>
+                                <th className="p-3 text-right">Cantidad</th>
+                                <th className="p-3 text-right">Stock Anterior</th>
+                                <th className="p-3 text-right">Nuevo Stock</th>
+                                <th className="p-3">Fecha</th>
+                                <th className="p-3">Notas</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {activityData.inventory_logs.map((log: any) => (
+                                <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                                  <td className="p-3 font-semibold text-slate-900 dark:text-white">
+                                    {log.product_name}
+                                    {log.product_sku && (
+                                      <span className="block text-[10px] font-mono text-slate-400">{log.product_sku}</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      log.change_type === 'sale'
+                                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300'
+                                        : log.change_type === 'adjustment'
+                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                                    }`}>
+                                      {log.change_type}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                                    {log.quantity > 0 ? `+${log.quantity}` : log.quantity}
+                                  </td>
+                                  <td className="p-3 text-right font-mono text-slate-400">
+                                    {log.previous_stock ?? '—'}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                    {log.new_stock ?? '—'}
+                                  </td>
+                                  <td className="p-3 text-slate-500 dark:text-slate-400">
+                                    {new Date(log.created_at).toLocaleString('es-VE', {
+                                      dateStyle: 'short',
+                                      timeStyle: 'short',
+                                    })}
+                                  </td>
+                                  <td className="p-3 text-slate-500 dark:text-slate-400 max-w-[180px] truncate">
+                                    {log.notes || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActivityModalUser(null)}
+                className="px-5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
