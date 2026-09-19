@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
+import { checkIdempotency, recordIdempotency } from '@/lib/security/idempotency'
+import { sanitizeForLogging } from '@/lib/security/dataMasking'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -37,6 +39,15 @@ export async function POST(req: Request) {
     const numericAmountUsd = Number(amount_usd) || 0
     if (numericAmountUsd <= 0) {
       return NextResponse.json({ error: 'El monto del abono debe ser mayor a 0.' }, { status: 400 })
+    }
+
+    // Prevención de doble gasto y condiciones de carrera (Idempotency)
+    const idempotencyKey = req.headers.get('Idempotency-Key') || req.headers.get('X-Idempotency-Key') || body.idempotency_key
+    if (idempotencyKey) {
+      const cached = await checkIdempotency(idempotencyKey, tenant_id)
+      if (cached.exists) {
+        return NextResponse.json(cached.payload, { status: cached.statusCode || 200 })
+      }
     }
 
     // 1. Validar autenticacion
@@ -196,17 +207,45 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    // 7. Registrar log inmutable de auditoría financiera
+    try {
+      await supabase.from('financial_audit_logs').insert({
+        tenant_id,
+        event_type: 'abono_created',
+        order_id,
+        customer_id: effectiveCustomerId || null,
+        amount_usd: numericAmountUsd,
+        amount_ves: Number(amount_ves) || numericAmountUsd * (Number(exchange_rate) || 1),
+        exchange_rate_applied: Number(exchange_rate) || 1,
+        previous_balance_usd: (previousPaidUsd > 0 ? (totalOrderUsd - previousPaidUsd) : totalOrderUsd),
+        new_balance_usd: remainingUsd,
+        payment_method: payment_method || 'pago_movil',
+        reference: reference ? String(reference).trim() : null,
+        idempotency_key: idempotencyKey || null,
+        created_by: auth.userId,
+        metadata: { is_fully_paid: isFullyPaid },
+      })
+    } catch (auditErr) {
+      console.warn('[AuditLog] Error writing financial audit log:', auditErr)
+    }
+
+    const responsePayload = {
       success: true,
       order: updatedOrder,
       abono: newPaymentEntry,
       remainingUsd,
       isFullyPaid,
       updatedCustomerDebt,
-    })
+    }
+
+    if (idempotencyKey) {
+      await recordIdempotency(idempotencyKey, tenant_id, responsePayload, 200)
+    }
+
+    return NextResponse.json(responsePayload)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al registrar abono.'
-    console.error('Error in /api/admin/orders/abono:', message)
+    console.error('Error in /api/admin/orders/abono:', sanitizeForLogging({ message, error: String(err) }))
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
