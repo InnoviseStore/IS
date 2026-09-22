@@ -580,6 +580,31 @@ function StorefrontShell({
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isGuideOpen, setIsGuideOpen] = useState(false)
 
+  // ── Tracking de visitas (fire-and-forget, silencioso) ──────────────────────
+  React.useEffect(() => {
+    try {
+      // Obtener o generar session_id en sessionStorage (persiste mientras el tab esté abierto)
+      let sessionId = sessionStorage.getItem('_is_sid')
+      if (!sessionId) {
+        sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+        sessionStorage.setItem('_is_sid', sessionId)
+      }
+      // Enviar evento de visita (sin await — fire-and-forget)
+      fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: store.slug,
+          path: window.location.pathname,
+          session_id: sessionId,
+        }),
+      }).catch(() => {}) // ignorar errores de red
+    } catch {
+      // nunca lanzar error al usuario
+    }
+  }, [store.slug])
+  // ──────────────────────────────────────────────────────────────────────────
+
   const instagramUrl = store.instagram_handle
     ? `https://www.instagram.com/${store.instagram_handle.replace('@', '')}/`
     : null

@@ -9,7 +9,7 @@ import {
   Settings, LogOut, Moon, Sun, Store, Pencil, Check, X, Menu,
   RefreshCw, ExternalLink, Vault, Receipt, FileText, Crown, ClipboardList, Palette,
   UserCheck, ShieldCheck, Loader2, ChevronDown, Barcode, Download, Smartphone,
-  PanelLeftClose, PanelLeftOpen, PanelLeft, TrendingUp
+  PanelLeftClose, PanelLeftOpen, PanelLeft, TrendingUp, BarChart2
 } from 'lucide-react'
 import { TenantProvider, useTenant } from '@/contexts/TenantContext'
 import { createClient } from '@/lib/supabase/client'
@@ -34,6 +34,7 @@ interface NavItemConfig {
 const ALL_NAV_ITEMS: NavItemConfig[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, roles: ['superadmin', 'owner', 'admin'] },
   { href: '/admin/master', label: 'Panel Master SaaS', icon: Crown, roles: ['superadmin'] },
+  { href: '/admin/analytics', label: 'Analíticas Web', icon: BarChart2, roles: ['superadmin'] },
   { href: '/admin/orders', label: 'Pedidos Web', icon: ClipboardList, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'almacen', 'vendedor'] },
   { href: '/admin/pos', label: 'Facturación / POS', icon: ShoppingCart, roles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'vendedor'] },
   { href: '/admin/quotations', label: 'Cotizaciones', icon: FileText, roles: ['superadmin', 'owner', 'admin', 'vendedor'] },
