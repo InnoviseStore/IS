@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+import { extractBarcodeFromDescription } from '@/lib/barcodeUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,9 +45,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'tenantId es obligatorio.' }, { status: 400 })
     }
 
-    // 1. Autenticación y control de acceso
+    // 1. Autenticación y control de acceso (Permitir administradores, almacén, vendedores y cajeros)
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor', 'cashier', 'cajero'],
       targetTenantId: tenantId,
     })
 
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
     // 2. Obtener catálogo de productos activos del comercio
     const { data: products, error: prodErr } = await supabase
       .from('products')
-      .select('id, name, sku, base_price_usd, stock, is_active, image_url, description')
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
 
@@ -75,11 +76,21 @@ export async function POST(req: Request) {
       keywords: [],
     }
 
-    // 3. Si se envió imagen y hay clave de Gemini disponible, invocar Gemini Flash Vision
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    // 3. Obtener posible API key de Gemini (desde entorno o configuración del comercio)
+    let geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    if (!geminiKey) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('settings')
+        .eq('id', tenantId)
+        .maybeSingle()
+      const tSettings = (tenantData?.settings || {}) as Record<string, any>
+      geminiKey = tSettings?.gemini_api_key || tSettings?.google_api_key
+    }
+
+    // 4. Si se envió imagen y hay clave de Gemini disponible, invocar Gemini Flash Vision
     if (image && geminiKey) {
       try {
-        // Extraer base64 y tipo MIME
         let mimeType = 'image/jpeg'
         let base64Data = image
         if (image.includes(';base64,')) {
@@ -88,43 +99,42 @@ export async function POST(req: Request) {
           base64Data = parts[1]
         }
 
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: `Eres un asistente de inventario y punto de venta. Analiza esta fotografía de un producto, caja, empaque o etiqueta.
+        const promptText = `Eres un asistente de inventario y punto de venta. Analiza esta fotografía de un producto, caja, empaque o etiqueta.
 Extrae la siguiente información técnica en formato JSON estricto:
 - "brand": Marca o fabricante si es visible o identificable (ej. Samsung, Apple, Xiaomi, Sony, JBL, etc.).
 - "model": Nombre o modelo específico del producto (ej. Audífonos Bluetooth, Altavoz Portátil, Case Silicona, etc.).
-- "code": Código alfanumérico, SKU, número de modelo o código de barras que aparezca escrito en la etiqueta o empaque.
+- "code": Código alfanumérico, SKU, número de modelo o código de barras numérico que aparezca escrito en la etiqueta o empaque.
 - "color": Color principal del artículo.
 - "keywords": Lista de 3 a 6 palabras clave descriptivas en español para buscar en inventario.
 - "description": Breve descripción de 1 frase de lo que se ve en la foto.
 
-Responde ÚNICAMENTE con el objeto JSON sin bloques de código ni markdown.`
+Responde ÚNICAMENTE con el objeto JSON sin bloques de código markdown.`
+
+        // Intentar con gemini-1.5-flash y fallback a gemini-2.0-flash
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`
+        const geminiRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: promptText },
+                  {
+                    inline_data: {
+                      mime_type: mimeType,
+                      data: base64Data,
                     },
-                    {
-                      inline_data: {
-                        mime_type: mimeType,
-                        data: base64Data
-                      }
-                    }
-                  ]
-                }
-              ],
-              generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 500,
-              }
-            })
-          }
-        )
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 500,
+            },
+          }),
+        })
 
         if (geminiRes.ok) {
           const gData = await geminiRes.json()
@@ -151,7 +161,7 @@ Responde ÚNICAMENTE con el objeto JSON sin bloques de código ni markdown.`
       }
     }
 
-    // 4. Heurística de respaldo o enriquecimiento con texto adicional
+    // 5. Heurística de respaldo o enriquecimiento con texto adicional
     if (textQuery && typeof textQuery === 'string') {
       const qTokens = normalizeString(textQuery).split(/\s+/).filter(t => t.length > 1)
       detected.keywords = Array.from(new Set([...(detected.keywords || []), ...qTokens]))
@@ -160,9 +170,14 @@ Responde ÚNICAMENTE con el objeto JSON sin bloques de código ni markdown.`
       }
     }
 
-    // 5. Algoritmo de puntuación y coincidencia contra la base de datos de productos
+    // Si no hubo Gemini Key ni texto, indicar sugerencia amigable
+    if (!detected.description && !geminiKey) {
+      detected.description = 'Reconocimiento visual sin procesar: Enfoca el código de barras del producto o escribe el nombre para buscar.'
+    }
+
+    // 6. Algoritmo de puntuación y coincidencia contra la base de datos de productos
     interface ScoredMatch {
-      product: typeof products[0]
+      product: any
       score: number
       match_reason: string
     }
@@ -184,17 +199,24 @@ Responde ÚNICAMENTE con el objeto JSON sin bloques de código ni markdown.`
       const reasons: string[] = []
 
       const prodSkuNorm = prod.sku ? normalizeString(prod.sku) : ''
-      const prodNameNorm = normalizeString(prod.name)
+      const prodBarcodeNorm = normalizeString(prod.barcode || extractBarcodeFromDescription(prod.description) || '')
+      const prodNameNorm = normalizeString(prod.name || '')
       const prodDescNorm = prod.description ? normalizeString(prod.description) : ''
 
-      // A. Coincidencia por Código / SKU
-      if (normCode && prodSkuNorm) {
-        if (prodSkuNorm === normCode) {
-          score += 85
-          reasons.push('Código exacto coincide con SKU')
-        } else if (prodSkuNorm.includes(normCode) || normCode.includes(prodSkuNorm)) {
+      // A. Coincidencia por Código de Barras o SKU
+      if (normCode) {
+        if (prodBarcodeNorm && prodBarcodeNorm === normCode) {
+          score += 95
+          reasons.push('Código de barras exacto coincide')
+        } else if (prodSkuNorm && prodSkuNorm === normCode) {
+          score += 90
+          reasons.push('Código exacto coincide con SKU interno')
+        } else if (prodBarcodeNorm && (prodBarcodeNorm.includes(normCode) || normCode.includes(prodBarcodeNorm))) {
+          score += 75
+          reasons.push('Coincidencia de código de barras')
+        } else if (prodSkuNorm && (prodSkuNorm.includes(normCode) || normCode.includes(prodSkuNorm))) {
           score += 65
-          reasons.push('Coincidencia parcial de código/SKU')
+          reasons.push('Coincidencia parcial de SKU')
         }
       }
 
@@ -241,7 +263,7 @@ Responde ÚNICAMENTE con el objeto JSON sin bloques de código ni markdown.`
       // Normalizar puntaje máximo a 100
       const finalScore = Math.min(100, Math.max(0, score))
 
-      // Solo incluir si tiene al menos 30% de afinidad o si no hay ninguna coincidencia alta
+      // Incluir si tiene al menos 30% de afinidad
       if (finalScore >= 30) {
         scoredMatches.push({
           product: prod,
@@ -254,7 +276,6 @@ Responde ÚNICAMENTE con el objeto JSON sin bloques de código ni markdown.`
     // Ordenar de mayor a menor puntuación
     scoredMatches.sort((a, b) => b.score - a.score)
 
-    // Si no hubo coincidencias con score >= 30, pero hay productos, devolver los primeros más cercanos si hay búsqueda
     const topMatches = scoredMatches.slice(0, 8)
 
     return NextResponse.json({

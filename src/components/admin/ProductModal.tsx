@@ -18,8 +18,12 @@ import {
   Palette,
   AlertTriangle,
   Tag,
+  Barcode,
+  Camera,
+  Check,
 } from 'lucide-react'
 import { detectCategory, extractCategory } from '@/lib/categories'
+import { getProductBarcode, injectBarcodeIntoDescription } from '@/lib/barcodeUtils'
 
 import { parseColorVariants, type ColorVariantItem } from '@/lib/colorVariants'
 
@@ -148,6 +152,11 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [category, setCategory] = useState(initialCategory === 'General' ? '' : initialCategory)
   const [description, setDescription] = useState(parsedApparel.cleanDescription)
   const [sku, setSku] = useState(product?.sku ?? '')
+  const initialBarcode = getProductBarcode(product) || ''
+  const [barcode, setBarcode] = useState(initialBarcode)
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false)
+  const [scannerStatus, setScannerStatus] = useState<string | null>(null)
+  const barcodeScannerRef = useRef<any>(null)
   const [priceUsd, setPriceUsd] = useState(product?.base_price_usd?.toString() ?? '')
   const [costUsd, setCostUsd] = useState(product?.cost_usd?.toString() ?? '')
   const [stock, setStock] = useState(product?.stock?.toString() ?? '0')
@@ -207,13 +216,100 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const priceVes = price * exchangeRate
   const margin = price > 0 && cost > 0 ? (((price - cost) / price) * 100).toFixed(1) : null
 
+  // Sonido y háptico
+  const playBeep = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioCtx) return
+      const ctx = new AudioCtx()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = 980
+      gain.gain.setValueAtTime(0.2, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.15)
+    } catch {}
+  }
+
+  const triggerHaptic = () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([40, 20, 40])
+      }
+    } catch {}
+  }
+
+  const stopBarcodeScanner = async () => {
+    if (barcodeScannerRef.current) {
+      try {
+        await barcodeScannerRef.current.stop()
+        await barcodeScannerRef.current.clear()
+      } catch (e) {
+        console.warn('Error closing barcode scanner:', e)
+      } finally {
+        barcodeScannerRef.current = null
+      }
+    }
+    setShowBarcodeScanner(false)
+    setScannerStatus(null)
+  }
+
+  const startBarcodeScanner = async () => {
+    setShowBarcodeScanner(true)
+    setScannerStatus('Iniciando cámara...')
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      setTimeout(async () => {
+        const elementId = 'product-modal-barcode-viewport'
+        const el = document.getElementById(elementId)
+        if (!el) return
+
+        if (!barcodeScannerRef.current) {
+          barcodeScannerRef.current = new Html5Qrcode(elementId)
+        }
+        const qr = barcodeScannerRef.current
+        if (qr.isScanning) return
+
+        await qr.start(
+          { facingMode: 'environment' },
+          {
+            fps: 15,
+            qrbox: { width: 250, height: 160 },
+            aspectRatio: 1.33,
+          },
+          (decodedText: string) => {
+            const clean = decodedText.trim()
+            if (clean) {
+              playBeep()
+              triggerHaptic()
+              setBarcode(clean)
+              setScannerStatus(`¡Código capturado: ${clean}!`)
+              setTimeout(() => {
+                stopBarcodeScanner()
+              }, 400)
+            }
+          },
+          () => {}
+        )
+        setScannerStatus('Apunta la cámara al código de barras del producto...')
+      }, 150)
+    } catch (err: any) {
+      setScannerStatus('No se pudo acceder a la cámara. Revisa los permisos del navegador.')
+    }
+  }
+
   // Verificar si hay datos modificados (dirty state)
   const isDirty = !isEditing
-    ? Boolean(name.trim() || description.trim() || sku.trim() || priceUsd || costUsd || images.length > 0 || colors.length > 0)
+    ? Boolean(name.trim() || description.trim() || sku.trim() || barcode.trim() || priceUsd || costUsd || images.length > 0 || colors.length > 0)
     : Boolean(
         name !== product.name ||
         description !== parsedInitial.baseDescription ||
         sku !== (product.sku || '') ||
+        barcode !== initialBarcode ||
         priceUsd !== (product.base_price_usd?.toString() || '') ||
         images.length !== initialImages.length ||
         colors.length !== parsedInitial.colors.length
@@ -504,11 +600,14 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
       ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(colors)}-->`
       : baseDesc
 
+    const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, barcode)
+
     const payload = {
       tenant_id: tenant.id,
       name: name.trim(),
-      description: finalDescription || null,
+      description: finalDescriptionWithBarcode || null,
       sku: sku.trim() || null,
+      barcode: barcode.trim() || null,
       base_price_usd: price,
       cost_usd: cost || null,
       stock: parseInt(stock) || 0,
@@ -794,16 +893,51 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                  SKU / Código de Producto
-                </label>
-                <input 
-                  value={sku} 
-                  onChange={(e) => setSku(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
-                  placeholder="Ej. ALT-001" 
-                />
+              {/* Códigos del Producto: SKU de Usuario y Código de Barras */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                      Código / SKU Interno
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-semibold">Creado por ti</span>
+                  </div>
+                  <input 
+                    value={sku} 
+                    onChange={(e) => setSku(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
+                    placeholder="Ej. AUD-001, CASE-IP14" 
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                      <Barcode className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>Código de Barras</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <div className="relative flex-1">
+                      <input 
+                        value={barcode} 
+                        onChange={(e) => setBarcode(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
+                        placeholder="Ej. 7591234567890" 
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={startBarcodeScanner}
+                      className="px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                      title="Escanear con cámara y rellenar automáticamente"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span className="hidden xs:inline">Escanear</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -1491,6 +1625,51 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal flotante de Escaneo de Código de Barras con Cámara */}
+      {showBarcodeScanner && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Barcode className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Escanear Código de Barras
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={stopBarcodeScanner}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="relative w-full aspect-4/3 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
+              <div id="product-modal-barcode-viewport" className="w-full h-full" />
+              {/* Mira visual */}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="w-48 h-28 border-2 border-emerald-400/80 rounded-xl shadow-lg relative">
+                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-emerald-500/70 animate-pulse" />
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-center text-slate-500 dark:text-slate-400">
+              {scannerStatus || 'Apunta la cámara del dispositivo al código de barras del producto.'}
+            </p>
+
+            <button
+              type="button"
+              onClick={stopBarcodeScanner}
+              className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer transition"
+            >
+              Cancelar Escaneo
+            </button>
           </div>
         </div>
       )}

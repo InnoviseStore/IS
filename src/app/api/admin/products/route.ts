@@ -22,6 +22,7 @@ export async function POST(req: Request) {
       name,
       description,
       sku,
+      barcode,
       base_price_usd,
       cost_usd,
       stock,
@@ -79,11 +80,14 @@ export async function POST(req: Request) {
     // Imagen principal de portada
     const primaryImage = sanitizedImages[0] || (typeof image_url === 'string' && image_url.trim() ? image_url.trim() : null)
 
-    const payloadWithImages = {
+    const cleanBarcode = typeof barcode === 'string' && barcode.trim() ? barcode.trim() : null
+
+    const payloadWithImages: Record<string, any> = {
       tenant_id,
       name: name.trim(),
       description: description?.trim() || null,
       sku: sku?.trim() || null,
+      barcode: cleanBarcode,
       base_price_usd: Number(base_price_usd) || 0,
       cost_usd: cost_usd ? Number(cost_usd) : null,
       stock: parseInt(stock, 10) || 0,
@@ -94,61 +98,40 @@ export async function POST(req: Request) {
 
     let savedProduct = null
 
-    if (id) {
-      // 1. Intentar actualizar con columna 'images'
-      const { data, error: updateErr } = await supabase
-        .from('products')
-        .update(payloadWithImages)
-        .eq('id', id)
-        .select()
-        .single()
+    // Función auxiliar resiliente para ejecutar update/insert manejando columnas que puedan no existir
+    async function executeSave(payload: Record<string, any>) {
+      let current = { ...payload }
+      let query = id
+        ? supabase.from('products').update(current).eq('id', id).select().single()
+        : supabase.from('products').insert(current).select().single()
 
-      if (updateErr) {
-        // Fallback: si la columna 'images' no existe en PostgreSQL
-        if (updateErr.message.includes('images') || updateErr.code === 'PGRST204') {
-          const { images: _, ...fallbackPayload } = payloadWithImages
-          const { data: fallbackData, error: fallbackErr } = await supabase
-            .from('products')
-            .update(fallbackPayload)
-            .eq('id', id)
-            .select()
-            .single()
+      let res = await query
 
-          if (fallbackErr) throw new Error(fallbackErr.message)
-          savedProduct = fallbackData
-        } else {
-          throw new Error(updateErr.message)
-        }
-      } else {
-        savedProduct = data
+      // Si falla por columna barcode inexistente
+      if (res.error && (res.error.message?.includes('barcode') || res.error.code === 'PGRST204')) {
+        delete current.barcode
+        query = id
+          ? supabase.from('products').update(current).eq('id', id).select().single()
+          : supabase.from('products').insert(current).select().single()
+        res = await query
       }
-    } else {
-      // 2. Intentar insertar con columna 'images'
-      const { data, error: insertErr } = await supabase
-        .from('products')
-        .insert(payloadWithImages)
-        .select()
-        .single()
 
-      if (insertErr) {
-        // Fallback: si la columna 'images' no existe en PostgreSQL
-        if (insertErr.message.includes('images') || insertErr.code === 'PGRST204') {
-          const { images: _, ...fallbackPayload } = payloadWithImages
-          const { data: fallbackData, error: fallbackErr } = await supabase
-            .from('products')
-            .insert(fallbackPayload)
-            .select()
-            .single()
-
-          if (fallbackErr) throw new Error(fallbackErr.message)
-          savedProduct = fallbackData
-        } else {
-          throw new Error(insertErr.message)
-        }
-      } else {
-        savedProduct = data
+      // Si falla por columna images inexistente
+      if (res.error && (res.error.message?.includes('images') || res.error.code === 'PGRST204')) {
+        delete current.images
+        query = id
+          ? supabase.from('products').update(current).eq('id', id).select().single()
+          : supabase.from('products').insert(current).select().single()
+        res = await query
       }
+
+      if (res.error) {
+        throw new Error(res.error.message)
+      }
+      return res.data
     }
+
+    savedProduct = await executeSave(payloadWithImages)
 
     return NextResponse.json({
       success: true,

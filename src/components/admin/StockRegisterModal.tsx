@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import type { Product } from '@/types/database'
+import { getProductBarcode, matchesProductCode } from '@/lib/barcodeUtils'
 import {
   X,
   Camera,
@@ -213,11 +214,11 @@ export function StockRegisterModal({
       playBeep(980, 0.15)
       triggerHaptic()
 
-      // Buscar coincidencia en productos de la tienda por SKU o ID
+      // Buscar coincidencia en productos de la tienda por SKU, Código de Barras o ID
       const normCode = cleanCode.toLowerCase()
       const found = allProducts.find(
         (p) =>
-          (p.sku && p.sku.toLowerCase() === normCode) ||
+          matchesProductCode(p, normCode) ||
           p.id.toLowerCase() === normCode ||
           p.name.toLowerCase().includes(normCode)
       )
@@ -225,7 +226,7 @@ export function StockRegisterModal({
       if (found) {
         selectProductForAudit(found)
       } else {
-        setScannerError(`Código "${cleanCode}" leído, pero no coincide con ningún SKU registrado. Puedes asignarlo o buscarlo manualmente.`)
+        setScannerError(`Código "${cleanCode}" leído, pero no coincide con ningún SKU ni Código de Barras registrado. Puedes buscarlo manualmente.`)
       }
     },
     [allProducts, playBeep, triggerHaptic]
@@ -242,7 +243,7 @@ export function StockRegisterModal({
     setSaveErrorMsg(null)
   }
 
-  // Procesar imagen con IA
+  // Procesar imagen con IA o escaneo visual
   async function handleImageCapture(file: File) {
     setIsAiAnalyzing(true)
     setAiError(null)
@@ -256,29 +257,55 @@ export function StockRegisterModal({
       setAiImagePreview(base64Url)
 
       try {
-        // 1. Intentar escanear código de barras directamente de la foto en el cliente
-        try {
-          const { Html5Qrcode } = await import('html5-qrcode')
-          const qrScanner = new Html5Qrcode('ai-dummy-scanner')
-          const barcodeResult = await qrScanner.scanFile(file, true)
-          if (barcodeResult) {
-            console.log('Código detectado en foto:', barcodeResult)
-            const matched = allProducts.find(
-              (p) => p.sku && p.sku.toLowerCase() === barcodeResult.toLowerCase().trim()
-            )
-            if (matched) {
-              playBeep(1040, 0.2)
-              triggerHaptic()
-              selectProductForAudit(matched)
-              setIsAiAnalyzing(false)
-              return
+        let detectedBarcodeFromPhoto: string | null = null
+
+        // 1. Intentar decodificar con BarcodeDetector nativo si está disponible en el navegador
+        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+          try {
+            const barcodeDetector = new (window as any).BarcodeDetector({
+              formats: ['qr_code', 'ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'itf'],
+            })
+            const imageBitmap = await createImageBitmap(file)
+            const detected = await barcodeDetector.detect(imageBitmap)
+            if (detected && detected.length > 0 && detected[0].rawValue) {
+              detectedBarcodeFromPhoto = detected[0].rawValue.trim()
             }
+          } catch (bdErr) {
+            console.warn('BarcodeDetector error:', bdErr)
           }
-        } catch {
-          // Continuar con IA si no hay código de barras legible en la foto
         }
 
-        // 2. Invocar endpoint inteligente de visión e inventario
+        // 2. Si no se detectó, intentar con Html5Qrcode.scanFile
+        if (!detectedBarcodeFromPhoto) {
+          try {
+            const { Html5Qrcode } = await import('html5-qrcode')
+            const elementId = 'ai-dummy-scanner'
+            if (document.getElementById(elementId)) {
+              const qrScanner = new Html5Qrcode(elementId)
+              const barcodeResult = await qrScanner.scanFile(file, true)
+              if (barcodeResult) {
+                detectedBarcodeFromPhoto = barcodeResult.trim()
+              }
+            }
+          } catch {
+            // Continuar con IA si no hay código de barras legible en la foto
+          }
+        }
+
+        // Si se detectó código de barras en la foto, contrastar contra el catálogo
+        if (detectedBarcodeFromPhoto) {
+          console.log('Código detectado en foto:', detectedBarcodeFromPhoto)
+          const matched = allProducts.find((p) => matchesProductCode(p, detectedBarcodeFromPhoto!))
+          if (matched) {
+            playBeep(1040, 0.2)
+            triggerHaptic()
+            selectProductForAudit(matched)
+            setIsAiAnalyzing(false)
+            return
+          }
+        }
+
+        // 3. Invocar endpoint inteligente de visión e inventario
         const res = await fetch('/api/ai/product-scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -391,13 +418,15 @@ export function StockRegisterModal({
     }
   }
 
-  // Filtrar productos para búsqueda manual
+  // Filtrar productos para búsqueda manual (por nombre, SKU, código de barras o descripción)
   const filteredManualProducts = allProducts.filter((p) => {
     if (!manualSearch.trim()) return true
     const q = manualSearch.toLowerCase().trim()
+    const bCode = (getProductBarcode(p) || '').toLowerCase()
     return (
       p.name.toLowerCase().includes(q) ||
       (p.sku && p.sku.toLowerCase().includes(q)) ||
+      (bCode && bCode.includes(q)) ||
       (p.description && p.description.toLowerCase().includes(q))
     )
   })
@@ -528,6 +557,12 @@ export function StockRegisterModal({
                         {selectedProduct.sku && (
                           <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold">
                             SKU: {selectedProduct.sku}
+                          </span>
+                        )}
+                        {getProductBarcode(selectedProduct) && (
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold flex items-center gap-1">
+                            <Barcode className="w-3 h-3 text-blue-500" />
+                            {getProductBarcode(selectedProduct)}
                           </span>
                         )}
                         <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
@@ -1133,6 +1168,9 @@ export function StockRegisterModal({
             Finalizar Toma
           </button>
         </div>
+
+        {/* Elemento oculto en el DOM para que Html5Qrcode.scanFile funcione sin error */}
+        <div id="ai-dummy-scanner" className="hidden" style={{ display: 'none' }} />
 
       </div>
     </div>

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import { SplitPaymentModal } from '@/components/admin/SplitPaymentModal'
 import type { Product, CartItem, Customer } from '@/types/database'
+import { getProductBarcode } from '@/lib/barcodeUtils'
 import { Search, Plus, Minus, Trash2, ShoppingCart, Package, ArrowRight, Globe, X, Percent, Tag, Pencil, FileText } from 'lucide-react'
 
 // ─── Cart Reducer ─────────────────────────────────────────────────────────────
@@ -270,9 +271,14 @@ function POSContent() {
   const filtered = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim()
     if (!q) return products
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q)
-    )
+    return products.filter((p) => {
+      const bCode = (getProductBarcode(p) || '').toLowerCase()
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.sku ?? '').toLowerCase().includes(q) ||
+        bCode.includes(q)
+      )
+    })
   }, [products, deferredSearch])
 
   // Descuento global sobre el total de la orden

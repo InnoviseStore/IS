@@ -28,6 +28,7 @@ import {
   Palette
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/formatters'
+import { getProductBarcode } from '@/lib/barcodeUtils'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { detectCategory } from '@/lib/categories'
 
@@ -93,10 +94,12 @@ function InventoryContent() {
   const filtered = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim()
     return products.filter((p) => {
+      const bCode = (getProductBarcode(p) || '').toLowerCase()
       const matchesSearch =
         !q ||
         p.name.toLowerCase().includes(q) ||
-        (p.sku ?? '').toLowerCase().includes(q)
+        (p.sku ?? '').toLowerCase().includes(q) ||
+        bCode.includes(q)
       const cat = detectCategory(p.name, p.description)
       const matchesCategory = selectedCategory === 'all' || cat === selectedCategory
       return matchesSearch && matchesCategory
@@ -300,7 +303,13 @@ function InventoryContent() {
                         <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                           {detectCategory(p.name, p.description)}
                         </span>
-                        {p.sku && <span className="font-mono text-[10px] text-slate-400">#{p.sku}</span>}
+                        {p.sku && <span className="font-mono text-[10px] text-slate-500 font-bold">#{p.sku}</span>}
+                        {getProductBarcode(p) && (
+                          <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-0.5">
+                            <Barcode className="w-3 h-3" />
+                            {getProductBarcode(p)}
+                          </span>
+                        )}
                       </div>
                       <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate mt-0.5">{p.name}</p>
                       
@@ -370,7 +379,7 @@ function InventoryContent() {
               <table className="w-full text-sm">
                 <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                   <tr>
-                    {['Producto', 'Categoría', 'SKU', 'Precio USD', 'Precio VES', 'Costo', 'Margen', 'Stock', 'Estado', 'Fecha Registro', 'Acciones'].map((h) => (
+                    {['Producto', 'Categoría', 'Código / Barras', 'Precio USD', 'Precio VES', 'Costo', 'Margen', 'Stock', 'Estado', 'Fecha Registro', 'Acciones'].map((h) => (
                       <th key={h} className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -401,7 +410,19 @@ function InventoryContent() {
                             {detectCategory(p.name, p.description)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300 text-xs">{p.sku ?? '—'}</td>
+                        <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-slate-800 dark:text-slate-200 font-bold">
+                              {p.sku ? `#${p.sku}` : '—'}
+                            </span>
+                            {getProductBarcode(p) && (
+                              <span className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1 font-semibold">
+                                <Barcode className="w-3 h-3" />
+                                {getProductBarcode(p)}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3.5 font-extrabold text-slate-900 dark:text-white">${p.base_price_usd.toFixed(2)}</td>
                         <td className="px-4 py-3.5 font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap">Bs. {priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">{p.cost_usd ? `$${p.cost_usd.toFixed(2)}` : '—'}</td>

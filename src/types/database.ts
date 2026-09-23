@@ -144,6 +144,7 @@ export interface Product {
   id: string
   tenant_id: string
   sku: string | null
+  barcode?: string | null
   name: string
   description: string | null
   base_price_usd: number

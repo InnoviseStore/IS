@@ -38,6 +38,7 @@ import {
   Users,
   LogIn,
   Calendar,
+  Sparkles,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
@@ -53,6 +54,7 @@ export default function SettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [adminSecurityPin, setAdminSecurityPin] = useState('')
   const [showPin, setShowPin] = useState(false)
+  const [geminiApiKey, setGeminiApiKey] = useState('')
 
   // Estados para gestión de historial de tasas de los últimos días
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -136,6 +138,7 @@ export default function SettingsPage() {
       const settings = (tenant.settings || {}) as Record<string, unknown>
       const about = (settings.about || {}) as Record<string, string>
       setAdminSecurityPin((settings.admin_security_pin as string) || '1234')
+      setGeminiApiKey((settings.gemini_api_key as string) || '')
 
       if (settings.checkout_mode) {
         setCheckoutMode(settings.checkout_mode as 'whatsapp_only' | 'direct_payment')
@@ -260,8 +263,10 @@ export default function SettingsPage() {
       customer_auth_mode?: string
       payment_accounts?: any[]
       whatsapp_automation?: any
+      gemini_api_key?: string | null
     } = {
       phone_whatsapp: phone.trim(),
+      gemini_api_key: geminiApiKey.trim() || null,
       checkout_mode: checkoutMode,
       customer_auth_mode: customerAuthMode,
       payment_accounts: paymentAccounts,
@@ -1342,6 +1347,27 @@ export default function SettingsPage() {
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
                     (Valor predeterminado inicial: <code>1234</code>). Cámbialo por un código seguro y presiona &quot;Guardar Configuración&quot;.
+                  </p>
+                </div>
+
+                {/* Clave de Google Gemini para Visión e Inteligencia Artificial */}
+                <div className="pt-4 border-t border-amber-200/60 dark:border-amber-900/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Google Gemini API Key (IA para Inventario por Foto)</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
+                  </div>
+                  <input
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Permite a la cámara de la toma de inventario reconocer cajas, empaques y marcas con visión artificial de Google. Puedes obtener una clave gratuita en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline font-semibold">Google AI Studio</a>.
                   </p>
                 </div>
               </div>
