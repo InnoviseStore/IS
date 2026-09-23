@@ -180,7 +180,15 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [newColorName, setNewColorName] = useState('')
   const [newColorHex, setNewColorHex] = useState('#000000')
   const [newColorStock, setNewColorStock] = useState('')
+  const [newColorImageUrl, setNewColorImageUrl] = useState('')
+  const [showNewColorUrlInput, setShowNewColorUrlInput] = useState(false)
   const [targetColorIndexForUpload, setTargetColorIndexForUpload] = useState<number | null>(null)
+  const [colorPhotoModal, setColorPhotoModal] = useState<{
+    index: number
+    name: string
+    currentUrl?: string
+  } | null>(null)
+  const [colorUrlInput, setColorUrlInput] = useState('')
 
   // Múltiples fotos
   const initialImages: string[] = (() => {
@@ -384,13 +392,18 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          category: aiSuggestion?.category || apparelGarmentType,
+          category: category.trim() || aiSuggestion?.category || apparelGarmentType,
+          barcode: barcode.trim() || undefined,
+          sku: sku.trim() || undefined,
+          priceUsd: priceUsd ? parseFloat(priceUsd) : undefined,
           apparelAttributes: {
             garmentType: apparelGarmentType,
             gender: apparelGender,
             sizes: apparelSizes,
           },
-          colors: colors.map((c) => ({ name: c.name })),
+          colors: colors.map((c) => ({ name: c.name, hex: c.hex })),
+          tenantId: tenant?.id,
+          tenantSlug: tenant?.slug,
         }),
       })
 
@@ -454,7 +467,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   }
 
   // Métodos para colores
-  function handleAddColor(colorName?: string, hex?: string, initialStock?: number) {
+  function handleAddColor(colorName?: string, hex?: string, initialStock?: number, initialImageUrl?: string) {
     const nameToAdd = (colorName || newColorName).trim()
     if (!nameToAdd) return
     if (colors.some((c) => c.name.toLowerCase() === nameToAdd.toLowerCase())) return
@@ -467,17 +480,26 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
       if (!isNaN(parsed) && parsed >= 0) stockVal = parsed
     }
 
+    const imgToAssign = initialImageUrl || newColorImageUrl.trim() || undefined
+
     setColors((prev) => [
       ...prev,
       {
         name: nameToAdd,
         hex: hex || newColorHex,
         stock: stockVal,
-        image_url: undefined,
+        image_url: imgToAssign,
       },
     ])
+
+    if (imgToAssign && !images.includes(imgToAssign)) {
+      setImages((prev) => [...prev, imgToAssign])
+    }
+
     setNewColorName('')
     setNewColorStock('')
+    setNewColorImageUrl('')
+    setShowNewColorUrlInput(false)
   }
 
   function handleUpdateColorStock(index: number, val: string) {
@@ -507,18 +529,52 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   function handleAssignColorImage(colorIndex: number, imageUrl: string) {
     setColors((prev) => {
       const updated = [...prev]
-      updated[colorIndex] = { ...updated[colorIndex], image_url: imageUrl }
+      updated[colorIndex] = { ...updated[colorIndex], image_url: imageUrl || undefined }
       return updated
     })
   }
 
+  function openColorPhotoModal(index: number) {
+    const item = colors[index]
+    if (!item) return
+    setColorPhotoModal({
+      index,
+      name: item.name,
+      currentUrl: item.image_url,
+    })
+    setColorUrlInput(item.image_url || '')
+  }
+
+  function handleSaveColorUrl() {
+    if (!colorPhotoModal) return
+    const trimmed = colorUrlInput.trim()
+    handleAssignColorImage(colorPhotoModal.index, trimmed)
+    if (trimmed && !images.includes(trimmed)) {
+      setImages((prev) => [...prev, trimmed])
+    }
+    setColorPhotoModal(null)
+    setColorUrlInput('')
+  }
+
+  function handleRemoveColorImage(index: number) {
+    handleAssignColorImage(index, '')
+    if (colorPhotoModal && colorPhotoModal.index === index) {
+      setColorPhotoModal((prev) => prev ? { ...prev, currentUrl: undefined } : null)
+      setColorUrlInput('')
+    }
+  }
+
   async function handleColorFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
-    if (!files || files.length === 0 || targetColorIndexForUpload === null) return
+    const targetIdx = targetColorIndexForUpload ?? colorPhotoModal?.index ?? null
+    if (!files || files.length === 0 || targetIdx === null) return
     try {
       const compressed = await compressImage(files[0])
       setImages((prev) => (prev.includes(compressed) ? prev : [...prev, compressed]))
-      handleAssignColorImage(targetColorIndexForUpload, compressed)
+      handleAssignColorImage(targetIdx, compressed)
+      if (colorPhotoModal) {
+        setColorPhotoModal((prev) => prev ? { ...prev, currentUrl: compressed } : null)
+      }
     } catch {
       setError('Error al procesar la foto para el color.')
     } finally {
@@ -1246,6 +1302,19 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                   />
                   <button
                     type="button"
+                    onClick={() => setShowNewColorUrlInput(!showNewColorUrlInput)}
+                    className={`px-2.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
+                      showNewColorUrlInput || newColorImageUrl.trim()
+                        ? 'bg-blue-50 border-blue-400 text-blue-600 dark:bg-blue-950/60 dark:border-blue-700'
+                        : 'border-slate-300 dark:border-slate-700 text-slate-500 hover:border-slate-400'
+                    }`}
+                    title="Asignar foto por URL a este color"
+                  >
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Foto URL</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleAddColor()}
                     disabled={!newColorName.trim()}
                     className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition disabled:opacity-50 cursor-pointer"
@@ -1254,6 +1323,30 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                   </button>
                 </div>
               </div>
+
+              {/* Input opcional de URL para el nuevo color */}
+              {showNewColorUrlInput && (
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 animate-in fade-in duration-150">
+                  <LinkIcon className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <input
+                    type="url"
+                    value={newColorImageUrl}
+                    onChange={(e) => setNewColorImageUrl(e.target.value)}
+                    placeholder="URL de foto para este color (ej. https://ejemplo.com/foto-color.jpg)…"
+                    className="flex-1 px-2.5 py-1 text-xs bg-transparent border-0 outline-none text-slate-800 dark:text-slate-200 font-medium"
+                  />
+                  {newColorImageUrl.trim() && (
+                    <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 shrink-0">
+                      <img
+                        src={newColorImageUrl.trim()}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Lista de colores configurados */}
               {colors.length > 0 && (
@@ -1291,21 +1384,27 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                             />
                           </div>
 
-                          {/* Miniatura de foto asignada */}
+                          {/* Miniatura de foto asignada o botón para asignar por URL/archivo */}
                           {c.image_url ? (
-                            <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                            <div
+                              onClick={() => openColorPhotoModal(idx)}
+                              className="relative group/cimg w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 cursor-pointer shadow-2xs"
+                              title="Clic para cambiar foto, editar URL o quitar"
+                            >
                               <img src={c.image_url} alt={c.name} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/cimg:opacity-100 flex items-center justify-center text-white transition text-[9px]">
+                                <Camera className="w-3.5 h-3.5" />
+                              </div>
                             </div>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => {
-                                setTargetColorIndexForUpload(idx)
-                                colorFileInputRef.current?.click()
-                              }}
-                              className="px-2 py-1 rounded-lg border border-dashed border-blue-400 text-blue-600 dark:text-blue-400 text-[10px] font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
+                              onClick={() => openColorPhotoModal(idx)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-blue-400 text-blue-600 dark:text-blue-400 text-[10px] font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
+                              title="Asignar foto por URL o archivo"
                             >
-                              + Foto
+                              <LinkIcon className="w-2.5 h-2.5" />
+                              <span>+ Foto</span>
                             </button>
                           )}
 
@@ -1670,6 +1769,163 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
             >
               Cancelar Escaneo
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal flotante de Asignación de Foto a Color (Por URL, archivo o galería) */}
+      {colorPhotoModal && (
+        <div 
+          className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setColorPhotoModal(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 max-w-md w-full shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cabecera */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-5 h-5 rounded-full border border-black/20 shrink-0" 
+                  style={{ backgroundColor: colors[colorPhotoModal.index]?.hex || '#000000' }} 
+                />
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Foto para color: <span className="text-blue-600 dark:text-blue-400">{colorPhotoModal.name}</span>
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setColorPhotoModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Opción 1: Pegar URL */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <LinkIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Pegar enlace o URL de imagen:</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={colorUrlInput}
+                  onChange={(e) => setColorUrlInput(e.target.value)}
+                  placeholder="https://ejemplo.com/foto-de-este-color.jpg"
+                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveColorUrl}
+                  disabled={!colorUrlInput.trim()}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition disabled:opacity-50 cursor-pointer shrink-0"
+                >
+                  Guardar
+                </button>
+              </div>
+
+              {/* Vista previa de URL */}
+              {colorUrlInput.trim() && (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shrink-0">
+                    <img 
+                      src={colorUrlInput.trim()} 
+                      alt="Vista previa" 
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLElement).style.display = 'none' }}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">Vista previa de enlace</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">{colorUrlInput.trim()}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Divisor */}
+            <div className="flex items-center gap-2 text-slate-400 text-[10px] uppercase tracking-wider font-semibold">
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+              <span>Otras opciones</span>
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+            </div>
+
+            {/* Opción 2: Subir archivo */}
+            <div className="flex items-center justify-between gap-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <Upload className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>Subir foto desde el dispositivo / cámara</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTargetColorIndexForUpload(colorPhotoModal.index)
+                  colorFileInputRef.current?.click()
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-bold text-slate-800 dark:text-slate-100 transition cursor-pointer"
+              >
+                Elegir Archivo
+              </button>
+            </div>
+
+            {/* Opción 3: Elegir de la galería principal del producto */}
+            {images.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">
+                  Elegir de las fotos del producto ({images.length}):
+                </span>
+                <div className="flex items-center gap-2 overflow-x-auto py-1">
+                  {images.map((img, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        handleAssignColorImage(colorPhotoModal.index, img)
+                        setColorPhotoModal(null)
+                        setColorUrlInput('')
+                      }}
+                      className={`relative w-12 h-12 rounded-xl overflow-hidden border-2 shrink-0 transition cursor-pointer hover:scale-105 ${
+                        colors[colorPhotoModal.index]?.image_url === img
+                          ? 'border-blue-600 ring-2 ring-blue-500/30'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                      title="Usar esta foto para este color"
+                    >
+                      <img src={img} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Pie de modal con opción de quitar foto */}
+            <div className="pt-2 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+              {colors[colorPhotoModal.index]?.image_url ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRemoveColorImage(colorPhotoModal.index)
+                    setColorPhotoModal(null)
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-700 font-bold transition cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Quitar foto actual</span>
+                </button>
+              ) : (
+                <span className="text-xs text-slate-400">Sin foto asignada</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setColorPhotoModal(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

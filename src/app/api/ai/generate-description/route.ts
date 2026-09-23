@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,12 +15,18 @@ interface ColorItem {
   hex?: string
 }
 
-import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
 export async function POST(req: Request) {
   try {
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor', 'cashier', 'cajero'],
     })
     if (errorResponse || !auth) {
       return errorResponse!
@@ -28,13 +36,23 @@ export async function POST(req: Request) {
     const {
       name,
       category,
+      barcode,
+      sku,
+      priceUsd,
       apparelAttributes,
       colors,
+      tenantId,
+      tenantSlug,
     }: {
       name?: string
       category?: string
+      barcode?: string
+      sku?: string
+      priceUsd?: number
       apparelAttributes?: ApparelAttributes
       colors?: ColorItem[]
+      tenantId?: string
+      tenantSlug?: string
     } = body
 
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -45,38 +63,134 @@ export async function POST(req: Request) {
     }
 
     const cleanName = name.trim()
-    const n = cleanName.toLowerCase()
 
-    // 1. Detect category profile if not provided
+    // Formatear cadenas auxiliares
+    const sizesStr =
+      apparelAttributes?.sizes && apparelAttributes.sizes.length > 0
+        ? apparelAttributes.sizes.join(', ')
+        : ''
+
+    const colorsStr =
+      colors && colors.length > 0
+        ? colors.map((c) => c.name).join(', ')
+        : ''
+
+    const genderStr = apparelAttributes?.gender ? apparelAttributes.gender : ''
+
+    // 1. Obtener posible clave de Gemini (variables de entorno o configuración del tenant)
+    let geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    if (!geminiKey && (tenantId || tenantSlug)) {
+      try {
+        const supabase = getAdminClient()
+        let query = supabase.from('tenants').select('settings')
+        if (tenantId) {
+          query = query.eq('id', tenantId)
+        } else if (tenantSlug) {
+          query = query.eq('slug', tenantSlug)
+        }
+        const { data: tenantData } = await query.maybeSingle()
+        const tSettings = (tenantData?.settings || {}) as Record<string, unknown>
+        geminiKey = (tSettings?.gemini_api_key || tSettings?.google_api_key) as string | undefined
+      } catch (err) {
+        console.warn('Error reading tenant settings for Gemini key:', err)
+      }
+    }
+
+    // 2. Si hay clave de Gemini, invocar investigación profunda con IA
+    if (geminiKey) {
+      try {
+        const prompt = `Eres un redactor técnico y especialista en e-commerce minorista. Tu objetivo es investigar las características reales de este producto e identificar qué lo hace destacar en el mercado para redactar una descripción persuasiva, profesional y técnicamente precisa.
+
+DATOS DEL PRODUCTO:
+- Nombre o Modelo: "${cleanName}"
+${category ? `- Categoría: ${category}` : ''}
+${barcode ? `- Código de Barras / EAN / UPC: ${barcode}` : ''}
+${sku ? `- Código Interno / SKU: ${sku}` : ''}
+${priceUsd ? `- Precio aproximado: $${priceUsd} USD` : ''}
+${colorsStr ? `- Colores / Variantes: ${colorsStr}` : ''}
+${sizesStr ? `- Tallas disponibles: ${sizesStr}` : ''}
+${genderStr ? `- Género / Público objetivo: ${genderStr}` : ''}
+
+PAUTAS DE INVESTIGACIÓN Y REDACCIÓN:
+1. Identifica el tipo de producto y marca (si es visible en el nombre como Apple, Samsung, Xiaomi, JBL, Anker, Sony, Nike, Huawei, Baseus, Lenovo, etc.).
+2. Explica especificaciones técnicas reales esperadas para este tipo de producto (potencia en Watts, protocolos de carga rápida, versiones de conectividad inalámbrica, capacidad, materiales duraderos como aleaciones, silicona líquida o vidrio templado 9H, ergonomía, etc.).
+3. Escribe en un formato estructurado con viñetas en Markdown limpio:
+   - **Párrafo introductorio** (1-2 oraciones atractivas destacando su propuesta de valor).
+   - ✨ **Características Principales** (3 a 5 viñetas concisas con beneficios claros).
+   - ⚙️ **Ficha Técnica & Especificaciones** (datos concretos como conectividad, materiales, compatibilidad o potencia).
+   - 📦 **Compatibilidad & Uso Recomendado** (con qué dispositivos o situaciones funciona mejor).
+${colorsStr ? `   - 🎨 **Colores disponibles**: ${colorsStr}\n` : ''}${sizesStr ? `   - 📏 **Tallas disponibles**: ${sizesStr}\n` : ''}
+4. Tono comercial en español latinoamericano, profesional, claro y vendedor.
+5. NO incluyas introducciones ("Aquí está...", "Claro, con gusto..."), ni bloques de código \`\`\`markdown. Entrega exclusivamente el contenido de la descripción.`
+
+        // Intentar con gemini-1.5-flash y fallback a gemini-2.0-flash
+        const models = ['gemini-1.5-flash', 'gemini-2.0-flash']
+        for (const model of models) {
+          try {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`
+            const geminiRes = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 1200,
+                },
+              }),
+            })
+
+            if (geminiRes.ok) {
+              const gData = await geminiRes.json()
+              const generatedText = gData.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+              if (generatedText && generatedText.length > 50) {
+                const cleanText = generatedText
+                  .replace(/^```markdown\s*/i, '')
+                  .replace(/^```\s*/i, '')
+                  .replace(/\s*```$/i, '')
+                  .trim()
+
+                return NextResponse.json({
+                  success: true,
+                  description: cleanText,
+                  source: 'gemini-ai',
+                })
+              }
+            }
+          } catch (mErr) {
+            console.warn(`Error trying ${model}:`, mErr)
+          }
+        }
+      } catch (geminiError) {
+        console.warn('Error connecting to Gemini for description:', geminiError)
+      }
+    }
+
+    // 3. Fallback Heurístico Avanzado y Enriquecido (cuando no hay clave o falla conexión)
+    const n = cleanName.toLowerCase()
     let profile = 'general'
+
     if (
       category?.toLowerCase().includes('calzado') ||
       category?.toLowerCase().includes('zapato') ||
       n.includes('zapato') ||
       n.includes('sneaker') ||
       n.includes('zapatilla') ||
-      n.includes('calzado') ||
       n.includes('bota') ||
-      n.includes('sandalia') ||
-      n.includes('tacón') ||
-      n.includes('tacon')
+      n.includes('sandalia')
     ) {
       profile = 'footwear'
     } else if (
       category?.toLowerCase().includes('ropa') ||
       category?.toLowerCase().includes('pantalon') ||
       category?.toLowerCase().includes('camisa') ||
-      category?.toLowerCase().includes('prenda') ||
+      category?.toLowerCase().includes('franela') ||
       n.includes('franela') ||
       n.includes('pantalon') ||
       n.includes('pantalón') ||
       n.includes('jean') ||
       n.includes('camisa') ||
       n.includes('vestido') ||
-      n.includes('falda') ||
-      n.includes('short') ||
-      n.includes('blusa') ||
-      n.includes('sweater') ||
       n.includes('chaqueta')
     ) {
       profile = 'apparel'
@@ -89,164 +203,131 @@ export async function POST(req: Request) {
       n.includes('auricular') ||
       n.includes('altavoz') ||
       n.includes('corneta') ||
-      n.includes('speaker') ||
-      n.includes('earbud') ||
-      n.includes('soundbar')
+      n.includes('soundbar') ||
+      n.includes('tws')
     ) {
       profile = 'audio'
     } else if (
-      category?.toLowerCase().includes('funda') ||
-      category?.toLowerCase().includes('case') ||
-      category?.toLowerCase().includes('protector') ||
-      category?.toLowerCase().includes('mica') ||
-      category?.toLowerCase().includes('cable') ||
       category?.toLowerCase().includes('cargador') ||
-      n.includes('funda') ||
-      n.includes('case') ||
-      n.includes('protector') ||
-      n.includes('mica') ||
-      n.includes('vidrio') ||
+      category?.toLowerCase().includes('cable') ||
       n.includes('cargador') ||
       n.includes('cable') ||
       n.includes('adaptador') ||
-      n.includes('powerbank')
+      n.includes('powerbank') ||
+      n.includes('usb')
     ) {
-      profile = 'accessories'
+      profile = 'charging'
+    } else if (
+      category?.toLowerCase().includes('vidrio') ||
+      category?.toLowerCase().includes('mica') ||
+      category?.toLowerCase().includes('protector') ||
+      category?.toLowerCase().includes('funda') ||
+      category?.toLowerCase().includes('case') ||
+      n.includes('vidrio') ||
+      n.includes('mica') ||
+      n.includes('funda') ||
+      n.includes('case') ||
+      n.includes('protector')
+    ) {
+      profile = 'protection'
     } else if (
       n.includes('reloj') ||
       n.includes('smartwatch') ||
-      n.includes('band') ||
-      n.includes('pulsera')
+      n.includes('band')
     ) {
       profile = 'smartwatch'
     } else if (
       n.includes('bolso') ||
-      n.includes('cartera') ||
       n.includes('mochila') ||
       n.includes('morral') ||
-      n.includes('billetera')
+      n.includes('cartera')
     ) {
       profile = 'bags'
     }
 
     let description = ''
 
-    // Helper for sizes string
-    const sizesStr =
-      apparelAttributes?.sizes && apparelAttributes.sizes.length > 0
-        ? apparelAttributes.sizes.join(', ')
-        : ''
+    if (profile === 'charging') {
+      description = `Optimiza la energía de tus dispositivos con ${cleanName}. Diseñado con componentes de alta conductividad y protección electrónica de vanguardia para garantizar cargas estables, rápidas y seguras en todo momento.
 
-    const colorsStr =
-      colors && colors.length > 0
-        ? colors.map((c) => c.name).join(', ')
-        : ''
+✨ Características Principales:
+• Transferencia de corriente eficiente con disipación térmica optimizada para evitar sobrecalentamientos.
+• Conectores reforzados con alivio de tensión para máxima resistencia a la flexión y tirones accidentales.
+• Protección contra sobrevoltaje, cortocircuito y fluctuaciones de energía.
 
-    const genderStr = apparelAttributes?.gender
-      ? ` (${apparelAttributes.gender})`
-      : ''
+⚙️ Especificaciones Técnicas:
+• Compatibilidad: Dispositivos con puerto USB / Tipo-C / Lightning según corresponda.
+• Construcción de alta durabilidad con recubrimiento ignífugo y pines de contacto blindados.`
+    } else if (profile === 'protection') {
+      description = `Brinda a tu equipo la protección superior que merece con ${cleanName}. Elaborado para absorber impactos directos y preservar la estética original de tu pantalla y chasis sin añadir volumen innecesario.
 
-    if (profile === 'footwear') {
-      description = `Descubre el equilibrio perfecto entre estilo, confort y durabilidad con ${cleanName}${genderStr}. Diseñado para adaptarse a tu ritmo diario con una pisada amortiguada y un acabado moderno que combina con cualquier outfit casual o deportivo.
+✨ Beneficios Clave:
+• Resistencia de alto nivel contra golpes, rayones de llaves y caídas cotidianas.
+• Claridad visual absoluta con revestimiento oleofóbico que minimiza las huellas dactilares y manchas de grasa.
+• Calce exacto con recortes milimétricos para botones, cámaras y puertos.
 
-✨ Características destacadas:
-• Suela antiderrapante con gran tracción y resistencia al desgaste.
-• Interior acolchado y plantilla ergonómica para máximo confort durante todo el día.
-• Materiales de alta calidad, ligeros y transpirables.`
+⚙️ Especificaciones:
+• Material: Polímero de alta resistencia / Vidrio templado templado térmicamente.
+• Instalación rápida y libre de burbujas con adherencia total.`
+    } else if (profile === 'audio') {
+      description = `Experimenta una acústica envolvente y nítida con ${cleanName}. Creado para los amantes del buen sonido, ofrece graves profundos, agudos definidos y una reproducción balanceada para tu música, series y llamadas.
 
-      if (sizesStr) {
-        description += `\n• Tallas disponibles: ${sizesStr}.`
-      }
-      if (colorsStr) {
-        description += `\n• Variantes de color: ${colorsStr}.`
-      }
-      description += `\n\nIdeal para uso diario, salidas casuales o entrenamientos. ¡Añádelo a tu colección!`
+✨ Puntos Destacados:
+• Transductores de alta precisión para un audio balanceado sin distorsión a volumen elevado.
+• Conectividad inalámbrica estable de baja latencia para disfrutar de videos y videojuegos sin desfase.
+• Micrófono integrado de alta fidelidad para llamadas telefónicas y notas de voz transparentes.
+• Batería eficiente para múltiples horas de reproducción continua.`
+    } else if (profile === 'footwear') {
+      description = `Disfruta del máximo confort y estilo contemporáneo con ${cleanName}. Concebido para adaptarse a tu ritmo diario, combinando amortiguación superior con un diseño versátil para cualquier ocasión.
+
+✨ Aspectos Destacados:
+• Suela antideslizante con dibujo de tracción profunda para máxima adherencia en diversas superficies.
+• Plantilla ergonómica que distribuye el peso de la pisada, reduciendo la fatiga al caminar o entrenar.
+• Materiales exteriores transpirables que mantienen el pie fresco y cómodo todo el día.`
     } else if (profile === 'apparel') {
       const garment = apparelAttributes?.garmentType || 'prenda'
-      description = `Eleva tu estilo cotidiano con ${cleanName}${genderStr}. Confeccionado pensando en la comodidad y la frescura, este ${garment} ofrece un ajuste favorecedor y una textura suave al contacto con la piel.
+      description = `Eleva tu estilo con ${cleanName}. Este ${garment} destaca por su confección de alta calidad, textura suave al tacto y corte ergonómico que favorece la silueta con total libertad de movimiento.
 
-✨ Aspectos destacados:
-• Tejido premium de alta durabilidad que mantiene su forma y color tras cada lavado.
-• Corte moderno y versátil, fácil de combinar para ocasiones formales o casuales.
-• Costuras reforzadas para un acabado impecable y máxima resistencia.`
-
-      if (sizesStr) {
-        description += `\n• Tallas disponibles: ${sizesStr}.`
-      }
-      if (colorsStr) {
-        description += `\n• Tonos y colores: ${colorsStr}.`
-      }
-      description += `\n\nUna prenda esencial y cómoda para lucir siempre impecable.`
-    } else if (profile === 'audio') {
-      description = `Disfruta de una experiencia sonora envolvente y de alta fidelidad con ${cleanName}. Diseñado para los amantes de la buena música, llamadas nítidas y entretenimiento continuo con graves profundos y agudos balanceados.
-
-✨ Especificaciones principales:
-• Sonido estéreo de alta resolución con cancelación de ruido pasiva/activa.
-• Conectividad inalámbrica rápida y estable, compatible con iOS, Android y computadoras.
-• Batería de larga duración para horas continuas de reproducción y carga rápida.
-• Diseño ergonómico, liviano y portátil para llevar a donde vayas.`
-
-      if (colorsStr) {
-        description += `\n• Colores disponibles: ${colorsStr}.`
-      }
-      description += `\n\n¡Lleva tu música favorita al siguiente nivel!`
-    } else if (profile === 'accessories') {
-      description = `Protege y complementa tus dispositivos con ${cleanName}. Fabricado con materiales de grado superior que garantizan máxima protección contra caídas, rayones y el desgaste diario sin perder la elegancia.
-
-✨ Beneficios clave:
-• Protección robusta de alto impacto con perfil estilizado.
-• Ajuste milimétrico y acceso total a todos los puertos, botones y funciones.
-• Acabado suave al tacto con agarre antideslizante para evitar caídas accidentales.
-• Durabilidad garantizada y fácil instalación.`
-
-      if (colorsStr) {
-        description += `\n• Colores disponibles: ${colorsStr}.`
-      }
-      description += `\n\nEl accesorio indispensable para mantener tu equipo seguro y como nuevo.`
+✨ Características:
+• Tejido premium resistente al desgaste que conserva forma y color tras continuas lavadas.
+• Acabados y costuras reforzadas pensadas para brindar durabilidad y distinción.
+• Versatilidad ideal tanto para el día a día como para ocasiones especiales.`
     } else if (profile === 'smartwatch') {
-      description = `Monitorea tu salud, actividad física y mantente conectado en todo momento con ${cleanName}. Un smartwatch versátil, elegante y funcional que te acompaña en tus entrenamientos y jornadas diarias.
+      description = `Mantén el control de tu salud, entrenamientos y notificaciones en tu muñeca con ${cleanName}. Combina tecnología de monitoreo biométrico con una interfaz intuitiva y elegante.
 
-✨ Funciones destacadas:
-• Pantalla táctil de alta definición con excelente visibilidad bajo la luz del sol.
-• Monitoreo de pasos, ritmo cardíaco, calidad del sueño y modos deportivos.
-• Notificaciones en tiempo real de llamadas, mensajes y aplicaciones favoritas.
-• Batería de larga autonomía y resistencia al sudor y salpicaduras.`
-
-      if (colorsStr) {
-        description += `\n• Opciones de color: ${colorsStr}.`
-      }
-      description += `\n\n¡Tu compañero ideal para un estilo de vida activo y conectado!`
+✨ Funcionalidades Clave:
+• Sensores biométricos para medición de pasos, frecuencia cardíaca y monitoreo de descanso.
+• Sincronización continua de llamadas, mensajes y notificaciones de aplicaciones en tiempo real.
+• Batería de gran autonomía con modo de ahorro de energía y resistencia a salpicaduras diarias.`
     } else if (profile === 'bags') {
-      description = `Organiza y transporta tus pertenencias con total seguridad y estilo gracias a ${cleanName}. Creado para quienes buscan practicidad, durabilidad y un diseño contemporáneo.
+      description = `Transporta y resguarda tus artículos personales y tecnología con ${cleanName}. Diseñado con un enfoque funcional para el estilo de vida urbano, combinando practicidad y resistencia.
 
-✨ Características clave:
-• Compartimentos inteligentes de amplia capacidad y bolsillos de fácil acceso.
-• Material impermeable y resistente al desgarro con cierres reforzados de alta calidad.
-• Correas ergonómicas y acolchadas para un transporte cómodo y sin fatiga.`
-
-      if (colorsStr) {
-        description += `\n• Colores y modelos: ${colorsStr}.`
-      }
-      description += `\n\nPerfecto para el trabajo, universidad, viajes o salidas del día a día.`
+✨ Características:
+• Compartimentos interiores acolchados diseñados para proteger laptops, tablets y accesorios.
+• Tejido impermeable de alta densidad resistente a rasgaduras y salpicaduras de lluvia.
+• Correas ajustables ergonómicas para una distribución cómoda del peso.`
     } else {
-      // General commercial copy
-      description = `Descubre la calidad, practicidad y rendimiento que te ofrece ${cleanName}. Diseñado con altos estándares para brindarte una solución confiable, moderna y duradera que supera tus expectativas.
+      description = `Descubre el rendimiento, practicidad y calidad que ofrece ${cleanName}. Fabricado con estándares estrictos para ofrecerte una solución confiable y moderna que supera tus expectativas diarias.
 
-✨ Características principales:
-• Fabricado con materiales de primera calidad para una vida útil prolongada.
-• Diseño funcional, ergonómico y pensado en la facilidad de uso cotidiano.
-• Excelente relación precio-calidad con total garantía de satisfacción.`
-
-      if (colorsStr) {
-        description += `\n• Variantes disponibles: ${colorsStr}.`
-      }
-      description += `\n\n¡Un producto garantizado listo para enriquecer tu día a día!`
+✨ Beneficios Destacados:
+• Construcción de primera categoría diseñada para una vida útil prolongada y uso continuo.
+• Diseño funcional, ergonómico y fácil de integrar en tus rutinas cotidianas.
+• Excelente relación precio-rendimiento con total respaldo de satisfacción.`
     }
+
+    if (colorsStr) {
+      description += `\n\n🎨 Variantes de Color: ${colorsStr}.`
+    }
+    if (sizesStr) {
+      description += `\n📏 Tallas Disponibles: ${sizesStr}.`
+    }
+
+    description += `\n\n📦 Producto garantizado. ¡Listo para entrega inmediata!`
 
     return NextResponse.json({
       success: true,
       description,
-      profile,
+      source: 'enhanced-heuristic',
     })
   } catch (err) {
     console.error('Error generating description:', err)
