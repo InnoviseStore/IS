@@ -137,28 +137,35 @@ function InventoryContent() {
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-8">
-      {/* Header Responsivo */}
+      {/* Header Unificado y Limpio */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">Inventario</h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">{products.length} productos registrados</p>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+            {products.length} productos registrados {products.filter(p => p.stock < 5).length > 0 && (
+              <span className="text-amber-600 dark:text-amber-400 font-bold">
+                · {products.filter(p => p.stock < 5).length} con stock bajo
+              </span>
+            )}
+          </p>
         </div>
+
+        {/* Botones de Acción Clave */}
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          {/* Botón Registrar Inv (Auditoría / Ajuste / IA) */}
+          {/* Botón Auditoría / Toma con Cámara & IA */}
           <button
             type="button"
             onClick={() => setStockRegisterOpen(true)}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-extrabold shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer shrink-0"
-            title="Toma física de inventario: verificar y ajustar stock con código de barras o foto con IA"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-extrabold shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer shrink-0"
+            title="Toma física de inventario con cámara o foto con IA"
           >
             <Barcode className="w-4 h-4 shrink-0" />
-            <span>Registrar Inv</span>
-            <span className="hidden sm:inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/20 text-white">
-              Cámara & IA
-            </span>
+            <span>Auditoría / IA</span>
           </button>
 
+          {/* Botón Importar */}
           <button
+            type="button"
             onClick={() => {
               if (!features.hasBulkImport) {
                 alert('La importación masiva en Excel/CSV es una función exclusiva a partir del Plan Pro. Contacta al Administrador de la plataforma para actualizar tu suscripción.')
@@ -166,56 +173,24 @@ function InventoryContent() {
               }
               setImportModalOpen(true)
             }}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer shadow-xs"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer shadow-xs shrink-0"
             title={!features.hasBulkImport ? 'Función exclusiva de Plan Pro' : 'Importar productos desde Excel/CSV'}
           >
             <UploadCloud className="w-3.5 h-3.5" />
             <span>Importar</span>
             {!features.hasBulkImport && <Lock className="w-2.5 h-2.5 text-slate-400" />}
           </button>
+
+          {/* Botón Agregar Producto */}
           <button
+            type="button"
             onClick={openCreate}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold transition-all duration-200 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold transition-all duration-200 active:scale-95 shadow-md shadow-blue-500/25 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>Agregar</span>
+            <span>+ Nuevo</span>
           </button>
         </div>
-      </div>
-
-      {/* Sub-menú de Navegación de Inventario (Tabs) */}
-      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 w-full sm:w-fit overflow-x-auto shadow-xs">
-        <button
-          type="button"
-          onClick={() => {
-            setStockRegisterOpen(false)
-            router.push('/admin/inventory')
-          }}
-          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition cursor-pointer whitespace-nowrap ${
-            !stockRegisterOpen
-              ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <Package className="w-4 h-4" />
-          <span>Catálogo de Productos ({products.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setStockRegisterOpen(true)}
-          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition cursor-pointer whitespace-nowrap ${
-            stockRegisterOpen
-              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
-          }`}
-        >
-          <Barcode className="w-4 h-4" />
-          <span>Registrar Inv (Toma & Auditoría)</span>
-          <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500 text-white shadow-xs">
-            NUEVO
-          </span>
-        </button>
       </div>
 
       {/* Alerta de Éxito al Eliminar */}

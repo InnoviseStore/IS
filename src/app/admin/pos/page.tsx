@@ -497,11 +497,22 @@ function POSContent() {
             </div>
           )}
 
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/80 dark:border-slate-800/80 flex-shrink-0">
-            <h2 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              Ticket de Venta {totalQuantity > 0 && `(${totalQuantity})`}
-            </h2>
+          {/* Header del Ticket con botón para volver a catálogo en móvil */}
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/80 dark:border-slate-800/80 flex-shrink-0 gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileTab('catalog')}
+                className="md:hidden inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-2.5 py-1 rounded-xl transition cursor-pointer"
+                title="Volver al catálogo"
+              >
+                ← Catálogo
+              </button>
+              <h2 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-1.5">
+                <ShoppingCart className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>Ticket {totalQuantity > 0 && `(${totalQuantity})`}</span>
+              </h2>
+            </div>
             {cart.length > 0 && (
               <button 
                 onClick={() => {
@@ -511,9 +522,9 @@ function POSContent() {
                     router.replace('/admin/pos')
                   }
                 }} 
-                className="text-xs font-semibold text-rose-500 hover:text-rose-600 transition cursor-pointer p-1"
+                className="text-xs font-semibold text-rose-500 hover:text-rose-600 transition cursor-pointer px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
               >
-                Vaciar
+                Vaciar ticket
               </button>
             )}
           </div>
@@ -832,22 +843,22 @@ function POSContent() {
         </div>
       </div>
 
-      {/* Floating Action Bar para Celulares (<md) */}
+      {/* Floating Action Bar para Celulares (<md) - Centrado y Elevado sobre la barra de navegación */}
       {cart.length > 0 && mobileTab === 'catalog' && (
-        <div className="md:hidden fixed bottom-4 left-4 right-4 z-40 animate-in slide-in-from-bottom-3 duration-200">
+        <div className="md:hidden fixed bottom-20 left-4 right-4 max-w-sm mx-auto z-30 animate-in slide-in-from-bottom-3 duration-200">
           <button
             onClick={() => setMobileTab('ticket')}
-            className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/30 active:scale-[0.98] transition cursor-pointer font-bold"
+            className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-700 hover:to-indigo-700 text-white shadow-2xl shadow-blue-600/40 active:scale-[0.98] transition cursor-pointer font-bold border border-white/20"
           >
-            <div className="flex items-center gap-2">
-              <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs font-black">
-                {totalQuantity}
+            <div className="flex items-center gap-2.5">
+              <span className="bg-white/25 px-2 py-0.5 rounded-xl text-xs font-black shadow-xs">
+                {totalQuantity} {totalQuantity === 1 ? 'ítem' : 'ítems'}
               </span>
-              <span className="text-sm">Ver Ticket</span>
+              <span className="text-sm tracking-tight">Ver Ticket</span>
             </div>
             <div className="text-right">
-              <span className="text-sm font-extrabold">${totalUsd.toFixed(2)} USD</span>
-              <span className="text-[10px] text-blue-100 block font-normal">
+              <span className="text-sm font-black">${totalUsd.toFixed(2)} USD</span>
+              <span className="text-[10px] text-blue-100 block font-medium">
                 Bs. {totalVes.toLocaleString('es-VE', { maximumFractionDigits: 0 })}
               </span>
             </div>

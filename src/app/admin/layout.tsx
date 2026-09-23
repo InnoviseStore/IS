@@ -639,64 +639,100 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           )}
         </main>
 
-        {/* Barra de Navegación Rápida Móvil (Dinámica según el Rol verificado) */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+        {/* Barra de Navegación Rápida Móvil con POS Centrado en el Medio */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-2 py-1 flex items-center justify-between shadow-2xl safe-area-bottom">
           {isLoading || !profile ? (
             <div className="flex items-center justify-around w-full py-2 animate-pulse">
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="w-10 h-8 rounded-lg bg-slate-200/60 dark:bg-slate-800/60" />
               ))}
             </div>
           ) : (
-            <>
-              {/* Módulos principales autorizados para el rol del usuario */}
-              {navItems.slice(0, 3).map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
-                const isPos = item.href === '/admin/pos'
+            (() => {
+              const posItem = navItems.find((n) => n.href === '/admin/pos')
+              const otherItems = navItems.filter((n) => n.href !== '/admin/pos')
+              const left1 = otherItems[0] || null
+              const left2 = otherItems[1] || null
+              const right1 = otherItems[2] || null
+              const isPosActive = pathname.startsWith('/admin/pos')
 
-                if (isPos) {
-                  return (
+              return (
+                <div className="w-full flex items-center justify-between">
+                  {/* Slot 1: Primer elemento izquierdo */}
+                  {left1 ? (
                     <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex flex-col items-center justify-center -mt-3.5 p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/35 active:scale-95 transition ${
-                        isActive ? 'ring-2 ring-blue-400' : ''
+                      href={left1.href}
+                      className={`flex-1 flex flex-col items-center justify-center py-1 transition ${
+                        pathname === left1.href
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
-                      title={item.label}
                     >
-                      <Icon className="w-5 h-5" />
-                      <span className="text-[9px] font-extrabold mt-0.5">POS</span>
+                      <left1.icon className="w-5 h-5" />
+                      <span className="text-[10px] mt-0.5 max-w-[56px] truncate text-center font-medium">{left1.label}</span>
                     </Link>
-                  )
-                }
+                  ) : <div className="flex-1" />}
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition ${
-                      isActive
-                        ? 'text-blue-600 dark:text-blue-400 font-bold'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                    }`}
+                  {/* Slot 2: Segundo elemento izquierdo */}
+                  {left2 ? (
+                    <Link
+                      href={left2.href}
+                      className={`flex-1 flex flex-col items-center justify-center py-1 transition ${
+                        pathname.startsWith(left2.href) && left2.href !== '/admin'
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : pathname === left2.href
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <left2.icon className="w-5 h-5" />
+                      <span className="text-[10px] mt-0.5 max-w-[56px] truncate text-center font-medium">{left2.label}</span>
+                    </Link>
+                  ) : <div className="flex-1" />}
+
+                  {/* Slot 3: CENTRO EXACTO -> POS ELEVADO */}
+                  <div className="flex-1 flex items-center justify-center">
+                    {posItem ? (
+                      <Link
+                        href={posItem.href}
+                        className={`flex flex-col items-center justify-center -mt-5 p-3 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 text-white shadow-xl shadow-blue-500/40 active:scale-95 transition-transform ${
+                          isPosActive ? 'ring-3 ring-blue-400/80 ring-offset-2 dark:ring-offset-slate-900 scale-105' : ''
+                        }`}
+                        title="Punto de Venta / Facturación"
+                      >
+                        <ShoppingCart className="w-5 h-5 stroke-[2.5]" />
+                        <span className="text-[10px] font-black mt-0.5 tracking-tight">POS</span>
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {/* Slot 4: Primer elemento derecho */}
+                  {right1 ? (
+                    <Link
+                      href={right1.href}
+                      className={`flex-1 flex flex-col items-center justify-center py-1 transition ${
+                        pathname.startsWith(right1.href)
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <right1.icon className="w-5 h-5" />
+                      <span className="text-[10px] mt-0.5 max-w-[56px] truncate text-center font-medium">{right1.label}</span>
+                    </Link>
+                  ) : <div className="flex-1" />}
+
+                  {/* Slot 5: Menú Lateral Completo */}
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(true)}
+                    className="flex-1 flex flex-col items-center justify-center py-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer"
                   >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-[10px] mt-0.5 max-w-[60px] truncate text-center">{item.label}</span>
-                  </Link>
-                )
-              })}
-
-              {/* Botón Menú Completo Lateral */}
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer"
-              >
-                <Menu className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Menú</span>
-              </button>
-            </>
+                    <Menu className="w-5 h-5" />
+                    <span className="text-[10px] mt-0.5 font-medium">Menú</span>
+                  </button>
+                </div>
+              )
+            })()
           )}
         </nav>
 
