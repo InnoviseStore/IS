@@ -85,6 +85,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const userRole = (profile?.role || null) as UserRole | null
   const isSuperAdmin = userRole === 'superadmin'
 
+  const currentPath = pathname || ''
+
   // Filtrar elementos de navegación según el rol verificado del usuario (vacío mientras carga)
   const navItems = useMemo(() => {
     if (!userRole) return []
@@ -98,9 +100,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     if (!userRole) return false
     const allowedHrefs = navItems.map((n) => n.href.split('?')[0])
     return allowedHrefs.some(
-      (href) => pathname === href || (href !== '/admin' && pathname.startsWith(href))
+      (href) => currentPath === href || (href !== '/admin' && currentPath.startsWith(href))
     )
-  }, [userRole, navItems, pathname])
+  }, [userRole, navItems, currentPath])
 
   // Page Guard: Redirigir de inmediato si el rol no tiene permiso para la ruta actual
   useEffect(() => {
@@ -339,8 +341,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             const isRegister = href.includes('mode=register')
             const isMaster = href === '/admin/master'
             const active = isRegister
-              ? pathname === '/admin/inventory' && typeof window !== 'undefined' && window.location.search.includes('mode=register')
-              : (pathname === href || (href !== '/admin' && !href.includes('?') && pathname.startsWith(href)))
+              ? currentPath === '/admin/inventory' && typeof window !== 'undefined' && window.location.search.includes('mode=register')
+              : (currentPath === href || (href !== '/admin' && !href.includes('?') && currentPath.startsWith(href)))
 
             return (
               <Link
@@ -506,7 +508,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="hidden md:block text-sm font-semibold text-slate-700 dark:text-slate-200">
-            {navItems.find((n) => pathname === n.href || (n.href !== '/admin' && pathname.startsWith(n.href)))?.label ?? 'Dashboard'}
+            {navItems.find((n) => currentPath === n.href || (n.href !== '/admin' && currentPath.startsWith(n.href)))?.label ?? 'Dashboard'}
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
@@ -654,38 +656,45 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               const left1 = otherItems[0] || null
               const left2 = otherItems[1] || null
               const right1 = otherItems[2] || null
-              const isPosActive = pathname.startsWith('/admin/pos')
+              const isPosActive = currentPath.startsWith('/admin/pos')
+
+              const Left1Icon = left1?.icon
+              const Left2Icon = left2?.icon
+              const Right1Icon = right1?.icon
+              const PosIcon = posItem?.icon || ShoppingCart
+
+              const isLeft1Active = left1 ? (currentPath === left1.href || (left1.href !== '/admin' && currentPath.startsWith(left1.href))) : false
+              const isLeft2Active = left2 ? (currentPath === left2.href || (left2.href !== '/admin' && currentPath.startsWith(left2.href))) : false
+              const isRight1Active = right1 ? (currentPath === right1.href || (right1.href !== '/admin' && currentPath.startsWith(right1.href))) : false
 
               return (
                 <div className="w-full flex items-center justify-between">
                   {/* Slot 1: Primer elemento izquierdo */}
-                  {left1 ? (
+                  {left1 && Left1Icon ? (
                     <Link
                       href={left1.href}
                       className={`flex-1 flex flex-col items-center justify-center py-1 transition ${
-                        pathname === left1.href
+                        isLeft1Active
                           ? 'text-blue-600 dark:text-blue-400 font-bold'
                           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                     >
-                      <left1.icon className="w-5 h-5" />
+                      <Left1Icon className="w-5 h-5" />
                       <span className="text-[10px] mt-0.5 max-w-[56px] truncate text-center font-medium">{left1.label}</span>
                     </Link>
                   ) : <div className="flex-1" />}
 
                   {/* Slot 2: Segundo elemento izquierdo */}
-                  {left2 ? (
+                  {left2 && Left2Icon ? (
                     <Link
                       href={left2.href}
                       className={`flex-1 flex flex-col items-center justify-center py-1 transition ${
-                        pathname.startsWith(left2.href) && left2.href !== '/admin'
-                          ? 'text-blue-600 dark:text-blue-400 font-bold'
-                          : pathname === left2.href
+                        isLeft2Active
                           ? 'text-blue-600 dark:text-blue-400 font-bold'
                           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                     >
-                      <left2.icon className="w-5 h-5" />
+                      <Left2Icon className="w-5 h-5" />
                       <span className="text-[10px] mt-0.5 max-w-[56px] truncate text-center font-medium">{left2.label}</span>
                     </Link>
                   ) : <div className="flex-1" />}
@@ -700,23 +709,23 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                         }`}
                         title="Punto de Venta / Facturación"
                       >
-                        <ShoppingCart className="w-5 h-5 stroke-[2.5]" />
+                        <PosIcon className="w-5 h-5 stroke-[2.5]" />
                         <span className="text-[10px] font-black mt-0.5 tracking-tight">POS</span>
                       </Link>
                     ) : null}
                   </div>
 
                   {/* Slot 4: Primer elemento derecho */}
-                  {right1 ? (
+                  {right1 && Right1Icon ? (
                     <Link
                       href={right1.href}
                       className={`flex-1 flex flex-col items-center justify-center py-1 transition ${
-                        pathname.startsWith(right1.href)
+                        isRight1Active
                           ? 'text-blue-600 dark:text-blue-400 font-bold'
                           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                     >
-                      <right1.icon className="w-5 h-5" />
+                      <Right1Icon className="w-5 h-5" />
                       <span className="text-[10px] mt-0.5 max-w-[56px] truncate text-center font-medium">{right1.label}</span>
                     </Link>
                   ) : <div className="flex-1" />}

@@ -206,7 +206,7 @@ export default function AdminDashboard() {
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  {allTenants.length} comercios registrados en la plataforma
+                  {(allTenants || []).length} comercios registrados en la plataforma
                 </p>
               </div>
             </div>
@@ -222,7 +222,7 @@ export default function AdminDashboard() {
                   }}
                   className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer max-w-[160px] truncate"
                 >
-                  {allTenants.map((t) => (
+                  {(allTenants || []).map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} {t.id === tenant?.id ? '(Activa)' : ''}
                     </option>
