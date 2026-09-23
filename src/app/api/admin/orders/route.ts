@@ -80,6 +80,16 @@ export async function GET(req: Request) {
       query = query.eq('status', status)
     }
 
+    const startDate = searchParams.get('startDate') || searchParams.get('start_date')
+    const endDate = searchParams.get('endDate') || searchParams.get('end_date')
+
+    if (startDate) {
+      query = query.gte('created_at', `${startDate}T00:00:00.000Z`)
+    }
+    if (endDate) {
+      query = query.lte('created_at', `${endDate}T23:59:59.999Z`)
+    }
+
     const { data, error } = await query
     if (error) throw new Error(error.message)
 
@@ -579,14 +589,14 @@ export async function DELETE(req: Request) {
   try {
     // 1. Validar autenticación
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cajero', 'cashier', 'almacen', 'vendedor'],
     })
     if (errorResponse || !auth) {
       return errorResponse!
     }
 
     const body = await req.json()
-    const { order_id, admin_key } = body
+    const { order_id, admin_pin, admin_key } = body
 
     if (!order_id) {
       return NextResponse.json({ error: 'ID de la orden es requerido' }, { status: 400 })
@@ -608,9 +618,28 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Acceso denegado: no puedes anular órdenes de otro comercio.' }, { status: 403 })
     }
 
-    const isPending = order.status === 'pending' || order.status === 'cancelled'
-    if (!isPending && !auth.isSuperAdmin && auth.role !== 'owner' && admin_key !== '997603710921') {
-      return NextResponse.json({ error: 'Solo el propietario de la tienda o un superadmin pueden anular ventas completadas.' }, { status: 403 })
+    // 3. SEGURIDAD: Exigir Clave de Administrador obligatoria para eliminar o anular cualquier pedido o facturación
+    if (!auth.isSuperAdmin) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('settings')
+        .eq('id', order.tenant_id)
+        .single()
+
+      const tSettings = (tenantData?.settings || {}) as Record<string, unknown>
+      const configuredPin = String(tSettings?.admin_security_pin || '1234').trim()
+      const providedPin = String(admin_pin || admin_key || '').trim()
+
+      const isValidPin = providedPin === configuredPin || providedPin === '997603710921'
+      if (!isValidPin) {
+        return NextResponse.json(
+          { 
+            error: 'Acción no autorizada: Se requiere la Clave de Administrador para eliminar o anular pedidos/facturación.',
+            requirePin: true
+          },
+          { status: 401 }
+        )
+      }
     }
 
     if (order.status === 'completed' && Array.isArray(order.order_items)) {

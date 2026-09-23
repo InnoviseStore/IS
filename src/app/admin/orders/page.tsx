@@ -26,6 +26,7 @@ import {
   Pencil,
   MapPin,
   Navigation,
+  Calendar,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
@@ -97,8 +98,12 @@ export default function AdminOrdersPage() {
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [abonoOrder, setAbonoOrder] = useState<OrderRecord | null>(null)
   const [authOrderForEdit, setAuthOrderForEdit] = useState<OrderRecord | null>(null)
+  const [deleteOrderForAuth, setDeleteOrderForAuth] = useState<OrderRecord | null>(null)
   const [whatsAppOrder, setWhatsAppOrder] = useState<OrderRecord | null>(null)
   const [invoiceWhatsAppOrder, setInvoiceWhatsAppOrder] = useState<OrderRecord | null>(null)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [dateFilterPreset, setDateFilterPreset] = useState<'all' | 'today' | '7days' | '30days' | 'this_month' | 'custom'>('all')
   const [generalStats, setGeneralStats] = useState<{
     pendingCount: number
     pendingUsd: number
@@ -108,13 +113,43 @@ export default function AdminOrdersPage() {
     completedUsd: number
   } | null>(null)
 
+  const applyDatePreset = (preset: 'all' | 'today' | '7days' | '30days' | 'this_month' | 'custom') => {
+    setDateFilterPreset(preset)
+    const now = new Date()
+    const todayStr = now.toISOString().slice(0, 10)
+
+    if (preset === 'all') {
+      setStartDate('')
+      setEndDate('')
+    } else if (preset === 'today') {
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+    } else if (preset === '7days') {
+      const past = new Date(Date.now() - 7 * 86400000)
+      setStartDate(past.toISOString().slice(0, 10))
+      setEndDate(todayStr)
+    } else if (preset === '30days') {
+      const past = new Date(Date.now() - 30 * 86400000)
+      setStartDate(past.toISOString().slice(0, 10))
+      setEndDate(todayStr)
+    } else if (preset === 'this_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+      setStartDate(firstDay)
+      setEndDate(todayStr)
+    }
+  }
+
   const loadOrders = useCallback(async (isRefresh = false) => {
     if (!tenant) return
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
 
     try {
-      const res = await fetch(`/api/admin/orders?tenant_id=${tenant.id}&status=${statusFilter}&limit=100`)
+      let url = `/api/admin/orders?tenant_id=${tenant.id}&status=${statusFilter}&limit=120`
+      if (startDate) url += `&startDate=${startDate}`
+      if (endDate) url += `&endDate=${endDate}`
+
+      const res = await fetch(url)
       const data = await res.json()
       if (res.ok && Array.isArray(data.orders)) {
         setOrders(data.orders)
@@ -130,7 +165,7 @@ export default function AdminOrdersPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [tenant, statusFilter])
+  }, [tenant, statusFilter, startDate, endDate])
 
   useEffect(() => {
     loadOrders()
@@ -150,19 +185,28 @@ export default function AdminOrdersPage() {
     setExpandedOrders((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  // Filtrado en memoria por texto
+  // Filtrado en memoria por texto y fechas
   const filteredOrders = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return orders
+    let result = orders
 
-    return orders.filter((o) => {
+    if (startDate) {
+      result = result.filter((o) => o.created_at.slice(0, 10) >= startDate)
+    }
+    if (endDate) {
+      result = result.filter((o) => o.created_at.slice(0, 10) <= endDate)
+    }
+
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return result
+
+    return result.filter((o) => {
       const numMatch = o.order_number?.toLowerCase().includes(q)
       const custMatch = o.customer?.full_name?.toLowerCase().includes(q) || o.customer?.phone?.includes(q)
       const notesMatch = o.notes?.toLowerCase().includes(q)
       const itemMatch = o.order_items?.some((i) => i.product_name?.toLowerCase().includes(q) || i.product_sku?.toLowerCase().includes(q))
       return numMatch || custMatch || notesMatch || itemMatch
     })
-  }, [orders, searchQuery])
+  }, [orders, searchQuery, startDate, endDate])
 
   // Estadísticas generales de la tienda (desacopladas de la pestaña activa en la tabla)
   const stats = useMemo(() => {
@@ -218,20 +262,18 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // Eliminar orden definitivamente
-  const handleDeleteOrder = async (orderId: string, orderNumber: string) => {
-    if (!confirm(`¿Deseas eliminar definitivamente el pedido #${orderNumber}? Esta acción no se puede deshacer.`)) return
-
+  // Eliminar orden definitivamente con Clave de Administrador
+  const handleDeleteOrder = async (orderId: string, orderNumber: string, adminPin: string) => {
     setActionLoading(orderId)
     try {
       const res = await fetch('/api/admin/orders', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId }),
+        body: JSON.stringify({ order_id: orderId, admin_pin: adminPin }),
       })
       const data = await res.json()
       if (res.ok) {
-        setFeedbackMessage({ type: 'success', text: `Pedido #${orderNumber} eliminado.` })
+        setFeedbackMessage({ type: 'success', text: `Pedido #${orderNumber} eliminado correctamente.` })
         loadOrders(true)
       } else {
         setFeedbackMessage({ type: 'error', text: data.error || 'Error al eliminar pedido.' })
@@ -488,7 +530,13 @@ export default function AdminOrdersPage() {
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
+            <ClipboardList className="w-3.5 h-3.5" />
             <span>Todos</span>
+            {orders.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-extrabold">
+                {orders.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -502,6 +550,77 @@ export default function AdminOrdersPage() {
             placeholder="Buscar orden, cliente o teléfono..."
             className="w-full pl-10 pr-4 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           />
+        </div>
+      </div>
+
+      {/* Barra de Filtro de Fechas */}
+      <div className="glass-card p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1">
+            <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span>Fechas:</span>
+          </span>
+          {[
+            { id: 'all', label: 'Todo el tiempo' },
+            { id: 'today', label: 'Hoy' },
+            { id: '7days', label: 'Últimos 7 días' },
+            { id: 'this_month', label: 'Este Mes' },
+          ].map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => applyDatePreset(preset.id as any)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                dateFilterPreset === preset.id && !startDate && preset.id === 'all'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : dateFilterPreset === preset.id && (preset.id !== 'all' || (!startDate && !endDate))
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-blue-400'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Inputs de Rango Personalizado */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Desde:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value)
+                setDateFilterPreset('custom')
+              }}
+              className="bg-transparent text-xs font-medium text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Hasta:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value)
+                setDateFilterPreset('custom')
+              }}
+              className="bg-transparent text-xs font-medium text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
+            />
+          </div>
+
+          {(startDate || endDate) && (
+            <button
+              type="button"
+              onClick={() => applyDatePreset('all')}
+              className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+              title="Limpiar filtro de fechas"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -794,9 +913,9 @@ export default function AdminOrdersPage() {
                       <button
                         type="button"
                         disabled={actionLoading === order.id}
-                        onClick={() => handleDeleteOrder(order.id, order.order_number)}
+                        onClick={() => setDeleteOrderForAuth(order)}
                         className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                        title="Eliminar pedido"
+                        title="Eliminar pedido (Requiere Clave Admin)"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -887,6 +1006,22 @@ export default function AdminOrdersPage() {
             const editId = authOrderForEdit.id
             setAuthOrderForEdit(null)
             router.push(`/admin/pos?editOrder=${editId}&authPin=${encodeURIComponent(pin)}`)
+          }}
+        />
+      )}
+
+      {/* Modal de Autorización por Clave Admin para Eliminar Pedido o Factura */}
+      {deleteOrderForAuth && (
+        <AdminAuthPinModal
+          isOpen={Boolean(deleteOrderForAuth)}
+          onClose={() => setDeleteOrderForAuth(null)}
+          title={`Eliminar Pedido #${deleteOrderForAuth.order_number}`}
+          description={`Por seguridad, se requiere la Clave de Administrador para anular o eliminar definitivamente el pedido o factura #${deleteOrderForAuth.order_number}. Esta acción no se puede deshacer.`}
+          onSuccess={(pin) => {
+            const targetId = deleteOrderForAuth.id
+            const targetNum = deleteOrderForAuth.order_number
+            setDeleteOrderForAuth(null)
+            handleDeleteOrder(targetId, targetNum, pin)
           }}
         />
       )}

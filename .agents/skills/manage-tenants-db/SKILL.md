@@ -1,18 +1,18 @@
 ---
 name: manage-tenants-db
-description: Procedimientos y guías para gestionar tenants, migraciones de base de datos, políticas RLS y usuarios en Supabase para la plataforma Innovise Store.
+description: Procedimientos y guías para gestionar tenants, migraciones de base de datos, políticas RLS, claves de seguridad y usuarios en Supabase para la plataforma Innovise Store.
 ---
 
 # Skill: Gestión de Base de Datos Multi-Tenant & RLS
 
-Esta habilidad instruye al agente sobre cómo administrar la base de datos PostgreSQL de Supabase en este proyecto SaaS multi-inquilino.
+Esta habilidad instruye al agente sobre cómo administrar la base de datos PostgreSQL de Supabase en este proyecto SaaS multi-inquilino adaptado para cualquier tipo de negocio.
 
 ## Cuándo usar esta habilidad
 - Al agregar un nuevo comercio/tienda (`tenant`) a la plataforma.
 - Al modificar o extender tablas (`tenants`, `profiles`, `products`, `customers`, `orders`, `inventory_logs`).
 - Al solucionar problemas de permisos con Row Level Security (RLS).
 - Al crear usuarios administradores o cajeros en Supabase Auth.
-- Al depurar errores en `generateStaticParams` o renderizado en el servidor.
+- Al gestionar claves de seguridad de tienda (`admin_security_pin`).
 
 ## Flujo de Trabajo: Alta de un Nuevo Tenant
 1. **Insertar el Tenant en SQL:**
@@ -22,12 +22,13 @@ Esta habilidad instruye al agente sobre cómo administrar la base de datos Postg
      'Nombre Comercio',
      'slug-comercio',
      '584121234567',
-     813.7361,
+     91.50,
      '{
        "instagram_handle": "comercio.ve",
-       "bcv_fecha_valor": "Lunes, 07 Septiembre 2026",
+       "admin_security_pin": "1234",
+       "bcv_fecha_valor": "Miércoles, 23 Septiembre 2026",
        "bcv_source": "https://www.bcv.org.ve/",
-       "bcv_last_sync": "2026-09-07T00:00:00Z"
+       "bcv_last_sync": "2026-09-23T00:00:00Z"
      }'::jsonb
    )
    RETURNING id;
@@ -39,6 +40,12 @@ Esta habilidad instruye al agente sobre cómo administrar la base de datos Postg
      INSERT INTO profiles (id, tenant_id, role, full_name, email)
      VALUES ('<auth_user_uuid>', '<tenant_uuid>', 'owner', 'Nombre Persona', 'admin@comercio.com');
      ```
+
+## Esquema Extendido de Productos y Doble Código
+- Tabla `products`:
+  - `sku TEXT`: Código interno o asignado por el usuario (ej. `CRG-001`, `FRA-002`).
+  - `barcode TEXT`: Código de barras estándar del fabricante (EAN-13, UPC, etc.). Es 100% opcional.
+  - `description TEXT`: Admite serialización de variantes de color `<!--COLOR_VARIANTS:[...]-->`, atributos de moda `<!--APPAREL_ATTRIBUTES:{...}-->` y fallback `<!--BARCODE:...-->`.
 
 ## Panel Master Super Admin (Gestión Global de Comercios)
 Para comercializar el sistema como SaaS, existe el **Panel Master** (`/admin/master`):
@@ -55,6 +62,6 @@ Para comercializar el sistema como SaaS, existe el **Panel Master** (`/admin/mas
 ## Reglas Críticas de Seguridad y Arquitectura
 - **Nunca omitir `tenant_id`:** Cualquier tabla que almacene datos de un comercio debe tener la columna `tenant_id UUID REFERENCES tenants(id) NOT NULL`.
 - **Verificar siempre `get_auth_tenant_id()`:** Las políticas RLS deben condicionar las operaciones con `tenant_id = get_auth_tenant_id()` o `get_auth_role() = 'superadmin'`.
+- **Clave de Administrador para Operaciones Sensibles:** Las operaciones críticas (eliminación de pedidos, anulación de facturas, cambio de configuración sensible) requieren verificación de `settings.admin_security_pin`.
 - **Permisos Públicos Controlados:** La vitrina pública solo debe poder hacer `SELECT` en `tenants` y en `products WHERE is_active = TRUE`.
-- **Evitar `cookies()` en Contextos Fuera de Petición (`generateStaticParams`):**
-  Al generar parámetros estáticos durante el build (`src/app/[tenant]/page.tsx`), no se debe invocar `createClient()` de servidor basado en `cookies()` de Next.js, ya que provoca el error `cookies was called outside a request scope`. Se debe utilizar el cliente anónimo directo `createBrowserClient` o la instancia directa de Supabase con URL y ANON KEY.
+- **Universalidad de Rubro:** La arquitectura de base de datos está diseñada para acomodar cualquier rubro comercial (tiendas de ropa con tallas, farmacias, bodegones, ferreterías, tecnología, calzado y repuestos).
