@@ -261,7 +261,9 @@ export async function POST(req: Request) {
       order: updatedOrder,
       abono: newPaymentEntry,
       remainingUsd,
+      nuevoSaldoUsd: remainingUsd,
       isFullyPaid,
+      isCompleted: isFullyPaid,
       updatedCustomerDebt,
     }
 

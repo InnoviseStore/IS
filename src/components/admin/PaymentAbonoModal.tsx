@@ -7,9 +7,7 @@ import {
   DollarSign,
   AlertCircle,
   CheckCircle2,
-  Share2,
   Calendar,
-  FileText,
   Monitor,
   Smartphone,
   Copy,
@@ -78,28 +76,82 @@ export default function PaymentAbonoModal({
 
   const [paymentDate, setPaymentDate] = useState<string>(todayStr)
   const [rateMode, setRateMode] = useState<'today' | 'yesterday' | 'custom'>('today')
-  const [appliedRate, setAppliedRate] = useState<number>(exchangeRate)
-  const [customRateInput, setCustomRateInput] = useState<string>(String(exchangeRate))
+  const [appliedRate, setAppliedRate] = useState<number>(Number(exchangeRate) || 91.5)
+  const [customRateInput, setCustomRateInput] = useState<string>(String(exchangeRate || 91.5))
   const [showRateSettings, setShowRateSettings] = useState<boolean>(false)
 
   // Sincronizar tasa si cambia la prop exchangeRate y estamos en modo 'today'
   useEffect(() => {
     if (rateMode === 'today') {
-      setAppliedRate(exchangeRate)
-      setCustomRateInput(String(exchangeRate))
+      const validRate = Number(exchangeRate) || 91.5
+      setAppliedRate(validRate)
+      setCustomRateInput(String(validRate))
     }
   }, [exchangeRate, rateMode])
+
+  const [method, setMethod] = useState('pago_movil')
+  const [currencyInput, setCurrencyInput] = useState<'USD' | 'VES'>('VES')
+  const [amountInput, setAmountInput] = useState('')
+  const [reference, setReference] = useState('')
+  const [notes, setNotes] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [successResult, setSuccessResult] = useState<{
+    abonoUsd: number
+    abonoVes: number
+    nuevoSaldoUsd: number
+    isCompleted: boolean
+    orderNumber: string
+  } | null>(null)
+
+  const [countryCode, setCountryCode] = useState('58')
+  const [localPhone, setLocalPhone] = useState('')
+  const [copiedReceipt, setCopiedReceipt] = useState(false)
+
+  // Inicializar o resetear estado al abrir o cambiar de orden
+  useEffect(() => {
+    if (isOpen && order) {
+      setSuccessResult(null)
+      setError(null)
+      setAmountInput('')
+      setReference('')
+      setNotes('')
+      setPaymentDate(todayStr)
+      setRateMode('today')
+      const initialRate = Number(exchangeRate) || 91.5
+      setAppliedRate(initialRate)
+      setCustomRateInput(String(initialRate))
+      setShowRateSettings(false)
+
+      const rawPhone = (order as any).customers?.phone || (order as any).phone || ''
+      const digits = String(rawPhone).replace(/\D/g, '')
+      const matched = COUNTRY_CODES.find((c) => digits.startsWith(c.code))
+      const code = matched ? matched.code : '58'
+      setCountryCode(code)
+
+      let local = digits
+      if (local.startsWith(code)) {
+        local = local.slice(code.length)
+      }
+      local = local.replace(/^0+/, '')
+      setLocalPhone(local)
+    }
+  }, [isOpen, order?.id, todayStr, exchangeRate])
+
+  const fullPhone = `${countryCode}${localPhone.replace(/^0+/, '')}`
+  const normalizedFullPhone = normalizeWhatsAppPhone(fullPhone, countryCode)
 
   const handleSelectRateMode = (mode: 'today' | 'yesterday' | 'custom') => {
     setRateMode(mode)
     if (mode === 'today') {
       setPaymentDate(todayStr)
-      setAppliedRate(exchangeRate)
-      setCustomRateInput(String(exchangeRate))
+      const baseRate = Number(exchangeRate) || 91.5
+      setAppliedRate(baseRate)
+      setCustomRateInput(String(baseRate))
       setShowRateSettings(false)
     } else if (mode === 'yesterday') {
       setPaymentDate(yesterdayStr)
-      const yRate = yesterdayRateEntry?.rate || exchangeRate
+      const yRate = Number(yesterdayRateEntry?.rate) || Number(exchangeRate) || 91.5
       setAppliedRate(yRate)
       setCustomRateInput(String(yRate))
       setShowRateSettings(true)
@@ -126,38 +178,21 @@ export default function PaymentAbonoModal({
   }
 
   // Calcular lo pagado acumulado hasta ahora
-  const breakdown = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
+  const breakdown = Array.isArray(order?.payment_breakdown) ? order.payment_breakdown : []
   const pagadoPrevioUsd = breakdown.reduce((acc: number, item: any) => {
-    // Si es abono o pago original que NO sea el placeholder de credito pendiente
     if (item.method === 'credit_7d') return acc
     return acc + (Number(item.amount_usd) || 0)
   }, 0)
 
-  const totalUsd = Number(order.total_usd) || 0
+  const totalUsd = Number(order?.total_usd) || 0
   const saldoPendienteUsd = Math.max(0, totalUsd - pagadoPrevioUsd)
-  const saldoPendienteVes = saldoPendienteUsd * appliedRate
-
-  const [method, setMethod] = useState('pago_movil')
-  const [currencyInput, setCurrencyInput] = useState<'USD' | 'VES'>('VES')
-  const [amountInput, setAmountInput] = useState('')
-  const [reference, setReference] = useState('')
-  const [notes, setNotes] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [successResult, setSuccessResult] = useState<{
-    abonoUsd: number
-    abonoVes: number
-    nuevoSaldoUsd: number
-    isCompleted: boolean
-    orderNumber: string
-  } | null>(null)
-
-  if (!isOpen) return null
+  const safeAppliedRate = appliedRate > 0 ? appliedRate : (Number(exchangeRate) || 91.5)
+  const saldoPendienteVes = saldoPendienteUsd * safeAppliedRate
 
   // Calcular abono en USD y VES en base a lo que tipea el usuario
   const numericVal = parseFloat(amountInput) || 0
-  const abonoUsdCalculado = currencyInput === 'USD' ? numericVal : (numericVal / appliedRate)
-  const abonoVesCalculado = currencyInput === 'VES' ? numericVal : (numericVal * appliedRate)
+  const abonoUsdCalculado = currencyInput === 'USD' ? numericVal : (numericVal / safeAppliedRate)
+  const abonoVesCalculado = currencyInput === 'VES' ? numericVal : (numericVal * safeAppliedRate)
   const restantePostAbono = Math.max(0, saldoPendienteUsd - abonoUsdCalculado)
 
   const handleMethodChange = (mId: string) => {
@@ -172,7 +207,7 @@ export default function PaymentAbonoModal({
     if (currencyInput === 'USD') {
       setAmountInput(saldoPendienteUsd.toFixed(2))
     } else {
-      setAmountInput((saldoPendienteUsd * appliedRate).toFixed(2))
+      setAmountInput((saldoPendienteUsd * safeAppliedRate).toFixed(2))
     }
   }
 
@@ -192,17 +227,17 @@ export default function PaymentAbonoModal({
 
     try {
       setLoading(true)
-      const effectiveTenantId = order.tenant_id || tenant?.id
+      const effectiveTenantId = order?.tenant_id || tenant?.id
 
       const res = await fetch('/api/admin/orders/abono', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_id: effectiveTenantId,
-          order_id: order.id,
+          order_id: order?.id,
           amount_usd: abonoUsdCalculado,
           amount_ves: abonoVesCalculado,
-          exchange_rate: appliedRate,
+          exchange_rate: safeAppliedRate,
           payment_method: method,
           method,
           reference,
@@ -216,12 +251,24 @@ export default function PaymentAbonoModal({
         throw new Error(data.error || 'Error al procesar el abono')
       }
 
+      const nuevoSaldo = typeof data?.remainingUsd === 'number'
+        ? data.remainingUsd
+        : typeof data?.nuevoSaldoUsd === 'number'
+          ? data.nuevoSaldoUsd
+          : restantePostAbono
+
+      const isCompleted = typeof data?.isFullyPaid === 'boolean'
+        ? data.isFullyPaid
+        : typeof data?.isCompleted === 'boolean'
+          ? data.isCompleted
+          : nuevoSaldo <= 0.01
+
       setSuccessResult({
-        abonoUsd: abonoUsdCalculado,
-        abonoVes: abonoVesCalculado,
-        nuevoSaldoUsd: data.nuevoSaldoUsd,
-        isCompleted: data.isCompleted,
-        orderNumber: order.order_number,
+        abonoUsd: Number(abonoUsdCalculado) || 0,
+        abonoVes: Number(abonoVesCalculado) || 0,
+        nuevoSaldoUsd: Number(nuevoSaldo) || 0,
+        isCompleted: Boolean(isCompleted),
+        orderNumber: order?.order_number || '',
       })
 
       if (onAbonoSuccess) {
@@ -234,61 +281,52 @@ export default function PaymentAbonoModal({
     }
   }
 
-  const initialCustomerPhone = (order as any).customers?.phone || (order as any).phone || ''
-
-  const initialCountry = useMemo(() => {
-    const digits = initialCustomerPhone.replace(/\D/g, '')
-    const matched = COUNTRY_CODES.find((c) => digits.startsWith(c.code))
-    return matched ? matched.code : '58'
-  }, [initialCustomerPhone])
-
-  const [countryCode, setCountryCode] = useState(initialCountry)
-
-  const initialLocalPhone = useMemo(() => {
-    let digits = initialCustomerPhone.replace(/\D/g, '')
-    if (digits.startsWith(countryCode)) {
-      digits = digits.slice(countryCode.length)
-    }
-    if (digits.startsWith('0')) {
-      digits = digits.replace(/^0+/, '')
-    }
-    return digits
-  }, [initialCustomerPhone, countryCode])
-
-  const [localPhone, setLocalPhone] = useState(initialLocalPhone)
-  const [copiedReceipt, setCopiedReceipt] = useState(false)
-
-  const fullPhone = `${countryCode}${localPhone.replace(/^0+/, '')}`
-  const normalizedFullPhone = normalizeWhatsAppPhone(fullPhone, countryCode)
-
   const receiptMessage = useMemo(() => {
     if (!successResult) return ''
+    const abonoUsdSafe = Number(successResult.abonoUsd ?? 0)
+    const abonoVesSafe = Number(successResult.abonoVes ?? 0)
+    const nuevoSaldoUsdSafe = Number(successResult.nuevoSaldoUsd ?? 0)
+    const rateToDisplay = Number(safeAppliedRate || exchangeRate || 1)
+
     let msg = `🧾 *COMPROBANTE DE ABONO RECIBIDO*\n`
-    msg += `📄 *Factura:* #${order.order_number}\n`
+    msg += `📄 *Factura:* #${order?.order_number || ''}\n`
     msg += `📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}\n\n`
-    msg += `💵 *Monto Abonado:* $${successResult.abonoUsd.toFixed(2)} USD\n`
-    msg += `🇻🇪 *Equivalente en Bs.:* Bs. ${successResult.abonoVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`
-    msg += `📊 *Tasa Oficial BCV del día:* Bs. ${exchangeRate.toFixed(2)}/USD\n`
+    msg += `💵 *Monto Abonado:* $${abonoUsdSafe.toFixed(2)} USD\n`
+    msg += `🇻🇪 *Equivalente en Bs.:* Bs. ${abonoVesSafe.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`
+    msg += `📊 *Tasa Oficial BCV aplicada:* Bs. ${rateToDisplay.toFixed(2)}/USD\n`
     msg += `💳 *Método:* ${PAYMENT_METHODS.find((p) => p.id === method)?.label || method}\n`
     if (reference) msg += `🔢 *Referencia:* ${reference}\n`
     msg += `\n`
 
-    if (successResult.isCompleted || successResult.nuevoSaldoUsd <= 0.01) {
+    if (successResult.isCompleted || nuevoSaldoUsdSafe <= 0.01) {
       msg += `🎉 *¡FACTURA TOTALMENTE PAGADA!*\nSaldo pendiente: $0.00 USD\n`
     } else {
-      msg += `⚠️ *Saldo Restante Pendiente:* $${successResult.nuevoSaldoUsd.toFixed(2)} USD (Bs. ${(successResult.nuevoSaldoUsd * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})\n`
+      msg += `⚠️ *Saldo Restante Pendiente:* $${nuevoSaldoUsdSafe.toFixed(2)} USD (Bs. ${(nuevoSaldoUsdSafe * rateToDisplay).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})\n`
       msg += `💡 *Nota Importante:* Recuerda que futuros abonos en Bolívares se calculan a la *tasa oficial del BCV del día* en que efectúes el próximo abono.\n`
     }
 
     msg += `\n¡Gracias por tu pago y preferencia!`
     return msg
-  }, [successResult, order.order_number, exchangeRate, method, reference])
+  }, [successResult, order?.order_number, safeAppliedRate, exchangeRate, method, reference])
 
-  const handleCopyReceipt = () => {
+  const handleCopyReceipt = async () => {
     if (!receiptMessage) return
-    navigator.clipboard.writeText(receiptMessage)
-    setCopiedReceipt(true)
-    setTimeout(() => setCopiedReceipt(false), 2000)
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(receiptMessage)
+      } else {
+        const textArea = document.createElement('textarea')
+        textArea.value = receiptMessage
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+      }
+      setCopiedReceipt(true)
+      setTimeout(() => setCopiedReceipt(false), 2000)
+    } catch (e) {
+      console.warn('Could not copy receipt:', e)
+    }
   }
 
   const sendWhatsAppReceipt = (preferWeb = false) => {
@@ -298,6 +336,9 @@ export default function PaymentAbonoModal({
       : createWhatsAppUrl(normalizedFullPhone, receiptMessage)
     window.open(url, '_blank', 'noopener,noreferrer')
   }
+
+  // Garantizar que todos los hooks se ejecutaron antes de evaluar isOpen
+  if (!isOpen || !order) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -336,7 +377,7 @@ export default function PaymentAbonoModal({
                 ¡Abono Registrado con Éxito!
               </h4>
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                Se registró el pago de <strong className="text-emerald-600 dark:text-emerald-400 font-extrabold">${successResult.abonoUsd.toFixed(2)} USD</strong> (Bs. {successResult.abonoVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}).
+                Se registró el pago de <strong className="text-emerald-600 dark:text-emerald-400 font-extrabold">${Number(successResult.abonoUsd ?? 0).toFixed(2)} USD</strong> (Bs. {Number(successResult.abonoVes ?? 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}).
               </p>
 
               <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 text-left space-y-2 text-sm">
@@ -346,8 +387,8 @@ export default function PaymentAbonoModal({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Nuevo Saldo Pendiente:</span>
-                  <span className={`font-bold ${successResult.nuevoSaldoUsd <= 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                    ${successResult.nuevoSaldoUsd.toFixed(2)} USD
+                  <span className={`font-bold ${Number(successResult.nuevoSaldoUsd ?? 0) <= 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    ${Number(successResult.nuevoSaldoUsd ?? 0).toFixed(2)} USD
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -457,7 +498,7 @@ export default function PaymentAbonoModal({
                 <div className="text-right">
                   <span className="text-[11px] text-slate-500 block">Tasa BCV Aplicada</span>
                   <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 inline-block shadow-2xs">
-                    Bs. {appliedRate.toFixed(2)}/USD
+                    Bs. {safeAppliedRate.toFixed(2)}/USD
                   </span>
                   <div className="mt-1">
                     <button
@@ -552,7 +593,7 @@ export default function PaymentAbonoModal({
                     </div>
                     {paymentDate !== todayStr && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/40 p-1.5 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                        ℹ️ Liquidando abono según la tasa del <strong>{paymentDate}</strong> (Bs. {appliedRate.toFixed(2)}/USD) para que coincida con el monto transferido.
+                        ℹ️ Liquidando abono según la tasa del <strong>{paymentDate}</strong> (Bs. {safeAppliedRate.toFixed(2)}/USD) para que coincida con el monto transferido.
                       </p>
                     )}
                   </div>
@@ -589,7 +630,7 @@ export default function PaymentAbonoModal({
                       onClick={() => {
                         setCurrencyInput('VES')
                         if (amountInput && currencyInput === 'USD') {
-                          setAmountInput((parseFloat(amountInput) * appliedRate).toFixed(2))
+                          setAmountInput((parseFloat(amountInput) * safeAppliedRate).toFixed(2))
                         }
                       }}
                       className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${currencyInput === 'VES' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500'}`}
@@ -601,7 +642,7 @@ export default function PaymentAbonoModal({
                       onClick={() => {
                         setCurrencyInput('USD')
                         if (amountInput && currencyInput === 'VES') {
-                          setAmountInput((parseFloat(amountInput) / appliedRate).toFixed(2))
+                          setAmountInput((parseFloat(amountInput) / safeAppliedRate).toFixed(2))
                         }
                       }}
                       className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${currencyInput === 'USD' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500'}`}

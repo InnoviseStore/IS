@@ -77,8 +77,6 @@ export function WhatsAppInvoiceModal({
   payments = [],
   installmentsPlan,
 }: Props) {
-  if (!isOpen) return null
-
   const rawPhone = customerPhone || ''
 
   // Determinar código de país inicial y número local
@@ -337,6 +335,8 @@ export function WhatsAppInvoiceModal({
       setSendingDirectPdf(false)
     }
   }
+
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
