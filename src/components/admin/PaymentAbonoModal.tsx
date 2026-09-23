@@ -21,8 +21,11 @@ import {
   createWhatsAppWebUrl,
   createWhatsAppUrl
 } from '@/lib/whatsapp'
+import { useTenant } from '@/contexts/TenantContext'
+
 export interface AbonoOrderTarget {
   id: string
+  tenant_id?: string
   order_number: string
   status: string
   total_usd: number
@@ -59,6 +62,8 @@ export default function PaymentAbonoModal({
   exchangeRate,
   onAbonoSuccess,
 }: PaymentAbonoModalProps) {
+  const { tenant } = useTenant()
+
   // Calcular lo pagado acumulado hasta ahora
   const breakdown = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
   const pagadoPrevioUsd = breakdown.reduce((acc: number, item: any) => {
@@ -126,14 +131,18 @@ export default function PaymentAbonoModal({
 
     try {
       setLoading(true)
+      const effectiveTenantId = order.tenant_id || tenant?.id
+
       const res = await fetch('/api/admin/orders/abono', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenant_id: effectiveTenantId,
           order_id: order.id,
           amount_usd: abonoUsdCalculado,
           amount_ves: abonoVesCalculado,
           exchange_rate: exchangeRate,
+          payment_method: method,
           method,
           reference,
           notes,

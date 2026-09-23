@@ -116,6 +116,7 @@ function CheckoutInner() {
         prefix = num.slice(0, 1) + '-'
         num = num.slice(1)
       }
+      num = num.replace(/\D/g, '')
 
       let phone = loggedCustomer.phone || ''
       let countryCode = '58'
@@ -638,8 +639,8 @@ function CheckoutInner() {
                         className="px-3 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                       >
                         <option value="V-">V-</option>
-                        <option value="E-">E-</option>
                         <option value="J-">J-</option>
+                        <option value="E-">E-</option>
                         <option value="G-">G-</option>
                       </select>
                       <input 

@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+import {
+  hashCustomerPassword,
+  normalizeIdNumber,
+  normalizePhoneDigits,
+  parseCustomerAuth,
+  serializeCustomerNotes,
+} from '@/lib/customerUtils'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -11,6 +18,134 @@ function getAdminClient() {
       persistSession: false,
     },
   })
+}
+
+// POST: Crear o actualizar cliente con normalización segura y hash de contraseña en servidor
+export async function POST(req: Request) {
+  try {
+    const body = await req.json()
+    const {
+      id,
+      tenant_id,
+      full_name,
+      id_number,
+      phone,
+      email,
+      address,
+      credit_limit_usd,
+      user_notes,
+      custom_password,
+      enable_web_access,
+    } = body
+
+    if (!tenant_id || !full_name?.trim()) {
+      return NextResponse.json(
+        { error: 'tenant_id y nombre del cliente son obligatorios.' },
+        { status: 400 }
+      )
+    }
+
+    // 1. Validar autenticación
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero'],
+      targetTenantId: tenant_id,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
+    const supabase = getAdminClient()
+
+    // 2. Normalizar cédula / RIF (solo números sin puntos, con prefijo estándar V-, J-, E-, G-)
+    let normalizedIdNumber: string | null = null
+    if (id_number && String(id_number).trim()) {
+      const idInfo = normalizeIdNumber(String(id_number))
+      if (idInfo.digits) {
+        normalizedIdNumber = idInfo.canonical // e.g. V-12345678
+      }
+    }
+
+    // 3. Normalizar teléfono
+    const normalizedPhone = phone ? normalizePhoneDigits(phone) || String(phone).trim() : null
+    const cleanEmail = email ? String(email).trim().toLowerCase() : null
+    const cleanName = String(full_name).trim()
+    const cleanAddress = address ? String(address).trim() : null
+    const numericCreditLimit = Number(credit_limit_usd) >= 0 ? Number(credit_limit_usd) : 100
+
+    let existingCustomer: any = null
+    if (id) {
+      const { data: found } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', id)
+        .eq('tenant_id', tenant_id)
+        .single()
+      existingCustomer = found
+      if (!existingCustomer) {
+        return NextResponse.json({ error: 'Cliente no encontrado para actualizar.' }, { status: 404 })
+      }
+    }
+
+    // 4. Determinar credenciales y notas
+    const existingAuth = parseCustomerAuth(existingCustomer?.notes)
+    let passwordHash = existingAuth.passwordHash
+
+    if (custom_password && String(custom_password).trim().length >= 4) {
+      passwordHash = hashCustomerPassword(String(custom_password).trim())
+    }
+
+    const finalNotes = enable_web_access || existingAuth.hasAccount || passwordHash
+      ? serializeCustomerNotes(passwordHash, (user_notes ?? existingAuth.userNotes ?? '').trim(), {
+          ...existingAuth.metadata,
+          last_saved_at: new Date().toISOString(),
+        })
+      : (user_notes ?? existingAuth.userNotes ?? '').trim() || null
+
+    const customerPayload: Record<string, any> = {
+      tenant_id,
+      full_name: cleanName,
+      id_number: normalizedIdNumber,
+      phone: normalizedPhone,
+      email: cleanEmail,
+      address: cleanAddress,
+      credit_limit_usd: numericCreditLimit,
+      notes: finalNotes,
+      is_active: true,
+    }
+
+    let savedCustomer: any = null
+
+    if (id) {
+      const { data, error: updateErr } = await supabase
+        .from('customers')
+        .update(customerPayload)
+        .eq('id', id)
+        .eq('tenant_id', tenant_id)
+        .select()
+        .single()
+
+      if (updateErr) throw new Error(updateErr.message)
+      savedCustomer = data
+    } else {
+      const { data, error: insertErr } = await supabase
+        .from('customers')
+        .insert({
+          ...customerPayload,
+          current_debt_usd: 0,
+        })
+        .select()
+        .single()
+
+      if (insertErr) throw new Error(insertErr.message)
+      savedCustomer = data
+    }
+
+    return NextResponse.json({ success: true, customer: savedCustomer })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al guardar cliente'
+    console.error('Error in POST /api/admin/customers:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 
 // DELETE: Eliminar cliente de forma segura

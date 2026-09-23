@@ -40,7 +40,8 @@ export default function QuotationsPage() {
   const [catalogSearch, setCatalogSearch] = useState('')
   const [customCustomerName, setCustomCustomerName] = useState('')
   const [customCustomerPhone, setCustomCustomerPhone] = useState('')
-  const [customCustomerIdNumber, setCustomCustomerIdNumber] = useState('')
+  const [customCustomerIdPrefix, setCustomCustomerIdPrefix] = useState<'V-' | 'J-' | 'E-' | 'G-'>('V-')
+  const [customCustomerIdDigits, setCustomCustomerIdDigits] = useState('')
   const [cart, setCart] = useState<QuoteCartItem[]>([])
   const [validDays, setValidDays] = useState(15)
   const [notes, setNotes] = useState('')
@@ -76,6 +77,10 @@ export default function QuotationsPage() {
     setModalError(null)
     setCustomerSearch('')
     setCatalogSearch('')
+    setCustomCustomerName('')
+    setCustomCustomerPhone('')
+    setCustomCustomerIdPrefix('V-')
+    setCustomCustomerIdDigits('')
     setIsCustomerDropdownOpen(false)
     const supabase = createClient()
     const [{ data: prodData }, { data: custData }] = await Promise.all([
@@ -159,7 +164,8 @@ export default function QuotationsPage() {
 
     const customerName = selectedCustomer?.full_name || customCustomerName.trim() || 'Cliente General'
     const customerPhone = selectedCustomer?.phone || customCustomerPhone.trim() || null
-    const customerIdNumber = selectedCustomer?.id_number || customCustomerIdNumber.trim() || null
+    const customId = customCustomerIdDigits.trim() ? `${customCustomerIdPrefix}${customCustomerIdDigits.trim()}` : null
+    const customerIdNumber = selectedCustomer?.id_number || customId
     const customerEmail = selectedCustomer?.email || null
 
     try {
@@ -197,7 +203,8 @@ export default function QuotationsPage() {
       setCatalogSearch('')
       setCustomCustomerName('')
       setCustomCustomerPhone('')
-      setCustomCustomerIdNumber('')
+      setCustomCustomerIdPrefix('V-')
+      setCustomCustomerIdDigits('')
       setNotes('')
       loadQuotations()
     } catch (err: unknown) {
@@ -567,13 +574,27 @@ export default function QuotationsPage() {
                   </div>
                   <div>
                     <label className="block text-slate-500 font-semibold mb-1">Cédula / RIF</label>
-                    <input
-                      type="text"
-                      value={customCustomerIdNumber}
-                      onChange={(e) => setCustomCustomerIdNumber(e.target.value)}
-                      placeholder="ej. J-12345678-9"
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
-                    />
+                    <div className="flex gap-1">
+                      <select
+                        value={customCustomerIdPrefix}
+                        onChange={(e) => setCustomCustomerIdPrefix(e.target.value as any)}
+                        className="px-1.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none font-bold text-xs cursor-pointer"
+                        title="Tipo de documento (V, J, E, G)"
+                      >
+                        <option value="V-">V-</option>
+                        <option value="J-">J-</option>
+                        <option value="E-">E-</option>
+                        <option value="G-">G-</option>
+                      </select>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={customCustomerIdDigits}
+                        onChange={(e) => setCustomCustomerIdDigits(e.target.value.replace(/\D/g, ''))}
+                        placeholder="12345678"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none font-mono text-xs"
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-slate-500 font-semibold mb-1">Teléfono</label>

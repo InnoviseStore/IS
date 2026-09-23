@@ -1,7 +1,6 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import type { Customer } from '@/types/database'
 import {
   X,
@@ -18,8 +17,6 @@ import {
 } from 'lucide-react'
 import {
   parseCustomerAuth,
-  serializeCustomerNotes,
-  hashCustomerPassword,
   generateRandomCustomerPassword,
 } from '@/lib/customerUtils'
 
@@ -33,8 +30,22 @@ interface CustomerModalProps {
 export function CustomerModal({ tenantId, customer, onClose, onSaved }: CustomerModalProps) {
   const existingAuth = useMemo(() => parseCustomerAuth(customer?.notes), [customer?.notes])
 
+  // Extraer prefijo y dígitos de la cédula/RIF existente
+  const initialPrefix = useMemo<'V-' | 'J-' | 'E-' | 'G-'>(() => {
+    const raw = (customer?.id_number || '').trim().toUpperCase()
+    if (raw.startsWith('J')) return 'J-'
+    if (raw.startsWith('E')) return 'E-'
+    if (raw.startsWith('G')) return 'G-'
+    return 'V-'
+  }, [customer?.id_number])
+
+  const initialDigits = useMemo(() => {
+    return (customer?.id_number || '').replace(/\D/g, '')
+  }, [customer?.id_number])
+
   const [fullName, setFullName] = useState(customer?.full_name ?? '')
-  const [idNumber, setIdNumber] = useState(customer?.id_number ?? '')
+  const [idPrefix, setIdPrefix] = useState<'V-' | 'J-' | 'E-' | 'G-'>(initialPrefix)
+  const [idDigits, setIdDigits] = useState(initialDigits)
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [email, setEmail] = useState(customer?.email ?? '')
   const [address, setAddress] = useState(customer?.address ?? '')
@@ -53,7 +64,8 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
   // Detectar si el usuario ingresó datos nuevos
   const isDirty = Boolean(
     fullName.trim() !== (customer?.full_name ?? '') ||
-    idNumber.trim() !== (customer?.id_number ?? '') ||
+    idDigits.trim() !== initialDigits ||
+    idPrefix !== initialPrefix ||
     phone.trim() !== (customer?.phone ?? '') ||
     email.trim() !== (customer?.email ?? '') ||
     address.trim() !== (customer?.address ?? '') ||
@@ -102,62 +114,33 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
     setError(null)
 
     try {
-      const supabase = createClient()
+      const finalIdNumber = idDigits.trim() ? `${idPrefix}${idDigits.trim()}` : null
 
-      // Determinar hash de contraseña
-      let passwordHash = existingAuth.passwordHash
-      if (customPassword.trim().length >= 4) {
-        passwordHash = hashCustomerPassword(customPassword.trim())
+      const res = await fetch('/api/admin/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: customer?.id,
+          tenant_id: tenantId,
+          full_name: fullName.trim(),
+          id_number: finalIdNumber,
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+          address: address.trim() || null,
+          credit_limit_usd: parseFloat(creditLimitUsd) || 0,
+          custom_password: customPassword.trim() || null,
+          user_notes: userNotes.trim(),
+          enable_web_access: enableWebAccess,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al guardar el cliente.')
       }
 
-      // Serializar notas
-      const finalNotes = enableWebAccess || existingAuth.hasAccount || passwordHash
-        ? serializeCustomerNotes(passwordHash, userNotes.trim(), {
-            ...existingAuth.metadata,
-            last_modal_update: new Date().toISOString(),
-          })
-        : userNotes.trim() || null
-
-      const payload = {
-        tenant_id: tenantId,
-        full_name: fullName.trim(),
-        id_number: idNumber.trim() || null,
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        address: address.trim() || null,
-        credit_limit_usd: parseFloat(creditLimitUsd) || 0,
-        notes: finalNotes,
-        is_active: true,
-      }
-
-      let saved: Customer | null = null
-
-      if (customer?.id) {
-        const { data, error: updateErr } = await supabase
-          .from('customers')
-          .update(payload)
-          .eq('id', customer.id)
-          .select()
-          .single()
-
-        if (updateErr) throw new Error(updateErr.message)
-        saved = data
-      } else {
-        const { data, error: insertErr } = await supabase
-          .from('customers')
-          .insert({
-            ...payload,
-            current_debt_usd: 0,
-          })
-          .select()
-          .single()
-
-        if (insertErr) throw new Error(insertErr.message)
-        saved = data
-      }
-
-      if (saved) {
-        onSaved(saved)
+      if (data.customer) {
+        onSaved(data.customer)
         onClose()
       }
     } catch (err: unknown) {
@@ -221,13 +204,28 @@ export function CustomerModal({ tenantId, customer, onClose, onSaved }: Customer
               <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                 Cédula / RIF
               </label>
-              <input
-                type="text"
-                value={idNumber}
-                onChange={(e) => setIdNumber(e.target.value)}
-                placeholder="ej. V-18.542.310 / J-12345678-9"
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="flex gap-1.5">
+                <select
+                  value={idPrefix}
+                  onChange={(e) => setIdPrefix(e.target.value as any)}
+                  className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-xs"
+                  title="Tipo de documento (V, J, E, G)"
+                >
+                  <option value="V-">V-</option>
+                  <option value="J-">J-</option>
+                  <option value="E-">E-</option>
+                  <option value="G-">G-</option>
+                </select>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={idDigits}
+                  onChange={(e) => setIdDigits(e.target.value.replace(/\D/g, ''))}
+                  placeholder="12345678"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">Solo dígitos, sin puntos ni guiones.</p>
             </div>
             <div>
               <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">

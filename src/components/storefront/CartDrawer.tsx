@@ -103,7 +103,9 @@ export default function CartDrawer({
   const [fullName, setFullName] = useState('');
   const [countryCode, setCountryCode] = useState('58');
   const [phone, setPhone] = useState('');
-  const [idNumber, setIdNumber] = useState('');
+  const [idPrefix, setIdPrefix] = useState<'V-' | 'J-' | 'E-' | 'G-'>('V-');
+  const [idDigits, setIdDigits] = useState('');
+  const idNumber = idDigits.trim() ? `${idPrefix}${idDigits.trim()}` : '';
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -111,7 +113,14 @@ export default function CartDrawer({
   useEffect(() => {
     if (customer) {
       if (customer.full_name) setFullName(customer.full_name);
-      if (customer.id_number) setIdNumber(customer.id_number);
+      if (customer.id_number) {
+        const raw = customer.id_number.trim().toUpperCase();
+        if (raw.startsWith('J')) setIdPrefix('J-');
+        else if (raw.startsWith('E')) setIdPrefix('E-');
+        else if (raw.startsWith('G')) setIdPrefix('G-');
+        else setIdPrefix('V-');
+        setIdDigits(raw.replace(/\D/g, ''));
+      }
       if (customer.address) setAddress(customer.address);
       if (customer.phone) {
         let p = customer.phone.replace(/\D/g, '');
@@ -129,7 +138,17 @@ export default function CartDrawer({
           const parsed = JSON.parse(saved);
           if (parsed.fullName) setFullName(parsed.fullName);
           if (parsed.phone) setPhone(parsed.phone);
-          if (parsed.idNumber) setIdNumber(parsed.idNumber);
+          if (parsed.idDigits) {
+            setIdDigits(String(parsed.idDigits).replace(/\D/g, ''));
+            if (parsed.idPrefix) setIdPrefix(parsed.idPrefix);
+          } else if (parsed.idNumber) {
+            const raw = String(parsed.idNumber).trim().toUpperCase();
+            if (raw.startsWith('J')) setIdPrefix('J-');
+            else if (raw.startsWith('E')) setIdPrefix('E-');
+            else if (raw.startsWith('G')) setIdPrefix('G-');
+            else setIdPrefix('V-');
+            setIdDigits(raw.replace(/\D/g, ''));
+          }
           if (parsed.address) setAddress(parsed.address);
           if (parsed.countryCode) setCountryCode(parsed.countryCode);
         }
@@ -211,7 +230,17 @@ export default function CartDrawer({
         const parsed = JSON.parse(savedCust);
         if (parsed.fullName) setFullName(parsed.fullName);
         if (parsed.phone) setPhone(parsed.phone);
-        if (parsed.idNumber) setIdNumber(parsed.idNumber);
+        if (parsed.idDigits) {
+          setIdDigits(String(parsed.idDigits).replace(/\D/g, ''));
+          if (parsed.idPrefix) setIdPrefix(parsed.idPrefix);
+        } else if (parsed.idNumber) {
+          const raw = String(parsed.idNumber).trim().toUpperCase();
+          if (raw.startsWith('J')) setIdPrefix('J-');
+          else if (raw.startsWith('E')) setIdPrefix('E-');
+          else if (raw.startsWith('G')) setIdPrefix('G-');
+          else setIdPrefix('V-');
+          setIdDigits(raw.replace(/\D/g, ''));
+        }
         if (parsed.address) setAddress(parsed.address);
       }
     } catch {
@@ -272,8 +301,10 @@ export default function CartDrawer({
       nextErrors.phone = 'El número debe incluir código de área (ej. 04121234567).';
     }
 
-    if (!idNumber.trim()) {
-      nextErrors.idNumber = 'Indica tu cédula o RIF para facturación (ej. V-12345678).';
+    if (!idDigits.trim()) {
+      nextErrors.idNumber = 'Indica tu cédula o RIF para facturación.';
+    } else if (idDigits.trim().length < 5) {
+      nextErrors.idNumber = 'La cédula o RIF debe tener al menos 5 dígitos numéricos.';
     }
 
     if (deliveryMethod === 'delivery_bqto' && !address.trim()) {
@@ -303,6 +334,8 @@ export default function CartDrawer({
           fullName: fullName.trim(),
           countryCode,
           phone: phone.trim(),
+          idPrefix,
+          idDigits: idDigits.trim(),
           idNumber: idNumber.trim(),
           address: address.trim(),
         }),
@@ -397,6 +430,8 @@ export default function CartDrawer({
     setIsSuccess(false);
     setFullName('');
     setPhone('');
+    setIdDigits('');
+    setIdPrefix('V-');
     setNotes('');
     setErrors({});
     setIsCartOpen(false);
@@ -673,20 +708,34 @@ export default function CartDrawer({
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Cédula o RIF *
                   </label>
-                  <input
-                    type="text"
-                    value={idNumber}
-                    onChange={(e) => {
-                      setIdNumber(e.target.value);
-                      if (errors.idNumber) setErrors((prev) => ({ ...prev, idNumber: undefined }));
-                    }}
-                    placeholder="V-12345678"
-                    className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.idNumber
-                        ? 'border-rose-400 dark:border-rose-600'
-                        : 'border-slate-200 dark:border-slate-700'
-                    }`}
-                  />
+                  <div className="flex gap-1.5">
+                    <select
+                      value={idPrefix}
+                      onChange={(e) => setIdPrefix(e.target.value as any)}
+                      className="px-2.5 py-2 rounded-xl border text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold cursor-pointer"
+                      title="Tipo de documento (V, J, E, G)"
+                    >
+                      <option value="V-">V-</option>
+                      <option value="J-">J-</option>
+                      <option value="E-">E-</option>
+                      <option value="G-">G-</option>
+                    </select>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={idDigits}
+                      onChange={(e) => {
+                        setIdDigits(e.target.value.replace(/\D/g, ''));
+                        if (errors.idNumber) setErrors((prev) => ({ ...prev, idNumber: undefined }));
+                      }}
+                      placeholder="12345678"
+                      className={`flex-1 min-w-0 px-3 py-2 rounded-xl border text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.idNumber
+                          ? 'border-rose-400 dark:border-rose-600'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                    />
+                  </div>
                   {errors.idNumber && (
                     <p className="flex items-center gap-1 text-[11px] text-rose-500 mt-1 font-medium">
                       <AlertCircle className="h-3 w-3" />

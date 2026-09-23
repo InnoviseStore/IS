@@ -70,11 +70,14 @@ export function normalizePhoneDigits(phone?: string | null): string {
 }
 
 /**
- * Hashing seguro de contraseña de cliente con salt de 16 bytes y scrypt
+ * Hashing seguro de contraseña de cliente con salt de 16 bytes y scrypt (solo Node.js / servidor)
  */
 export function hashCustomerPassword(password: string): string {
+  if (typeof window !== 'undefined' || !crypto || typeof (crypto as any).scryptSync !== 'function') {
+    throw new Error('hashCustomerPassword solo puede ser ejecutado en el servidor.')
+  }
   const salt = crypto.randomBytes(16).toString('hex')
-  const derived = crypto.scryptSync(password, salt, 64).toString('hex')
+  const derived = (crypto as any).scryptSync(password, salt, 64).toString('hex')
   return `${salt}:${derived}`
 }
 
@@ -83,10 +86,13 @@ export function hashCustomerPassword(password: string): string {
  */
 export function verifyCustomerPassword(password: string, storedHash: string): boolean {
   try {
+    if (typeof window !== 'undefined' || !crypto || typeof (crypto as any).scryptSync !== 'function') {
+      return false
+    }
     if (!storedHash || !storedHash.includes(':')) return false
     const [salt, key] = storedHash.split(':')
     const keyBuffer = Buffer.from(key, 'hex')
-    const derivedKey = crypto.scryptSync(password, salt, 64)
+    const derivedKey = (crypto as any).scryptSync(password, salt, 64)
     return crypto.timingSafeEqual(keyBuffer, derivedKey)
   } catch {
     return false

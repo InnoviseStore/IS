@@ -20,11 +20,12 @@ function getAdminClient() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const {
+    let {
       tenant_id,
       order_id,
       customer_id,
       payment_method,
+      method,
       amount_usd,
       amount_ves,
       exchange_rate,
@@ -32,9 +33,30 @@ export async function POST(req: Request) {
       notes,
     } = body
 
-    if (!tenant_id || !order_id) {
+    if (!order_id) {
+      return NextResponse.json({ error: 'order_id es requerido.' }, { status: 400 })
+    }
+
+    const supabase = getAdminClient()
+
+    // Si tenant_id no vino en el body, resolverlo automáticamente desde la orden
+    if (!tenant_id) {
+      const { data: orderLookup } = await supabase
+        .from('orders')
+        .select('tenant_id')
+        .eq('id', order_id)
+        .maybeSingle()
+
+      if (orderLookup?.tenant_id) {
+        tenant_id = orderLookup.tenant_id
+      }
+    }
+
+    if (!tenant_id) {
       return NextResponse.json({ error: 'tenant_id y order_id son requeridos.' }, { status: 400 })
     }
+
+    const appliedMethod = payment_method || method || 'pago_movil'
 
     const numericAmountUsd = Number(amount_usd) || 0
     if (numericAmountUsd <= 0) {
@@ -52,14 +74,12 @@ export async function POST(req: Request) {
 
     // 1. Validar autenticacion
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero'],
       targetTenantId: tenant_id,
     })
     if (errorResponse || !auth) {
       return errorResponse!
     }
-
-    const supabase = getAdminClient()
 
     // 2. Obtener la orden existente
     const { data: order, error: orderErr } = await supabase
@@ -91,7 +111,7 @@ export async function POST(req: Request) {
     // 3. Crear nuevo registro de abono
     const nowIso = new Date().toISOString()
     const newPaymentEntry = {
-      method: payment_method || 'pago_movil',
+      method: appliedMethod,
       amount_usd: numericAmountUsd,
       amount_ves: Number(amount_ves) || numericAmountUsd * (Number(exchange_rate) || 91.5),
       reference: reference ? String(reference).trim() : undefined,
@@ -130,7 +150,7 @@ export async function POST(req: Request) {
 
     const dateStr = new Date().toLocaleDateString('es-VE')
     const refText = reference ? ' Ref: ' + reference : ''
-    const abonoLog = '[Abono ' + dateStr + ': $' + numericAmountUsd.toFixed(2) + ' USD via ' + (payment_method || 'Pago') + refText + ' | Tasa BCV: ' + (Number(exchange_rate) || 91.5) + ']'
+    const abonoLog = '[Abono ' + dateStr + ': $' + numericAmountUsd.toFixed(2) + ' USD via ' + (appliedMethod || 'Pago') + refText + ' | Tasa BCV: ' + (Number(exchange_rate) || 91.5) + ']'
     updateOrderPayload.notes = order.notes ? order.notes + ' | ' + abonoLog : abonoLog
 
     const { data: updatedOrder, error: updateErr } = await supabase
