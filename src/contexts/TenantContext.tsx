@@ -2,17 +2,19 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Tenant, Profile, UserRole } from '@/types/database'
+import type { Tenant, Profile, UserRole, BcvRateHistoryItem } from '@/types/database'
 
 interface TenantContextValue {
   tenant: Tenant | null
   profile: Profile | null
   exchangeRate: number
   bcvFechaValor: string | null
+  bcvRatesHistory: BcvRateHistoryItem[]
   isSyncingBcv: boolean
   allTenants: Tenant[]
   setExchangeRate: (rate: number) => void
-  syncBcvRate: () => Promise<{ rate?: number; fechaValor?: string; error?: string }>
+  syncBcvRate: () => Promise<{ rate?: number; fechaValor?: string; rates_history?: BcvRateHistoryItem[]; error?: string }>
+  saveHistoryRate: (entry: { date: string; rate: number; fecha_valor?: string; label?: string }) => Promise<{ success: boolean; error?: string }>
   switchTenant: (newTenant: Tenant) => void
   switchTenantById: (tenantId: string) => void
   refreshTenants: () => Promise<void>
@@ -36,10 +38,12 @@ const TenantContext = createContext<TenantContextValue>({
   profile: null,
   exchangeRate: 91.5,
   bcvFechaValor: null,
+  bcvRatesHistory: [],
   isSyncingBcv: false,
   allTenants: [],
   setExchangeRate: () => {},
   syncBcvRate: async () => ({}),
+  saveHistoryRate: async () => ({ success: false }),
   switchTenant: () => {},
   switchTenantById: () => {},
   refreshTenants: async () => {},
@@ -52,6 +56,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [exchangeRate, setExchangeRateState] = useState<number>(91.5)
   const [bcvFechaValor, setBcvFechaValor] = useState<string | null>(null)
+  const [bcvRatesHistory, setBcvRatesHistory] = useState<BcvRateHistoryItem[]>([])
   const [isSyncingBcv, setIsSyncingBcv] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -113,7 +118,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       if (res.ok && data.rate) {
         setExchangeRateState(data.rate)
         if (data.fechaValor) setBcvFechaValor(data.fechaValor)
-        return { rate: data.rate, fechaValor: data.fechaValor }
+        if (Array.isArray(data.rates_history)) setBcvRatesHistory(data.rates_history)
+        return { rate: data.rate, fechaValor: data.fechaValor, rates_history: data.rates_history }
       } else {
         return { error: data.error || 'Error al sincronizar con BCV' }
       }
@@ -121,6 +127,38 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       return { error: (e as Error).message }
     } finally {
       setIsSyncingBcv(false)
+    }
+  }, [])
+
+  const saveHistoryRate = useCallback(async (entry: { date: string; rate: number; fecha_valor?: string; label?: string }) => {
+    try {
+      const res = await fetch('/api/exchange-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_history_rate',
+          ...entry,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        return { success: false, error: data.error || 'Error al guardar tasa histórica' }
+      }
+
+      if (Array.isArray(data.rates_history)) {
+        setBcvRatesHistory(data.rates_history)
+      }
+
+      // Si la fecha guardada es hoy, actualizar también la tasa activa
+      const todayDate = new Date().toISOString().split('T')[0]
+      if (entry.date === todayDate) {
+        setExchangeRateState(entry.rate)
+      }
+
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: (e as Error).message }
     }
   }, [])
 
@@ -192,6 +230,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           setTenant(tenantData)
           setExchangeRateState(Number(tenantData.currency_rate_bcv) || 91.5)
           const settings = (tenantData.settings || {}) as Record<string, unknown>
+          if (Array.isArray(settings.bcv_rates_history)) {
+            setBcvRatesHistory(settings.bcv_rates_history as BcvRateHistoryItem[])
+          }
           if (settings.bcv_fecha_valor) {
             setBcvFechaValor(settings.bcv_fecha_valor as string)
           } else {
@@ -201,6 +242,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
               .then((d) => {
                 if (d.rate) setExchangeRateState(d.rate)
                 if (d.fechaValor) setBcvFechaValor(d.fechaValor)
+                if (Array.isArray(d.rates_history)) setBcvRatesHistory(d.rates_history)
               })
               .catch(() => {})
           }
@@ -221,6 +263,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     if (settings.bcv_fecha_valor) {
       setBcvFechaValor(settings.bcv_fecha_valor as string)
     }
+    if (Array.isArray(settings.bcv_rates_history)) {
+      setBcvRatesHistory(settings.bcv_rates_history as BcvRateHistoryItem[])
+    } else {
+      setBcvRatesHistory([])
+    }
   }, [])
 
   const switchTenantById = useCallback((tenantId: string) => {
@@ -236,10 +283,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       profile,
       exchangeRate,
       bcvFechaValor,
+      bcvRatesHistory,
       isSyncingBcv,
       allTenants,
       setExchangeRate,
       syncBcvRate,
+      saveHistoryRate,
       switchTenant,
       switchTenantById,
       refreshTenants,
@@ -251,10 +300,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       profile,
       exchangeRate,
       bcvFechaValor,
+      bcvRatesHistory,
       isSyncingBcv,
       allTenants,
       setExchangeRate,
       syncBcvRate,
+      saveHistoryRate,
       switchTenant,
       switchTenantById,
       refreshTenants,

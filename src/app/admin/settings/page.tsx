@@ -37,6 +37,7 @@ import {
   UserPlus,
   Users,
   LogIn,
+  Calendar,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
 import Link from 'next/link'
@@ -44,7 +45,7 @@ import Link from 'next/link'
 type SectionKey = 'identity' | 'payments' | 'security' | 'about' | 'plan' | 'whatsapp'
 
 export default function SettingsPage() {
-  const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings } = useTenant()
+  const { tenant, profile, exchangeRate, bcvFechaValor, isSyncingBcv, syncBcvRate, updateTenantSettings, bcvRatesHistory, saveHistoryRate } = useTenant()
   const [rate, setRate] = useState(exchangeRate.toString())
   const [phone, setPhone] = useState(tenant?.phone_whatsapp ?? '')
   const [saved, setSaved] = useState(false)
@@ -52,6 +53,18 @@ export default function SettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [adminSecurityPin, setAdminSecurityPin] = useState('')
   const [showPin, setShowPin] = useState(false)
+
+  // Estados para gestión de historial de tasas de los últimos días
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [historyDate, setHistoryDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  })
+  const [historyRateVal, setHistoryRateVal] = useState('')
+  const [historyLabel, setHistoryLabel] = useState('')
+  const [historySaving, setHistorySaving] = useState(false)
+  const [historyFeedback, setHistoryFeedback] = useState<string | null>(null)
 
   const isOwnerOrAdmin = profile?.role === 'owner' || profile?.role === 'admin' || profile?.role === 'superadmin'
 
@@ -205,6 +218,32 @@ export default function SettingsPage() {
   useEffect(() => {
     setRate(exchangeRate.toString())
   }, [exchangeRate])
+
+  async function handleSaveHistoryRate(e: React.FormEvent) {
+    e.preventDefault()
+    const num = parseFloat(historyRateVal)
+    if (!historyDate || isNaN(num) || num <= 0) {
+      alert('Por favor ingresa una fecha y tasa válidas')
+      return
+    }
+    setHistorySaving(true)
+    setHistoryFeedback(null)
+    const res = await saveHistoryRate({
+      date: historyDate,
+      rate: num,
+      label: historyLabel || historyDate,
+    })
+    setHistorySaving(false)
+    if (res.success) {
+      setHistoryFeedback(`¡Tasa para el ${historyDate} guardada exitosamente (Bs. ${num})!`)
+      setShowHistoryModal(false)
+      setHistoryRateVal('')
+      setHistoryLabel('')
+      setTimeout(() => setHistoryFeedback(null), 4000)
+    } else {
+      alert(res.error || 'Error al guardar tasa histórica')
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -581,6 +620,150 @@ export default function SettingsPage() {
                     Fecha Valor oficial registrada: <strong className="text-slate-800 dark:text-slate-200">{bcvFechaValor}</strong>
                   </p>
                 )}
+
+                {/* Historial de Tasas de los últimos días */}
+                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Historial de Tasas Recientes (Últimos días)</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Permite a los cajeros registrar transferencias de ayer o días pasados con la tasa exacta de ese día.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowHistoryModal(!showHistoryModal)}
+                      className="px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 transition cursor-pointer"
+                    >
+                      {showHistoryModal ? 'Cerrar Formulario' : '+ Añadir / Corregir Tasa Pasada'}
+                    </button>
+                  </div>
+
+                  {historyFeedback && (
+                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800">
+                      {historyFeedback}
+                    </div>
+                  )}
+
+                  {/* Formulario para registrar tasa histórica */}
+                  {showHistoryModal && (
+                    <form onSubmit={handleSaveHistoryRate} className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-blue-200 dark:border-blue-800 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Fecha de la tasa:
+                          </label>
+                          <input
+                            type="date"
+                            value={historyDate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setHistoryDate(e.target.value)}
+                            required
+                            className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Tasa oficial BCV (Bs.):
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            placeholder="Ej. 91.25"
+                            value={historyRateVal}
+                            onChange={(e) => setHistoryRateVal(e.target.value)}
+                            required
+                            className="w-full px-2.5 py-1.5 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Etiqueta (opcional):
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Martes 22 Septiembre"
+                            value={historyLabel}
+                            onChange={(e) => setHistoryLabel(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowHistoryModal(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={historySaving}
+                          className="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {historySaving ? 'Guardando...' : 'Guardar Tasa en Historial'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Tabla / Lista de tasas registradas en los últimos días */}
+                  {bcvRatesHistory && bcvRatesHistory.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                        <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold">
+                          <tr>
+                            <th className="py-2 px-3">Fecha</th>
+                            <th className="py-2 px-3">Tasa Oficial</th>
+                            <th className="py-2 px-3">Fecha Valor / Origen</th>
+                            <th className="py-2 px-3 text-right">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                          {bcvRatesHistory.slice(0, 7).map((item, idx) => {
+                            const isToday = item.date === new Date().toISOString().split('T')[0]
+                            return (
+                              <tr key={item.date || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                                <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                                  {item.date} {isToday ? <span className="ml-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold text-[10px]">Hoy</span> : ''}
+                                </td>
+                                <td className="py-2 px-3 font-mono font-black text-blue-600 dark:text-blue-400">
+                                  Bs. {Number(item.rate).toFixed(2)}
+                                </td>
+                                <td className="py-2 px-3 text-slate-500 dark:text-slate-400">
+                                  {item.fecha_valor || item.label || 'BCV'}
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setHistoryDate(item.date)
+                                      setHistoryRateVal(String(item.rate))
+                                      setHistoryLabel(item.label || item.fecha_valor || '')
+                                      setShowHistoryModal(true)
+                                    }}
+                                    className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
+                                  >
+                                    Editar
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                      No hay tasas históricas adicionales registradas aún. Se guardarán automáticamente con cada sincronización diaria.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           )}

@@ -90,6 +90,16 @@ export interface Tenant {
   created_at: string
 }
 
+export interface BcvRateHistoryItem {
+  date: string // YYYY-MM-DD
+  rate: number
+  fecha_valor?: string
+  label?: string
+  source?: 'bcv_sync' | 'manual'
+  updated_at?: string
+}
+
+
 // ─── Profile & Team Roles ──────────────────────────────────────────────────
 export type UserRole =
   | 'superadmin'

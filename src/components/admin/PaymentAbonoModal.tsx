@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   X,
   CreditCard,
@@ -62,7 +62,68 @@ export default function PaymentAbonoModal({
   exchangeRate,
   onAbonoSuccess,
 }: PaymentAbonoModalProps) {
-  const { tenant } = useTenant()
+  const { tenant, bcvRatesHistory } = useTenant()
+
+  // Control de fecha y tasa para abonos retroactivos o transferencias de ayer
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const yesterdayStr = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }, [])
+
+  const yesterdayRateEntry = useMemo(() => {
+    return bcvRatesHistory?.find((h) => h.date === yesterdayStr)
+  }, [bcvRatesHistory, yesterdayStr])
+
+  const [paymentDate, setPaymentDate] = useState<string>(todayStr)
+  const [rateMode, setRateMode] = useState<'today' | 'yesterday' | 'custom'>('today')
+  const [appliedRate, setAppliedRate] = useState<number>(exchangeRate)
+  const [customRateInput, setCustomRateInput] = useState<string>(String(exchangeRate))
+  const [showRateSettings, setShowRateSettings] = useState<boolean>(false)
+
+  // Sincronizar tasa si cambia la prop exchangeRate y estamos en modo 'today'
+  useEffect(() => {
+    if (rateMode === 'today') {
+      setAppliedRate(exchangeRate)
+      setCustomRateInput(String(exchangeRate))
+    }
+  }, [exchangeRate, rateMode])
+
+  const handleSelectRateMode = (mode: 'today' | 'yesterday' | 'custom') => {
+    setRateMode(mode)
+    if (mode === 'today') {
+      setPaymentDate(todayStr)
+      setAppliedRate(exchangeRate)
+      setCustomRateInput(String(exchangeRate))
+      setShowRateSettings(false)
+    } else if (mode === 'yesterday') {
+      setPaymentDate(yesterdayStr)
+      const yRate = yesterdayRateEntry?.rate || exchangeRate
+      setAppliedRate(yRate)
+      setCustomRateInput(String(yRate))
+      setShowRateSettings(true)
+    } else {
+      setShowRateSettings(true)
+    }
+  }
+
+  const handleCustomRateChange = (val: string) => {
+    setCustomRateInput(val)
+    const num = parseFloat(val)
+    if (!isNaN(num) && num > 0) {
+      setAppliedRate(num)
+    }
+  }
+
+  const handlePaymentDateChange = (newDate: string) => {
+    setPaymentDate(newDate)
+    const found = bcvRatesHistory?.find((h) => h.date === newDate)
+    if (found && found.rate > 0) {
+      setAppliedRate(found.rate)
+      setCustomRateInput(String(found.rate))
+    }
+  }
 
   // Calcular lo pagado acumulado hasta ahora
   const breakdown = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
@@ -74,7 +135,7 @@ export default function PaymentAbonoModal({
 
   const totalUsd = Number(order.total_usd) || 0
   const saldoPendienteUsd = Math.max(0, totalUsd - pagadoPrevioUsd)
-  const saldoPendienteVes = saldoPendienteUsd * exchangeRate
+  const saldoPendienteVes = saldoPendienteUsd * appliedRate
 
   const [method, setMethod] = useState('pago_movil')
   const [currencyInput, setCurrencyInput] = useState<'USD' | 'VES'>('VES')
@@ -95,8 +156,8 @@ export default function PaymentAbonoModal({
 
   // Calcular abono en USD y VES en base a lo que tipea el usuario
   const numericVal = parseFloat(amountInput) || 0
-  const abonoUsdCalculado = currencyInput === 'USD' ? numericVal : (numericVal / exchangeRate)
-  const abonoVesCalculado = currencyInput === 'VES' ? numericVal : (numericVal * exchangeRate)
+  const abonoUsdCalculado = currencyInput === 'USD' ? numericVal : (numericVal / appliedRate)
+  const abonoVesCalculado = currencyInput === 'VES' ? numericVal : (numericVal * appliedRate)
   const restantePostAbono = Math.max(0, saldoPendienteUsd - abonoUsdCalculado)
 
   const handleMethodChange = (mId: string) => {
@@ -111,7 +172,7 @@ export default function PaymentAbonoModal({
     if (currencyInput === 'USD') {
       setAmountInput(saldoPendienteUsd.toFixed(2))
     } else {
-      setAmountInput((saldoPendienteUsd * exchangeRate).toFixed(2))
+      setAmountInput((saldoPendienteUsd * appliedRate).toFixed(2))
     }
   }
 
@@ -141,11 +202,12 @@ export default function PaymentAbonoModal({
           order_id: order.id,
           amount_usd: abonoUsdCalculado,
           amount_ves: abonoVesCalculado,
-          exchange_rate: exchangeRate,
+          exchange_rate: appliedRate,
           payment_method: method,
           method,
           reference,
           notes,
+          payment_date: paymentDate !== todayStr ? paymentDate : undefined,
         }),
       })
 
@@ -393,15 +455,15 @@ export default function PaymentAbonoModal({
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[11px] text-slate-500 block">Tasa BCV del Día</span>
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 inline-block">
-                    Bs. {exchangeRate.toFixed(2)}/USD
+                  <span className="text-[11px] text-slate-500 block">Tasa BCV Aplicada</span>
+                  <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 inline-block shadow-2xs">
+                    Bs. {appliedRate.toFixed(2)}/USD
                   </span>
                   <div className="mt-1">
                     <button
                       type="button"
                       onClick={handleSetTotalAbono}
-                      className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                      className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                     >
                       Pagar Todo
                     </button>
@@ -409,12 +471,92 @@ export default function PaymentAbonoModal({
                 </div>
               </div>
 
-              {/* Advertencia oficial BCV */}
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-xl text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
-                <span>
-                  <strong>Nota oficial de tasa:</strong> Todo abono en Bolívares se liquida según la <strong>tasa oficial del BCV del día de hoy</strong> (Bs. {exchangeRate.toFixed(2)}).
-                </span>
+              {/* Selector de Tasa y Fecha de Pago (Para abonos de transferencias de ayer o días previos) */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Fecha & Tasa BCV de la Transferencia:</span>
+                  </span>
+                  <span className="text-xs font-mono font-bold text-slate-500">
+                    {paymentDate === todayStr ? 'Hoy' : paymentDate === yesterdayStr ? 'Ayer' : paymentDate}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectRateMode('today')}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                      rateMode === 'today'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectRateMode('yesterday')}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                      rateMode === 'yesterday'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                    title={yesterdayRateEntry ? `Tasa de ayer: Bs. ${yesterdayRateEntry.rate}` : 'Transferencia enviada ayer'}
+                  >
+                    Ayer {yesterdayRateEntry ? `(${yesterdayRateEntry.rate.toFixed(1)})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectRateMode('custom')}
+                    className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                      rateMode === 'custom'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    Otra Fecha
+                  </button>
+                </div>
+
+                {(rateMode === 'custom' || rateMode === 'yesterday' || showRateSettings) && (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Fecha en que el cliente transfirió:
+                      </label>
+                      <input
+                        type="date"
+                        max={todayStr}
+                        value={paymentDate}
+                        onChange={(e) => handlePaymentDateChange(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Tasa oficial BCV de ese día:
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Bs.</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={customRateInput}
+                          onChange={(e) => handleCustomRateChange(e.target.value)}
+                          className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                    {paymentDate !== todayStr && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/40 p-1.5 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                        ℹ️ Liquidando abono según la tasa del <strong>{paymentDate}</strong> (Bs. {appliedRate.toFixed(2)}/USD) para que coincida con el monto transferido.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Método de Pago */}
@@ -447,7 +589,7 @@ export default function PaymentAbonoModal({
                       onClick={() => {
                         setCurrencyInput('VES')
                         if (amountInput && currencyInput === 'USD') {
-                          setAmountInput((parseFloat(amountInput) * exchangeRate).toFixed(2))
+                          setAmountInput((parseFloat(amountInput) * appliedRate).toFixed(2))
                         }
                       }}
                       className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${currencyInput === 'VES' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500'}`}
@@ -459,7 +601,7 @@ export default function PaymentAbonoModal({
                       onClick={() => {
                         setCurrencyInput('USD')
                         if (amountInput && currencyInput === 'VES') {
-                          setAmountInput((parseFloat(amountInput) / exchangeRate).toFixed(2))
+                          setAmountInput((parseFloat(amountInput) / appliedRate).toFixed(2))
                         }
                       }}
                       className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${currencyInput === 'USD' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500'}`}
@@ -470,8 +612,12 @@ export default function PaymentAbonoModal({
                 </div>
 
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
-                    {currencyInput === 'USD' ? '$' : 'Bs.'}
+                  <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black px-2 py-1 rounded shadow-2xs ${
+                    currencyInput === 'USD'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/70 dark:text-emerald-200'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-200'
+                  }`}>
+                    {currencyInput === 'USD' ? '$ USD' : 'Bs. VES'}
                   </span>
                   <input
                     type="number"
@@ -481,7 +627,7 @@ export default function PaymentAbonoModal({
                     onChange={(e) => setAmountInput(e.target.value)}
                     placeholder="0.00"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold focus:ring-2 focus:ring-blue-500/50 outline-none"
+                    className="w-full pl-22 pr-4 py-3 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-base sm:text-lg font-black tracking-tight focus:ring-2 focus:ring-blue-500/50 outline-none"
                   />
                 </div>
 

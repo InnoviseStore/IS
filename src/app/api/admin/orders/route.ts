@@ -131,6 +131,8 @@ export async function POST(req: Request) {
       credit_days,
       discount_total_usd,
       notes: incomingNotes,
+      created_at: incomingCreatedAt,
+      sale_date: incomingSaleDate,
     } = body
 
     if (!tenant_id || !Array.isArray(items) || items.length === 0) {
@@ -298,7 +300,7 @@ export async function POST(req: Request) {
       const randSeq = Math.floor(1000 + Math.random() * 9000)
       const fallbackOrderNumber = 'IS-' + year + '-' + randSeq
 
-      const orderPayload = {
+      const orderPayload: Record<string, any> = {
         tenant_id,
         customer_id: customer_id || null,
         order_number: fallbackOrderNumber,
@@ -312,6 +314,12 @@ export async function POST(req: Request) {
         due_date: finalDueDate,
         notes: incomingNotes || null,
         created_by: created_by || auth.userId,
+      }
+
+      if (incomingCreatedAt) {
+        orderPayload.created_at = incomingCreatedAt
+      } else if (incomingSaleDate) {
+        orderPayload.created_at = new Date(incomingSaleDate + 'T12:00:00').toISOString()
       }
 
       const { data: newOrder, error: orderError } = await supabase

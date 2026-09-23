@@ -31,6 +31,7 @@ export async function POST(req: Request) {
       exchange_rate,
       reference,
       notes,
+      payment_date,
     } = body
 
     if (!order_id) {
@@ -110,6 +111,10 @@ export async function POST(req: Request) {
 
     // 3. Crear nuevo registro de abono
     const nowIso = new Date().toISOString()
+    const entryDateIso = payment_date
+      ? new Date(payment_date + 'T12:00:00').toISOString()
+      : nowIso
+
     const newPaymentEntry = {
       method: appliedMethod,
       amount_usd: numericAmountUsd,
@@ -117,7 +122,7 @@ export async function POST(req: Request) {
       reference: reference ? String(reference).trim() : undefined,
       notes: notes ? String(notes).trim() : undefined,
       exchange_rate_applied: Number(exchange_rate) || 91.5,
-      date: nowIso,
+      date: entryDateIso,
       is_abono: true,
     }
 
@@ -148,9 +153,11 @@ export async function POST(req: Request) {
       updateOrderPayload.status = 'completed'
     }
 
-    const dateStr = new Date().toLocaleDateString('es-VE')
+    const dateStr = payment_date
+      ? new Date(payment_date + 'T12:00:00').toLocaleDateString('es-VE')
+      : new Date().toLocaleDateString('es-VE')
     const refText = reference ? ' Ref: ' + reference : ''
-    const abonoLog = '[Abono ' + dateStr + ': $' + numericAmountUsd.toFixed(2) + ' USD via ' + (appliedMethod || 'Pago') + refText + ' | Tasa BCV: ' + (Number(exchange_rate) || 91.5) + ']'
+    const abonoLog = '[Abono ' + dateStr + ': $' + numericAmountUsd.toFixed(2) + ' USD via ' + (appliedMethod || 'Pago') + refText + ' | Tasa BCV aplicada: Bs. ' + (Number(exchange_rate) || 91.5) + ']'
     updateOrderPayload.notes = order.notes ? order.notes + ' | ' + abonoLog : abonoLog
 
     const { data: updatedOrder, error: updateErr } = await supabase

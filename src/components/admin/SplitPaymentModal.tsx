@@ -76,7 +76,69 @@ export function SplitPaymentModal({
   onClose,
   onSuccess,
 }: Props) {
-  const { tenant, profile } = useTenant()
+  const { tenant, profile, bcvRatesHistory } = useTenant()
+
+  // Control de fecha de operación y tasa BCV (permite ventas de ayer o tasas históricas)
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const yesterdayStr = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }, [])
+
+  const yesterdayRateEntry = useMemo(() => {
+    return bcvRatesHistory?.find((h) => h.date === yesterdayStr)
+  }, [bcvRatesHistory, yesterdayStr])
+
+  const [operationDate, setOperationDate] = useState<string>(todayStr)
+  const [rateMode, setRateMode] = useState<'today' | 'yesterday' | 'custom'>('today')
+  const [appliedRate, setAppliedRate] = useState<number>(exchangeRate)
+  const [customRateInput, setCustomRateInput] = useState<string>(String(exchangeRate))
+  const [showRateSettings, setShowRateSettings] = useState<boolean>(false)
+
+  // Sincronizar tasa si cambia la prop exchangeRate y estamos en modo 'today'
+  useEffect(() => {
+    if (rateMode === 'today') {
+      setAppliedRate(exchangeRate)
+      setCustomRateInput(String(exchangeRate))
+    }
+  }, [exchangeRate, rateMode])
+
+  const handleSelectRateMode = (mode: 'today' | 'yesterday' | 'custom') => {
+    setRateMode(mode)
+    if (mode === 'today') {
+      setOperationDate(todayStr)
+      setAppliedRate(exchangeRate)
+      setCustomRateInput(String(exchangeRate))
+      setShowRateSettings(false)
+    } else if (mode === 'yesterday') {
+      setOperationDate(yesterdayStr)
+      const yRate = yesterdayRateEntry?.rate || exchangeRate
+      setAppliedRate(yRate)
+      setCustomRateInput(String(yRate))
+      setShowRateSettings(true)
+    } else {
+      setShowRateSettings(true)
+    }
+  }
+
+  const handleCustomRateChange = (val: string) => {
+    setCustomRateInput(val)
+    const num = parseFloat(val)
+    if (!isNaN(num) && num > 0) {
+      setAppliedRate(num)
+    }
+  }
+
+  const handleOperationDateChange = (newDate: string) => {
+    setOperationDate(newDate)
+    const found = bcvRatesHistory?.find((h) => h.date === newDate)
+    if (found && found.rate > 0) {
+      setAppliedRate(found.rate)
+      setCustomRateInput(String(found.rate))
+    }
+  }
+
   const [customerType, setCustomerType] = useState<'final' | 'registered'>('final')
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
@@ -184,7 +246,7 @@ export function SplitPaymentModal({
   const paidUsd = payments.reduce((sum, row) => {
     const amount = parseFloat(row.amount) || 0
     const isVes = VES_METHODS.includes(row.method)
-    return sum + (isVes ? amount / exchangeRate : amount)
+    return sum + (isVes ? amount / appliedRate : amount)
   }, 0)
 
   // 2. IGTF: 3% on USD method payments when the tenant is IGTF agent
@@ -198,7 +260,7 @@ export function SplitPaymentModal({
 
   // 3. Grand total = subtotal + IGTF
   const grandTotalUsd = totalUsd + igtfTotal
-  const grandTotalVes = grandTotalUsd * exchangeRate
+  const grandTotalVes = grandTotalUsd * appliedRate
   const remainingUsd = grandTotalUsd - paidUsd
 
   const creditAmountUsd = isCredit ? Math.max(0, parseFloat((grandTotalUsd - paidUsd).toFixed(4))) : 0
@@ -229,7 +291,7 @@ export function SplitPaymentModal({
       const isLast = i === count
       const instUsd = isLast ? parseFloat((creditAmountUsd - acc).toFixed(2)) : baseUsd
       acc += instUsd
-      const instVes = parseFloat((instUsd * exchangeRate).toFixed(2))
+      const instVes = parseFloat((instUsd * appliedRate).toFixed(2))
       const dueTime = now + (i * effectiveFrequencyDays * 24 * 60 * 60 * 1000)
       const dueDateStr = new Date(dueTime).toISOString().split('T')[0]
       items.push({
@@ -241,7 +303,7 @@ export function SplitPaymentModal({
       })
     }
     return items
-  }, [creditPlanMode, creditAmountUsd, installmentsCount, maxInstallments, effectiveFrequencyDays, exchangeRate])
+  }, [creditPlanMode, creditAmountUsd, installmentsCount, maxInstallments, effectiveFrequencyDays, appliedRate])
 
   const dueDateObj = useMemo(() => {
     if (creditPlanMode === 'installments' && installmentsSchedule.length > 0) {
@@ -310,8 +372,8 @@ export function SplitPaymentModal({
       const rowIgtf = isIgtfAgent && isUsd ? parseFloat((amount * IGTF_RATE).toFixed(4)) : 0
       return {
         method: row.method,
-        amount_usd: isVes ? parseFloat((amount / exchangeRate).toFixed(4)) : amount,
-        amount_ves: isVes ? amount : parseFloat((amount * exchangeRate).toFixed(2)),
+        amount_usd: isVes ? parseFloat((amount / appliedRate).toFixed(4)) : amount,
+        amount_ves: isVes ? amount : parseFloat((amount * appliedRate).toFixed(2)),
         reference: row.reference || undefined,
         igtf_amount: rowIgtf || undefined,
       }
@@ -323,7 +385,7 @@ export function SplitPaymentModal({
       paymentBreakdown.push({
         method: 'credit_7d' as const,
         amount_usd: parseFloat(creditAmountUsd.toFixed(4)),
-        amount_ves: parseFloat((creditAmountUsd * exchangeRate).toFixed(2)),
+        amount_ves: parseFloat((creditAmountUsd * appliedRate).toFixed(2)),
         reference: creditPlanMode === 'installments'
           ? `Plan de ${installmentsSchedule.length} cuotas (${installmentFrequency}, cada ${effectiveFrequencyDays}d)`
           : `Crédito a ${creditDays} días (Vence: ${dueDate})`,
@@ -338,7 +400,7 @@ export function SplitPaymentModal({
         customer_id: selectedCustomer?.id ?? null,
         status: isCredit ? 'credit' : 'completed',
         payment_condition: isCredit ? 'credit_7d' : 'immediate',
-        exchange_rate_at_sale: exchangeRate,
+        exchange_rate_at_sale: appliedRate,
         subtotal_usd: rawSubtotalUsd || totalUsd,
         discount_total_usd: discountAmountUsd,
         igtf_total: parseFloat(igtfTotal.toFixed(4)),
@@ -348,6 +410,11 @@ export function SplitPaymentModal({
         created_by: profile.id,
         credit_amount_usd: isCredit ? creditAmountUsd : 0,
         due_date: isCredit ? dueDateObj.toISOString() : null,
+        created_at: operationDate !== todayStr ? new Date(operationDate + 'T12:00:00').toISOString() : undefined,
+        sale_date: operationDate !== todayStr ? operationDate : undefined,
+        notes: (operationDate !== todayStr || Math.abs(appliedRate - exchangeRate) > 0.001)
+          ? `[Venta registrada con fecha ${operationDate} | Tasa BCV: Bs. ${appliedRate.toFixed(2)}]`
+          : undefined,
         items: cartItems.map((item) => {
           const lineOriginal = item.unit_price_usd * item.quantity
           let itemDisc = 0
@@ -1107,27 +1174,43 @@ export function SplitPaymentModal({
                 const rowAmount = parseFloat(row.amount) || 0
                 const rowIgtf = isIgtfAgent && isUsd ? rowAmount * IGTF_RATE : 0
                 return (
-                  <div key={row.id} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                  <div key={row.id} className="p-3 sm:p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2.5 shadow-2xs">
                     <div className="flex items-center gap-2">
                       <select
                         value={row.method}
                         onChange={(e) => updateRow(row.id, 'method', e.target.value)}
-                        className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
+                        className="flex-1 min-w-[130px] px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
                       >
                         {SELECTABLE_METHODS.map((k) => (
                           <option key={k} value={k} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{METHOD_LABELS[k]}</option>
                         ))}
                       </select>
 
-                      {/* Monto en pantallas grandes (>= sm) */}
-                      <div className="hidden sm:block w-36 relative">
-                        <input
-                          type="number" min="0" step="0.01"
-                          placeholder={isVes ? 'Monto Bs.' : 'Monto USD'}
-                          value={row.amount}
-                          onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
-                        />
+                      {/* Monto en pantallas grandes (>= sm) - Amplio, visible y ergonómico */}
+                      <div className="hidden sm:block w-52 sm:w-60 relative flex-shrink-0">
+                        <div className="relative flex items-center">
+                          <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black px-1.5 py-0.5 rounded shadow-2xs ${
+                            isVes
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-200'
+                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/70 dark:text-emerald-200'
+                          }`}>
+                            {isVes ? 'Bs.' : '$'}
+                          </span>
+                          <input
+                            type="number" min="0" step="0.01"
+                            placeholder={isVes ? '0.00 Bs.' : '0.00 USD'}
+                            value={row.amount}
+                            onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
+                            className="w-full pl-11 pr-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base font-black tracking-tight"
+                          />
+                        </div>
+                        {rowAmount > 0 && (
+                          <div className="mt-0.5 text-right pr-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                            {isVes
+                              ? `≈ $${(rowAmount / appliedRate).toFixed(2)} USD`
+                              : `≈ Bs. ${(rowAmount * appliedRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
+                          </div>
+                        )}
                       </div>
 
                       {/* Referencia en pantallas grandes (>= sm) */}
@@ -1135,7 +1218,7 @@ export function SplitPaymentModal({
                         type="text" placeholder="Referencia (opcional)"
                         value={row.reference}
                         onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
-                        className="hidden sm:block flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                        className="hidden sm:block flex-1 min-w-[110px] px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                       />
 
                       <button onClick={() => removeRow(row.id)} disabled={!isCredit && payments.length === 1}
@@ -1146,25 +1229,35 @@ export function SplitPaymentModal({
                       </button>
                     </div>
 
-                    {/* Fila inferior exclusiva para móvil (< sm): Monto y Referencia */}
-                    <div className="flex sm:hidden items-center gap-2">
-                      <div className="flex-1 relative">
+                    {/* Fila inferior exclusiva para móvil (< sm): Monto amplio en primer plano y Referencia debajo */}
+                    <div className="flex sm:hidden flex-col gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <div className="relative">
+                        <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black px-2 py-1 rounded shadow-2xs ${
+                          isVes
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-200'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/70 dark:text-emerald-200'
+                        }`}>
+                          {isVes ? 'Bs. VES' : '$ USD'}
+                        </span>
                         <input
                           type="number" min="0" step="0.01"
-                          placeholder={isVes ? 'Monto en Bs.' : 'Monto en USD'}
+                          placeholder={isVes ? 'Monto en Bolívares' : 'Monto en Dólares'}
                           value={row.amount}
                           onChange={(e) => updateRow(row.id, 'amount', e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                          className="w-full pl-22 pr-3 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-base font-black tracking-tight"
                         />
+                        {rowAmount > 0 && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                            {isVes ? `≈ $${(rowAmount / appliedRate).toFixed(2)}` : `≈ Bs. ${(rowAmount * appliedRate).toFixed(0)}`}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex-1">
-                        <input
-                          type="text" placeholder="Nro. Referencia"
-                          value={row.reference}
-                          onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                        />
-                      </div>
+                      <input
+                        type="text" placeholder="Nro. Referencia (opcional)"
+                        value={row.reference}
+                        onChange={(e) => updateRow(row.id, 'reference', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                      />
                     </div>
 
                     {/* IGTF per-row indicator */}
@@ -1198,12 +1291,104 @@ export function SplitPaymentModal({
         {/* COLUMNA DERECHA: RESUMEN DE COBRO, BALANCE Y BOTONES DE CONFIRMACIÓN */}
         <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-0">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-4 sm:p-5 space-y-3.5 shadow-xs">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 border-b border-slate-200/80 dark:border-slate-700/80 pb-2 flex items-center justify-between">
-              <span>Resumen de Cobro</span>
-              <span className="text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400">
-                Tasa: Bs. {exchangeRate.toFixed(2)}
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700/80 pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Resumen de Cobro
+              </h3>
+              <span className="text-[11px] font-mono font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
+                Tasa: Bs. {appliedRate.toFixed(2)}
               </span>
-            </h3>
+            </div>
+
+            {/* Selector de Tasa y Fecha de Operación (Ventas de ayer / pagos retroactivos) */}
+            <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-700/90 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Fecha & Tasa BCV de Pago:</span>
+                </span>
+                <span className="text-[11px] font-mono font-bold text-slate-500">
+                  {operationDate === todayStr ? 'Hoy' : operationDate === yesterdayStr ? 'Ayer' : operationDate}
+                </span>
+              </div>
+
+              {/* Selector de 3 pestañas */}
+              <div className="grid grid-cols-3 gap-1.5 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => handleSelectRateMode('today')}
+                  className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                    rateMode === 'today'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Hoy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectRateMode('yesterday')}
+                  className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                    rateMode === 'yesterday'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                  title={yesterdayRateEntry ? `Tasa de ayer: Bs. ${yesterdayRateEntry.rate}` : 'Pago recibido ayer'}
+                >
+                  Ayer {yesterdayRateEntry ? `(${yesterdayRateEntry.rate.toFixed(1)})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectRateMode('custom')}
+                  className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                    rateMode === 'custom'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Otra Fecha
+                </button>
+              </div>
+
+              {/* Formulario desplegable si es Ayer o Fecha Personalizada */}
+              {(rateMode === 'custom' || rateMode === 'yesterday' || showRateSettings) && (
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Fecha en que transfirió el cliente:
+                    </label>
+                    <input
+                      type="date"
+                      max={todayStr}
+                      value={operationDate}
+                      onChange={(e) => handleOperationDateChange(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Tasa BCV del día de la transferencia:
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Bs.</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={customRateInput}
+                        onChange={(e) => handleCustomRateChange(e.target.value)}
+                        className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  {operationDate !== todayStr && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/40 p-1.5 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                      ℹ️ Registrando con fecha <strong className="font-bold">{operationDate}</strong> a tasa <strong className="font-bold">Bs. {appliedRate.toFixed(2)}</strong>.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Subtotal */}
             <div className="flex justify-between text-sm">
