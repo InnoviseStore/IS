@@ -25,3 +25,9 @@
   for = "/api/*"
   [headers.values]
     Cache-Control = "no-store"
+
+[[redirects]]
+  from = "/_next/static/*"
+  to = "/static/:splat"
+  status = 200
+
