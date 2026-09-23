@@ -112,7 +112,7 @@ export default function AdminDashboard() {
       supabase.from('orders').select('total_usd')
         .eq('tenant_id', tenant.id).gte('created_at', monthStartIso).eq('status', 'completed'),
       supabase.from('expenses').select('amount_usd')
-        .eq('tenant_id', tenant.id).gte('expense_date', localMonthStart),
+        .eq('tenant_id', tenant.id).gte('date', localMonthStart),
       supabase.from('products').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant.id).lt('stock', 5).eq('is_active', true),
       supabase.from('orders').select('id', { count: 'exact', head: true })

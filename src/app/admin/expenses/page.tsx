@@ -25,7 +25,7 @@ export default function ExpensesPage() {
       .from('expenses')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .order('expense_date', { ascending: false })
+      .order('date', { ascending: false })
 
     setExpenses((data ?? []) as Expense[])
     setLoading(false)
