@@ -6,7 +6,8 @@ import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType, CreditPlanFrequency, InstallmentsPlan, InstallmentScheduleItem } from '@/types/database'
 import { 
   X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock, 
-  FileDown, Printer, Pencil, ShoppingCart, Calendar, Clock, CalendarDays, Calculator 
+  FileDown, Printer, Pencil, ShoppingCart, Calendar, Clock, CalendarDays, Calculator,
+  Truck, MapPin
 } from 'lucide-react'
 import { CustomerModal } from '@/components/admin/CustomerModal'
 import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/admin/CreditCollectionModal'
@@ -15,6 +16,7 @@ import { formatDate, formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
+import { type DeliveryInfo, formatDeliveryTag, extractDeliveryInfo } from '@/lib/delivery'
 
 interface PaymentRow {
   id: string
@@ -56,6 +58,7 @@ interface Props {
   initialPayments?: any[]
   initialCreditDays?: number
   initialCreditAmount?: number
+  initialDeliveryInfo?: DeliveryInfo | null
   onClose: () => void
   onSuccess: () => void
 }
@@ -73,6 +76,7 @@ export function SplitPaymentModal({
   initialPayments,
   initialCreditDays,
   initialCreditAmount,
+  initialDeliveryInfo,
   onClose,
   onSuccess,
 }: Props) {
@@ -203,6 +207,48 @@ export function SplitPaymentModal({
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [showInvoiceWhatsAppModal, setShowInvoiceWhatsAppModal] = useState(false)
 
+  // Estado de Servicio de Delivery
+  const [hasDelivery, setHasDelivery] = useState<boolean>(Boolean(initialDeliveryInfo?.hasDelivery))
+  const [deliveryAmountUsdInput, setDeliveryAmountUsdInput] = useState<string>(
+    initialDeliveryInfo?.amountUsd ? String(initialDeliveryInfo.amountUsd) : ''
+  )
+  const [deliveryAmountVesInput, setDeliveryAmountVesInput] = useState<string>(
+    initialDeliveryInfo?.amountVes ? String(initialDeliveryInfo.amountVes) : ''
+  )
+  const [deliveryAddress, setDeliveryAddress] = useState<string>(
+    initialDeliveryInfo?.address || initialCustomer?.address || ''
+  )
+
+  // Sincronizar dirección de entrega si el cliente seleccionado tiene dirección registrada
+  useEffect(() => {
+    if (selectedCustomer?.address && !deliveryAddress) {
+      setDeliveryAddress(selectedCustomer.address)
+    }
+  }, [selectedCustomer])
+
+  const handleDeliveryUsdChange = (val: string) => {
+    setDeliveryAmountUsdInput(val)
+    const num = parseFloat(val)
+    if (!isNaN(num) && num > 0) {
+      setDeliveryAmountVesInput((num * appliedRate).toFixed(2))
+    } else {
+      setDeliveryAmountVesInput('')
+    }
+  }
+
+  const handleDeliveryVesChange = (val: string) => {
+    setDeliveryAmountVesInput(val)
+    const num = parseFloat(val)
+    if (!isNaN(num) && num > 0 && appliedRate > 0) {
+      setDeliveryAmountUsdInput((num / appliedRate).toFixed(2))
+    } else {
+      setDeliveryAmountUsdInput('')
+    }
+  }
+
+  const deliveryUsd = hasDelivery ? (parseFloat(deliveryAmountUsdInput) || 0) : 0
+  const deliveryVes = hasDelivery ? (parseFloat(deliveryAmountVesInput) || (deliveryUsd * appliedRate)) : 0
+
   const features = getTenantFeatures(tenant)
 
   // Detect if this tenant is an IGTF agent (set in tenant settings)
@@ -258,8 +304,8 @@ export function SplitPaymentModal({
       }, 0)
     : 0
 
-  // 3. Grand total = subtotal + IGTF
-  const grandTotalUsd = totalUsd + igtfTotal
+  // 3. Grand total = subtotal + IGTF + deliveryUsd
+  const grandTotalUsd = totalUsd + igtfTotal + deliveryUsd
   const grandTotalVes = grandTotalUsd * appliedRate
   const remainingUsd = grandTotalUsd - paidUsd
 
@@ -395,26 +441,43 @@ export function SplitPaymentModal({
     }
 
     try {
-      const payload = {
-        tenant_id: tenant.id,
-        customer_id: selectedCustomer?.id ?? null,
-        status: isCredit ? 'credit' : 'completed',
-        payment_condition: isCredit ? 'credit_7d' : 'immediate',
-        exchange_rate_at_sale: appliedRate,
-        subtotal_usd: rawSubtotalUsd || totalUsd,
-        discount_total_usd: discountAmountUsd,
-        igtf_total: parseFloat(igtfTotal.toFixed(4)),
-        total_usd: parseFloat(grandTotalUsd.toFixed(4)),
-        total_ves: parseFloat(grandTotalVes.toFixed(2)),
-        payment_breakdown: paymentBreakdown,
-        created_by: profile.id,
-        credit_amount_usd: isCredit ? creditAmountUsd : 0,
-        due_date: isCredit ? dueDateObj.toISOString() : null,
-        created_at: operationDate !== todayStr ? new Date(operationDate + 'T12:00:00').toISOString() : undefined,
-        sale_date: operationDate !== todayStr ? operationDate : undefined,
-        notes: (operationDate !== todayStr || Math.abs(appliedRate - exchangeRate) > 0.001)
+      const deliveryTag = formatDeliveryTag({
+        hasDelivery,
+        amountUsd: deliveryUsd,
+        amountVes: deliveryVes,
+        address: deliveryAddress.trim(),
+      })
+
+        const baseNotes = (operationDate !== todayStr || Math.abs(appliedRate - exchangeRate) > 0.001)
           ? `[Venta registrada con fecha ${operationDate} | Tasa BCV: Bs. ${appliedRate.toFixed(2)}]`
-          : undefined,
+          : ''
+        const deliveryCleanText = (hasDelivery && (deliveryUsd > 0 || deliveryAddress.trim()))
+          ? `🛵 Delivery: $${deliveryUsd.toFixed(2)} USD (Bs. ${deliveryVes.toFixed(2)})${deliveryAddress.trim() ? ` | Dir: ${deliveryAddress.trim()}` : ''}`
+          : ''
+
+        const finalNotes = [baseNotes, deliveryCleanText, deliveryTag].filter(Boolean).join('\n') || undefined
+
+        const payload = {
+          tenant_id: tenant.id,
+          customer_id: selectedCustomer?.id ?? null,
+          status: isCredit ? 'credit' : 'completed',
+          payment_condition: isCredit ? 'credit_7d' : 'immediate',
+          exchange_rate_at_sale: appliedRate,
+          subtotal_usd: rawSubtotalUsd || totalUsd,
+          discount_total_usd: discountAmountUsd,
+          igtf_total: parseFloat(igtfTotal.toFixed(4)),
+          total_usd: parseFloat(grandTotalUsd.toFixed(4)),
+          total_ves: parseFloat(grandTotalVes.toFixed(2)),
+          payment_breakdown: paymentBreakdown,
+          created_by: profile.id,
+          credit_amount_usd: isCredit ? creditAmountUsd : 0,
+          due_date: isCredit ? dueDateObj.toISOString() : null,
+          created_at: operationDate !== todayStr ? new Date(operationDate + 'T12:00:00').toISOString() : undefined,
+          sale_date: operationDate !== todayStr ? operationDate : undefined,
+          notes: finalNotes,
+          delivery_amount_usd: deliveryUsd,
+          delivery_amount_ves: deliveryVes,
+          delivery_address: deliveryAddress.trim() || undefined,
         items: cartItems.map((item) => {
           const lineOriginal = item.unit_price_usd * item.quantity
           let itemDisc = 0
@@ -505,6 +568,14 @@ export function SplitPaymentModal({
           subtotal_usd: totalUsd,
           total_usd: grandTotalUsd,
           total_ves: grandTotalVes,
+          notes: (hasDelivery && (deliveryUsd > 0 || deliveryAddress.trim()))
+            ? formatDeliveryTag({
+                hasDelivery: true,
+                amountUsd: deliveryUsd,
+                amountVes: deliveryVes,
+                address: deliveryAddress.trim(),
+              })
+            : null,
           payment_breakdown: payments.map((p) => ({
             method: p.method,
             amount_usd: VES_METHODS.includes(p.method) ? (parseFloat(p.amount) || 0) / exchangeRate : (parseFloat(p.amount) || 0),
@@ -512,7 +583,12 @@ export function SplitPaymentModal({
             reference: p.reference,
           })),
           created_at: new Date().toISOString(),
-          customer: selectedCustomer || null,
+          customer: selectedCustomer
+            ? {
+                ...selectedCustomer,
+                address: deliveryAddress.trim() || selectedCustomer.address,
+              }
+            : (deliveryAddress.trim() ? { full_name: 'Consumidor Final', address: deliveryAddress.trim() } : null),
           order_items: cartItems.map((i) => {
             const lineOriginal = i.unit_price_usd * i.quantity
             let itemDisc = 0
@@ -641,6 +717,9 @@ export function SplitPaymentModal({
             totalVes={grandTotalVes}
             igtfUsd={igtfTotal}
             discountUsd={discountAmountUsd}
+            deliveryAmountUsd={deliveryUsd}
+            deliveryAmountVes={deliveryVes}
+            deliveryAddress={deliveryAddress.trim()}
             isCredit={isCredit}
             creditDueDate={dueDate}
             creditRemainingUsd={isCredit ? creditAmountUsd : 0}
@@ -1140,6 +1219,109 @@ export function SplitPaymentModal({
             </div>
           </div>
 
+          {/* SECTION 1.5: Servicio de Delivery (Opcional) */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hasDelivery}
+                  onChange={(e) => {
+                    setHasDelivery(e.target.checked)
+                    if (e.target.checked && selectedCustomer?.address && !deliveryAddress) {
+                      setDeliveryAddress(selectedCustomer.address)
+                    }
+                  }}
+                  className="w-4 h-4 text-blue-600 rounded-md focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span>Servicio de Delivery / Flete</span>
+                </span>
+              </label>
+              {hasDelivery && (
+                <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+                  Activo
+                </span>
+              )}
+            </div>
+
+            {hasDelivery && (
+              <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-700/60 animate-in fade-in duration-150">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Costo en Dólares ($ USD)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={deliveryAmountUsdInput}
+                        onChange={(e) => handleDeliveryUsdChange(e.target.value)}
+                        className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Costo en Bolívares (Bs. BCV)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Bs.</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={deliveryAmountVesInput}
+                        onChange={(e) => handleDeliveryVesChange(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                      Dirección de Entrega
+                    </label>
+                    {selectedCustomer?.address && selectedCustomer.address !== deliveryAddress && (
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryAddress(selectedCustomer.address || '')}
+                        className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                      >
+                        Usar dirección del cliente
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Calle, carrera, punto de referencia o sector..."
+                      value={deliveryAddress}
+                      onChange={(e) => setDeliveryAddress(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/40 flex items-start gap-2 text-[11px] text-blue-800 dark:text-blue-300">
+                  <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <span>
+                    Este monto se incluye en la factura para el cliente y repartidor, pero <strong>no computa como depósito ni ingreso de la tienda</strong> en caja ni finanzas.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* SECTION 2: Payment Methods (Or Initial Downpayment when Credit) */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1419,6 +1601,17 @@ export function SplitPaymentModal({
               <div className="flex justify-between text-sm">
                 <span className="text-amber-600 dark:text-amber-400 font-semibold">IGTF (3% divisas):</span>
                 <span className="font-extrabold text-amber-600 dark:text-amber-400">+${igtfTotal.toFixed(2)} USD</span>
+              </div>
+            )}
+
+            {/* Servicio de Delivery si aplica */}
+            {hasDelivery && deliveryUsd > 0 && (
+              <div className="flex justify-between text-sm text-blue-600 dark:text-blue-400 font-bold">
+                <span className="flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>Servicio de Delivery:</span>
+                </span>
+                <span>+${deliveryUsd.toFixed(2)} USD</span>
               </div>
             )}
 

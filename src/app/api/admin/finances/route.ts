@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+import { extractDeliveryInfo } from '@/lib/delivery'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,7 +84,7 @@ export async function GET(req: Request) {
       // Órdenes facturadas en el rango con sus order_items
       supabase
         .from('orders')
-        .select('id, total_usd, total_ves, status, created_at, order_items(product_id, quantity, unit_price_usd, subtotal_usd)')
+        .select('id, total_usd, total_ves, subtotal_usd, notes, status, created_at, order_items(product_id, quantity, unit_price_usd, subtotal_usd)')
         .eq('tenant_id', tenantId)
         .in('status', ['completed', 'credit'])
         .gte('created_at', startIso)
@@ -137,7 +138,11 @@ export async function GET(req: Request) {
     const ordersList = ordersData || []
 
     for (const ord of ordersList) {
-      totalSalesUsd += Number(ord.total_usd) || 0
+      const del = extractDeliveryInfo(ord.notes, exchangeRate)
+      const merchandiseUsd = (ord.subtotal_usd !== undefined && Number(ord.subtotal_usd) > 0)
+        ? Number(ord.subtotal_usd)
+        : Math.max(0, (Number(ord.total_usd) || 0) - del.amountUsd)
+      totalSalesUsd += merchandiseUsd
       const items = ord.order_items || []
       for (const it of items) {
         const pId = it.product_id

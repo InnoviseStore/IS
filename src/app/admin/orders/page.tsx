@@ -27,6 +27,7 @@ import {
   MapPin,
   Navigation,
   Calendar,
+  Truck,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf } from '@/lib/pdfGenerator'
@@ -35,6 +36,7 @@ import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
 import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
 import { WhatsAppOrderContactModal } from '@/components/admin/WhatsAppOrderContactModal'
 import { WhatsAppInvoiceModal } from '@/components/admin/WhatsAppInvoiceModal'
+import { extractDeliveryInfo, cleanNotesFromDeliveryTag } from '@/lib/delivery'
 
 import { getRoleLabel } from '@/types/database'
 
@@ -651,6 +653,7 @@ export default function AdminOrdersPage() {
             const cust = getCustomerDisplay(order)
             const isExpanded = Boolean(expandedOrders[order.id])
             const itemsCount = order.order_items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 0
+            const deliveryInfo = extractDeliveryInfo(order.notes, Number(order.exchange_rate_at_sale) || exchangeRate)
             const cleanPhone = cust.phone ? cust.phone.replace(/\D/g, '') : ''
             const waChatUrl = cleanPhone
               ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(`¡Hola ${cust.name}! Te escribimos de ${tenant?.name || 'la tienda'} referente a tu pedido #${order.order_number}.`)}`
@@ -800,9 +803,28 @@ export default function AdminOrdersPage() {
                       </div>
                     )}
 
-                    {order.notes && (
+                    {deliveryInfo.hasDelivery && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/50 text-xs">
+                        <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <div>
+                          <span className="font-extrabold text-blue-700 dark:text-blue-300">
+                            Delivery: ${deliveryInfo.amountUsd.toFixed(2)} USD
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1.5">
+                            (Bs. {deliveryInfo.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })})
+                          </span>
+                          {deliveryInfo.address && (
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+                              📍 {deliveryInfo.address}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {cleanNotesFromDeliveryTag(order.notes) && (
                       <p className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                        {order.notes}
+                        {cleanNotesFromDeliveryTag(order.notes)}
                       </p>
                     )}
                   </div>
@@ -1061,6 +1083,9 @@ export default function AdminOrdersPage() {
           }))}
           totalUsd={Number(invoiceWhatsAppOrder.total_usd) || 0}
           totalVes={Number(invoiceWhatsAppOrder.total_ves) || (Number(invoiceWhatsAppOrder.total_usd) || 0) * exchangeRate}
+          deliveryAmountUsd={extractDeliveryInfo(invoiceWhatsAppOrder.notes, exchangeRate).amountUsd}
+          deliveryAmountVes={extractDeliveryInfo(invoiceWhatsAppOrder.notes, exchangeRate).amountVes}
+          deliveryAddress={extractDeliveryInfo(invoiceWhatsAppOrder.notes, exchangeRate).address || invoiceWhatsAppOrder.customer?.address || ''}
           isCredit={invoiceWhatsAppOrder.status === 'credit' || invoiceWhatsAppOrder.payment_condition === 'credit_7d'}
           creditDueDate={invoiceWhatsAppOrder.due_date ? formatDate(invoiceWhatsAppOrder.due_date) : null}
           creditRemainingUsd={

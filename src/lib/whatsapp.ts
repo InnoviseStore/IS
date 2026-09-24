@@ -24,6 +24,8 @@ export interface CustomerInfo {
   deliveryCoords?: { lat: number; lng: number };
   shippingAgency?: ShippingAgency;
   agencyAddress?: string;
+  deliveryAmountUsd?: number;
+  deliveryAmountVes?: number;
 }
 
 export interface WhatsAppConfig {
@@ -114,6 +116,11 @@ export function generateWhatsAppMessage(
   } else if (customer.address && customer.address.trim().length > 0) {
     lines.push(`📍 *Dirección de Entrega:* ${customer.address.trim()}`);
   }
+
+  if (customer.deliveryAmountUsd && customer.deliveryAmountUsd > 0) {
+    const dVes = customer.deliveryAmountVes || (customer.deliveryAmountUsd * exchangeRate);
+    lines.push(`🛵 *Costo de Delivery:* $${formatUsd(customer.deliveryAmountUsd)} USD | Bs. ${formatVes(dVes)}`);
+  }
   lines.push('');
 
   // Order detail
@@ -127,7 +134,14 @@ export function generateWhatsAppMessage(
   }
   lines.push('');
 
-  // Descuento si aplica
+  // Resumen y Descuento si aplica
+  const productsSubtotalUsd = items.reduce((acc, it) => acc + (it.unit_price_usd * it.quantity), 0);
+  if (customer.deliveryAmountUsd && customer.deliveryAmountUsd > 0) {
+    const dVes = customer.deliveryAmountVes || (customer.deliveryAmountUsd * exchangeRate);
+    lines.push(`• Subtotal Productos: $${formatUsd(productsSubtotalUsd)} USD`);
+    lines.push(`• Servicio de Delivery: +$${formatUsd(customer.deliveryAmountUsd)} USD (Bs. ${formatVes(dVes)})`);
+  }
+
   if (discountTotalUsd && discountTotalUsd > 0) {
     lines.push(`🎉 *Descuento Especial:* -$${formatUsd(discountTotalUsd)} USD`);
   }

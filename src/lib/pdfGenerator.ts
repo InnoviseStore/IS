@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Tenant, Order, Quotation, Customer } from '@/types/database'
+import { extractDeliveryInfo, cleanNotesFromDeliveryTag } from '@/lib/delivery'
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 function formatUsd(val: number | string | null | undefined): string {
@@ -199,10 +200,15 @@ export async function buildOrderJsPdfDoc({
   const customerIdNumber = order.customer?.id_number ? `CI/RIF: ${order.customer.id_number}` : ''
   const customerPhone = order.customer?.phone ? `Teléfono: ${order.customer.phone}` : ''
 
+  const deliveryInfo = extractDeliveryInfo(order.notes, exchangeRate)
+  const deliveryAddress = deliveryInfo.address || order.customer?.address || ''
+  const hasDeliveryAddress = Boolean(deliveryAddress && deliveryAddress.trim())
+  const custBoxHeight = hasDeliveryAddress ? 26 : 20
+
   doc.setFillColor(248, 250, 252) // slate-50
-  doc.roundedRect(14, currentY, 182, 20, 2, 2, 'F')
+  doc.roundedRect(14, currentY, 182, custBoxHeight, 2, 2, 'F')
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(14, currentY, 182, 20, 2, 2, 'S')
+  doc.roundedRect(14, currentY, 182, custBoxHeight, 2, 2, 'S')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
@@ -220,6 +226,14 @@ export async function buildOrderJsPdfDoc({
   const custDetails = [customerIdNumber, customerPhone].filter(Boolean).join('   |   ')
   if (custDetails) {
     doc.text(custDetails, 18, currentY + 16)
+  }
+
+  if (hasDeliveryAddress) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(37, 99, 235) // blue-600
+    const truncatedAddress = deliveryAddress.length > 70 ? deliveryAddress.slice(0, 67) + '...' : deliveryAddress
+    doc.text(`Direccion de Entrega: ${truncatedAddress}`, 18, currentY + 21.5)
   }
 
   // Condition Badge (Contado / Crédito)
@@ -256,7 +270,7 @@ export async function buildOrderJsPdfDoc({
   doc.setTextColor(order.status === 'completed' ? 16 : 217, order.status === 'completed' ? 185 : 119, order.status === 'completed' ? 129 : 6)
   doc.text(`Estado: ${statusBadge}`, 192, currentY + (isCreditOrder && order.due_date ? 16.5 : 13.5), { align: 'right' })
 
-  currentY += 26
+  currentY += (hasDeliveryAddress ? 32 : 26)
 
   // 3. Products Table
   const items = order.order_items || []
@@ -308,34 +322,68 @@ export async function buildOrderJsPdfDoc({
   // 4. Totals & Payment Summary (Bottom Right Box)
   const summaryBoxWidth = 84
   const summaryBoxX = 196 - summaryBoxWidth
+  const hasDeliveryFee = deliveryInfo.hasDelivery && deliveryInfo.amountUsd > 0
+  const summaryBoxHeight = hasDeliveryFee ? 36 : 28
 
   doc.setFillColor(248, 250, 252)
-  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, 28, 2, 2, 'F')
+  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, summaryBoxHeight, 2, 2, 'F')
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, 28, 2, 2, 'S')
+  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, summaryBoxHeight, 2, 2, 'S')
 
   const totalUsd = Number(order.total_usd) || 0
   const totalVes = Number(order.total_ves) || totalUsd * exchangeRate
+  const productsSubtotalUsd = (order.subtotal_usd !== undefined && Number(order.subtotal_usd) > 0)
+    ? Number(order.subtotal_usd)
+    : (hasDeliveryFee ? Math.max(0, totalUsd - deliveryInfo.amountUsd) : totalUsd)
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(100, 116, 139)
-  doc.text('Subtotal:', summaryBoxX + 6, finalY + 7)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(15, 23, 42)
-  doc.text(formatUsd(totalUsd), 190, finalY + 7, { align: 'right' })
+  if (hasDeliveryFee) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Subtotal Productos:', summaryBoxX + 6, finalY + 6.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(15, 23, 42)
+    doc.text(formatUsd(productsSubtotalUsd), 190, finalY + 6.5, { align: 'right' })
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(37, 99, 235)
-  doc.text('TOTAL FACTURADO:', summaryBoxX + 6, finalY + 16)
-  doc.text(formatUsd(totalUsd), 190, finalY + 16, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(100, 116, 139)
+    doc.text('Servicio de Delivery:', summaryBoxX + 6, finalY + 13)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(37, 99, 235)
+    doc.text(formatUsd(deliveryInfo.amountUsd), 190, finalY + 13, { align: 'right' })
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(15, 23, 42)
-  doc.text(`Total en Bolívares:`, summaryBoxX + 6, finalY + 23)
-  doc.text(formatVes(totalVes), 190, finalY + 23, { align: 'right' })
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10.5)
+    doc.setTextColor(37, 99, 235)
+    doc.text('TOTAL FACTURADO:', summaryBoxX + 6, finalY + 22)
+    doc.text(formatUsd(totalUsd), 190, finalY + 22, { align: 'right' })
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(15, 23, 42)
+    doc.text(`Total en Bolívares:`, summaryBoxX + 6, finalY + 30)
+    doc.text(formatVes(totalVes), 190, finalY + 30, { align: 'right' })
+  } else {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Subtotal:', summaryBoxX + 6, finalY + 7)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(15, 23, 42)
+    doc.text(formatUsd(totalUsd), 190, finalY + 7, { align: 'right' })
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(37, 99, 235)
+    doc.text('TOTAL FACTURADO:', summaryBoxX + 6, finalY + 16)
+    doc.text(formatUsd(totalUsd), 190, finalY + 16, { align: 'right' })
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(15, 23, 42)
+    doc.text(`Total en Bolívares:`, summaryBoxX + 6, finalY + 23)
+    doc.text(formatVes(totalVes), 190, finalY + 23, { align: 'right' })
+  }
 
   // Payment Breakdown (Bottom Left Box if available)
   const payments = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
@@ -375,6 +423,15 @@ export async function buildOrderJsPdfDoc({
   }
 
   // 5. Notes / Footer Note
+  const cleanedNotes = cleanNotesFromDeliveryTag(order.notes)
+  if (cleanedNotes && cleanedNotes.trim()) {
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    const noteLines = doc.splitTextToSize(`Nota: ${cleanedNotes.trim()}`, 182)
+    doc.text(noteLines.slice(0, 2), 14, 268)
+  }
+
   const footerY = 278
   doc.setDrawColor(226, 232, 240)
   doc.line(14, footerY - 6, 196, footerY - 6)

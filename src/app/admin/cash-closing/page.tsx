@@ -6,9 +6,10 @@ import { useTenant } from '@/contexts/TenantContext'
 import type { PaymentMethodType, Order, CashClosingSummaryItem } from '@/types/database'
 import {
   CheckCircle2, Clock, Banknote, Loader2, RefreshCw,
-  Receipt, TrendingUp, AlertTriangle, Lock
+  Receipt, TrendingUp, AlertTriangle, Lock, Truck
 } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
+import { extractDeliveryInfo } from '@/lib/delivery'
 
 const METHOD_LABELS: Record<PaymentMethodType, string> = {
   binance_pay: '🟡 Binance Pay (USDT)',
@@ -96,6 +97,10 @@ export default function CashClosingPage() {
     }
     return computeSummary(orders, exchangeRate)
   }, [alreadyClosed, savedClosing, orders, exchangeRate])
+
+  const deliveryTotalUsd = useMemo(() => {
+    return orders.reduce((s, o) => s + extractDeliveryInfo(o.notes, exchangeRate).amountUsd, 0)
+  }, [orders, exchangeRate])
 
   const subtotalUsd = useMemo(() => {
     if (alreadyClosed && savedClosing) {
@@ -229,14 +234,18 @@ export default function CashClosingPage() {
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
             <KpiCard
               icon={Receipt} color="text-blue-600 dark:text-blue-400" bg="bg-blue-50 dark:bg-blue-950/50"
               label="Órdenes del día" value={String(orders.length)} sub="completadas"
             />
             <KpiCard
               icon={TrendingUp} color="text-emerald-600 dark:text-emerald-400" bg="bg-emerald-50 dark:bg-emerald-950/50"
-              label="Subtotal Ventas" value={`$${subtotalUsd.toFixed(2)}`} sub={`Bs. ${(subtotalUsd * exchangeRate).toLocaleString('es-VE', { maximumFractionDigits: 2 })}`}
+              label="Venta Neta Tienda" value={`$${subtotalUsd.toFixed(2)}`} sub={`Depósito Tienda (Bs. ${(subtotalUsd * exchangeRate).toLocaleString('es-VE', { maximumFractionDigits: 2 })})`}
+            />
+            <KpiCard
+              icon={Truck} color="text-sky-600 dark:text-sky-400" bg="bg-sky-50 dark:bg-sky-950/50"
+              label="Delivery / Fletes" value={`$${deliveryTotalUsd.toFixed(2)}`} sub="Repartidores (No entra a tienda)"
             />
             <KpiCard
               icon={AlertTriangle} color="text-amber-600 dark:text-amber-400" bg="bg-amber-50 dark:bg-amber-950/50"
@@ -244,7 +253,7 @@ export default function CashClosingPage() {
             />
             <KpiCard
               icon={Banknote} color="text-indigo-600 dark:text-indigo-400" bg="bg-indigo-50 dark:bg-indigo-950/50"
-              label="Total Final" value={`$${grandTotalUsd.toFixed(2)}`} sub={`Bs. ${grandTotalVes.toLocaleString('es-VE', { maximumFractionDigits: 2 })}`}
+              label="Total en Caja" value={`$${grandTotalUsd.toFixed(2)}`} sub={`Bs. ${grandTotalVes.toLocaleString('es-VE', { maximumFractionDigits: 2 })}`}
             />
           </div>
 

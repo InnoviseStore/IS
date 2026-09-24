@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle, Zap, Loader2 } from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 import { COUNTRY_CODES, normalizeWhatsAppPhone, createWhatsAppWebUrl, createWhatsAppUrl } from '@/lib/whatsapp'
+import { extractDeliveryInfo } from '@/lib/delivery'
 
 interface Props {
   isOpen: boolean
@@ -58,8 +59,16 @@ export function WhatsAppOrderContactModal({
     const items = Array.isArray(order.order_items) ? order.order_items : []
     const lines: string[] = []
 
+    const delivery = extractDeliveryInfo(order.notes, exchangeRate)
+    const deliveryAddress = delivery.address || order.customer?.address
+
     lines.push(`🛒 *¡Hola ${customerName}!* Te escribimos de *${tenantName}* referente a tu solicitud de pedido *#${order.order_number}*.`)
     lines.push('')
+
+    if (deliveryAddress && deliveryAddress.trim()) {
+      lines.push(`📍 *Dirección de Entrega:* ${deliveryAddress.trim()}`)
+      lines.push('')
+    }
 
     if (items.length > 0) {
       lines.push('📦 *Detalle de tu pedido:*')
@@ -71,6 +80,14 @@ export function WhatsAppOrderContactModal({
 
     const totalUsd = Number(order.total_usd) || 0
     const totalVes = Number(order.total_ves) || totalUsd * exchangeRate
+
+    if (delivery.hasDelivery && delivery.amountUsd > 0) {
+      const prodSubtotal = (order.subtotal_usd !== undefined && Number(order.subtotal_usd) > 0)
+        ? Number(order.subtotal_usd)
+        : Math.max(0, totalUsd - delivery.amountUsd)
+      lines.push(`• Subtotal Productos: $${prodSubtotal.toFixed(2)} USD`)
+      lines.push(`• 🛵 Servicio de Delivery: +$${delivery.amountUsd.toFixed(2)} USD (Bs. ${delivery.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`)
+    }
 
     lines.push(`💰 *Total a pagar: $${totalUsd.toFixed(2)} USD* | Bs. ${totalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
     lines.push(`📊 Tasa BCV aplicada: Bs. ${exchangeRate.toFixed(2)}/USD`)

@@ -8,6 +8,7 @@ import { SplitPaymentModal } from '@/components/admin/SplitPaymentModal'
 import type { Product, CartItem, Customer } from '@/types/database'
 import { getProductBarcode } from '@/lib/barcodeUtils'
 import { Search, Plus, Minus, Trash2, ShoppingCart, Package, ArrowRight, Globe, X, Percent, Tag, Pencil, FileText } from 'lucide-react'
+import { type DeliveryInfo, extractDeliveryInfo } from '@/lib/delivery'
 
 // ─── Cart Reducer ─────────────────────────────────────────────────────────────
 type CartAction =
@@ -55,6 +56,7 @@ interface WebOrderInfo {
   dueDate?: string | null
   creditDays?: number
   initialCreditAmount?: number
+  deliveryInfo?: DeliveryInfo
 }
 
 function POSContent() {
@@ -176,6 +178,8 @@ function POSContent() {
             prevCredit = Math.max(0, (Number(order.total_usd) || 0) - nonCreditPaid)
           }
 
+          const delInfo = extractDeliveryInfo(order.notes, Number(order.exchange_rate_at_sale) || exchangeRate)
+
           setWebOrderInfo({
             orderId: order.id,
             orderNumber: order.order_number,
@@ -187,6 +191,7 @@ function POSContent() {
             dueDate: order.due_date,
             creditDays: days,
             initialCreditAmount: prevCredit,
+            deliveryInfo: delInfo.hasDelivery ? delInfo : undefined,
           })
         }
       } catch (err) {
@@ -880,6 +885,7 @@ function POSContent() {
           initialPayments={webOrderInfo?.paymentBreakdown}
           initialCreditDays={webOrderInfo?.creditDays}
           initialCreditAmount={webOrderInfo?.initialCreditAmount}
+          initialDeliveryInfo={webOrderInfo?.deliveryInfo}
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             setShowPayment(false)

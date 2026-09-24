@@ -11,6 +11,7 @@ import {
   createWhatsAppWebUrl,
   createWhatsAppUrl,
 } from '@/lib/whatsapp'
+import { formatDeliveryTag } from '@/lib/delivery'
 
 export interface WhatsAppInvoiceItem {
   name: string
@@ -44,6 +45,9 @@ interface Props {
   creditRemainingUsd?: number
   payments?: WhatsAppInvoicePayment[]
   installmentsPlan?: InstallmentsPlan
+  deliveryAmountUsd?: number
+  deliveryAmountVes?: number
+  deliveryAddress?: string
 }
 
 const METHOD_NAMES: Record<string, string> = {
@@ -76,6 +80,9 @@ export function WhatsAppInvoiceModal({
   creditRemainingUsd = 0,
   payments = [],
   installmentsPlan,
+  deliveryAmountUsd = 0,
+  deliveryAmountVes = 0,
+  deliveryAddress = '',
 }: Props) {
   const rawPhone = customerPhone || ''
 
@@ -119,6 +126,9 @@ export function WhatsAppInvoiceModal({
     if (customerIdNumber && customerIdNumber.trim()) {
       lines.push(`🆔 *C.I./RIF:* ${customerIdNumber.trim()}`)
     }
+    if (deliveryAddress && deliveryAddress.trim()) {
+      lines.push(`📍 *Dirección de Entrega:* ${deliveryAddress.trim()}`)
+    }
     lines.push('')
 
     if (items && items.length > 0) {
@@ -132,6 +142,10 @@ export function WhatsAppInvoiceModal({
     lines.push(`📊 *Resumen de Pago:*`)
     if (discountUsd > 0) {
       lines.push(`• 🎉 Descuento Especial: -$${discountUsd.toFixed(2)} USD`)
+    }
+    if (deliveryAmountUsd > 0) {
+      const dVes = deliveryAmountVes > 0 ? deliveryAmountVes : deliveryAmountUsd * exchangeRate
+      lines.push(`• 🛵 *Servicio de Delivery:* +$${deliveryAmountUsd.toFixed(2)} USD (Bs. ${dVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`)
     }
     if (igtfUsd > 0) {
       lines.push(`• IGTF (3%): +$${igtfUsd.toFixed(2)} USD`)
@@ -191,11 +205,14 @@ export function WhatsAppInvoiceModal({
     exchangeRate,
     customerName,
     customerIdNumber,
+    deliveryAddress,
     items,
     totalUsd,
     totalVes,
     igtfUsd,
     discountUsd,
+    deliveryAmountUsd,
+    deliveryAmountVes,
     isCredit,
     creditDueDate,
     creditRemainingUsd,
@@ -286,10 +303,19 @@ export function WhatsAppInvoiceModal({
         status: isCredit ? 'credit' : 'completed',
         due_date: creditDueDate || null,
         created_at: new Date().toISOString(),
+        notes: (deliveryAmountUsd > 0 || deliveryAddress)
+          ? formatDeliveryTag({
+              hasDelivery: true,
+              amountUsd: deliveryAmountUsd,
+              amountVes: deliveryAmountVes > 0 ? deliveryAmountVes : deliveryAmountUsd * exchangeRate,
+              address: deliveryAddress,
+            })
+          : null,
         customer: {
           full_name: customerName,
           id_number: customerIdNumber,
           phone: normalizedFullPhone,
+          address: deliveryAddress || undefined,
         },
         order_items: (items || []).map((it) => ({
           product_name: it.name,

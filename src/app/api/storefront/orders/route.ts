@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 import { normalizeIdNumber, normalizePhoneDigits } from '@/lib/customerUtils'
+import { formatDeliveryTag } from '@/lib/delivery'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -254,6 +255,22 @@ export async function POST(req: Request) {
       .filter(Boolean)
       .join(' | ')
 
+    const incomingDeliveryUsd = Number(body.delivery_amount_usd || customer?.deliveryAmountUsd || 0)
+    const incomingDeliveryVes = Number(body.delivery_amount_ves || customer?.deliveryAmountVes || (incomingDeliveryUsd * rate))
+    const isLocalDelivery = deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local'
+    const deliveryAddr = cleanAddress || ''
+
+    const deliveryTag = (isLocalDelivery || incomingDeliveryUsd > 0 || deliveryAddr)
+      ? formatDeliveryTag({
+          hasDelivery: true,
+          amountUsd: incomingDeliveryUsd,
+          amountVes: incomingDeliveryVes,
+          address: deliveryAddr,
+        })
+      : ''
+
+    const finalOrderNotes = deliveryTag ? `${orderNotes}\n${deliveryTag}` : orderNotes
+
     // Preparar payment_breakdown si se proporcionó método de pago y referencia
     const paymentBreakdown = paymentMethod ? [
       {
@@ -278,7 +295,7 @@ export async function POST(req: Request) {
         total_usd: finalTotalUsd,
         total_ves: finalTotalVes,
         payment_breakdown: paymentBreakdown,
-        notes: orderNotes,
+        notes: finalOrderNotes,
       })
       .select()
       .single()
