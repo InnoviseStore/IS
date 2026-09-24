@@ -8,13 +8,20 @@ interface TenantContextValue {
   tenant: Tenant | null
   profile: Profile | null
   exchangeRate: number
+  currencyType: 'USD' | 'EUR'
+  currencySymbol: string
+  rateMode: 'official' | 'custom'
+  customRate: number | null
+  bcvRateEur: number | null
   bcvFechaValor: string | null
   bcvRatesHistory: BcvRateHistoryItem[]
   isSyncingBcv: boolean
   allTenants: Tenant[]
   setExchangeRate: (rate: number) => void
-  syncBcvRate: () => Promise<{ rate?: number; fechaValor?: string; rates_history?: BcvRateHistoryItem[]; error?: string }>
-  saveHistoryRate: (entry: { date: string; rate: number; fecha_valor?: string; label?: string }) => Promise<{ success: boolean; error?: string }>
+  syncBcvRate: (tenantId?: string) => Promise<{ rate?: number; rateEur?: number; fechaValor?: string; rates_history?: BcvRateHistoryItem[]; error?: string }>
+  saveHistoryRate: (entry: { date: string; rate?: number; rate_usd?: number; rate_eur?: number; fecha_valor?: string; label?: string; tenant_id?: string }) => Promise<{ success: boolean; error?: string }>
+  deleteHistoryRate: (date: string, tenantId?: string) => Promise<{ success: boolean; error?: string }>
+  updateStoreCurrency: (params: { tenantId?: string; currency_type: 'USD' | 'EUR'; rate_mode: 'official' | 'custom'; custom_rate?: number }) => Promise<{ success: boolean; error?: string }>
   switchTenant: (newTenant: Tenant) => void
   switchTenantById: (tenantId: string) => void
   refreshTenants: () => Promise<void>
@@ -32,6 +39,9 @@ interface TenantContextValue {
     invoice_pdf_color?: string;
     quotation_pdf_color?: string;
     quotation_defaults?: any;
+    currency_type?: 'USD' | 'EUR';
+    rate_mode?: 'official' | 'custom';
+    custom_rate?: number;
   }) => Promise<{ success: boolean; error?: string }>
   isLoading: boolean
 }
@@ -40,6 +50,11 @@ const TenantContext = createContext<TenantContextValue>({
   tenant: null,
   profile: null,
   exchangeRate: 91.5,
+  currencyType: 'USD',
+  currencySymbol: '$',
+  rateMode: 'official',
+  customRate: null,
+  bcvRateEur: null,
   bcvFechaValor: null,
   bcvRatesHistory: [],
   isSyncingBcv: false,
@@ -47,6 +62,8 @@ const TenantContext = createContext<TenantContextValue>({
   setExchangeRate: () => {},
   syncBcvRate: async () => ({}),
   saveHistoryRate: async () => ({ success: false }),
+  deleteHistoryRate: async () => ({ success: false }),
+  updateStoreCurrency: async () => ({ success: false }),
   switchTenant: () => {},
   switchTenantById: () => {},
   refreshTenants: async () => {},
@@ -111,13 +128,13 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tenant, updateTenantSettings])
 
-  const syncBcvRate = useCallback(async () => {
+  const syncBcvRate = useCallback(async (tenantId?: string) => {
     setIsSyncingBcv(true)
     try {
       const res = await fetch('/api/exchange-rate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync_bcv' }),
+        body: JSON.stringify({ action: 'sync_bcv', tenant_id: tenantId || tenant?.id }),
       })
 
       const data = await res.json()
@@ -125,7 +142,24 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setExchangeRateState(data.rate)
         if (data.fechaValor) setBcvFechaValor(data.fechaValor)
         if (Array.isArray(data.rates_history)) setBcvRatesHistory(data.rates_history)
-        return { rate: data.rate, fechaValor: data.fechaValor, rates_history: data.rates_history }
+        if (tenant) {
+          setTenant((prev) => {
+            if (!prev) return prev
+            const prevSettings = (prev.settings || {}) as Record<string, unknown>
+            return {
+              ...prev,
+              currency_rate_bcv: data.rate,
+              settings: {
+                ...prevSettings,
+                bcv_rate_usd: data.rate_usd,
+                bcv_rate_eur: data.rate_eur,
+                bcv_fecha_valor: data.fechaValor,
+                bcv_rates_history: data.rates_history,
+              },
+            }
+          })
+        }
+        return { rate: data.rate, rateEur: data.rate_eur, fechaValor: data.fechaValor, rates_history: data.rates_history }
       } else {
         return { error: data.error || 'Error al sincronizar con BCV' }
       }
@@ -134,15 +168,24 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsSyncingBcv(false)
     }
-  }, [])
+  }, [tenant])
 
-  const saveHistoryRate = useCallback(async (entry: { date: string; rate: number; fecha_valor?: string; label?: string }) => {
+  const saveHistoryRate = useCallback(async (entry: { 
+    date: string; 
+    rate?: number; 
+    rate_usd?: number; 
+    rate_eur?: number; 
+    fecha_valor?: string; 
+    label?: string; 
+    tenant_id?: string 
+  }) => {
     try {
       const res = await fetch('/api/exchange-rate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'save_history_rate',
+          tenant_id: entry.tenant_id || tenant?.id,
           ...entry,
         }),
       })
@@ -158,15 +201,93 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
       // Si la fecha guardada es hoy, actualizar también la tasa activa
       const todayDate = new Date().toISOString().split('T')[0]
-      if (entry.date === todayDate) {
-        setExchangeRateState(entry.rate)
+      if (entry.date === todayDate && (entry.rate || entry.rate_usd)) {
+        setExchangeRateState(entry.rate || entry.rate_usd!)
       }
 
       return { success: true }
     } catch (e) {
       return { success: false, error: (e as Error).message }
     }
-  }, [])
+  }, [tenant])
+
+  const deleteHistoryRate = useCallback(async (date: string, tenantId?: string) => {
+    try {
+      const res = await fetch('/api/exchange-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_history_rate',
+          date,
+          tenant_id: tenantId || tenant?.id,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        return { success: false, error: data.error || 'Error al eliminar tasa' }
+      }
+
+      if (Array.isArray(data.rates_history)) {
+        setBcvRatesHistory(data.rates_history)
+      }
+
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: (e as Error).message }
+    }
+  }, [tenant])
+
+  const updateStoreCurrency = useCallback(async (params: { 
+    tenantId?: string; 
+    currency_type: 'USD' | 'EUR'; 
+    rate_mode: 'official' | 'custom'; 
+    custom_rate?: number 
+  }) => {
+    try {
+      const res = await fetch('/api/exchange-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_store_currency',
+          tenant_id: params.tenantId || tenant?.id,
+          ...params,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        return { success: false, error: data.error || 'Error al actualizar moneda de la tienda' }
+      }
+
+      if (data.effective_rate) {
+        setExchangeRateState(data.effective_rate)
+      }
+
+      // Actualizar tenant en estado local si aplica
+      const targetId = params.tenantId || tenant?.id
+      if (tenant && tenant.id === targetId) {
+        setTenant((prev) => {
+          if (!prev) return prev
+          const prevSettings = (prev.settings || {}) as Record<string, unknown>
+          return {
+            ...prev,
+            currency_rate_bcv: data.effective_rate || prev.currency_rate_bcv,
+            settings: {
+              ...prevSettings,
+              currency_type: params.currency_type,
+              rate_mode: params.rate_mode,
+              custom_rate: params.custom_rate,
+            },
+          }
+        })
+      }
+
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: (e as Error).message }
+    }
+  }, [tenant])
 
   const [allTenants, setAllTenants] = useState<Tenant[]>([])
 
@@ -283,11 +404,23 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
   }, [allTenants, switchTenant])
 
+  const tenantSettings = (tenant?.settings || {}) as Record<string, unknown>
+  const currencyType: 'USD' | 'EUR' = ((tenantSettings.currency_type as string) || 'USD').toUpperCase() === 'EUR' ? 'EUR' : 'USD'
+  const currencySymbol = currencyType === 'EUR' ? '€' : '$'
+  const rateMode: 'official' | 'custom' = ((tenantSettings.rate_mode as string) || 'official').toLowerCase() === 'custom' ? 'custom' : 'official'
+  const customRate = typeof tenantSettings.custom_rate === 'number' ? tenantSettings.custom_rate : null
+  const bcvRateEur = typeof tenantSettings.bcv_rate_eur === 'number' ? tenantSettings.bcv_rate_eur : null
+
   const contextValue = useMemo(
     () => ({
       tenant,
       profile,
       exchangeRate,
+      currencyType,
+      currencySymbol,
+      rateMode,
+      customRate,
+      bcvRateEur,
       bcvFechaValor,
       bcvRatesHistory,
       isSyncingBcv,
@@ -295,6 +428,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setExchangeRate,
       syncBcvRate,
       saveHistoryRate,
+      deleteHistoryRate,
+      updateStoreCurrency,
       switchTenant,
       switchTenantById,
       refreshTenants,
@@ -305,6 +440,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       tenant,
       profile,
       exchangeRate,
+      currencyType,
+      currencySymbol,
+      rateMode,
+      customRate,
+      bcvRateEur,
       bcvFechaValor,
       bcvRatesHistory,
       isSyncingBcv,
@@ -312,6 +452,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setExchangeRate,
       syncBcvRate,
       saveHistoryRate,
+      deleteHistoryRate,
+      updateStoreCurrency,
       switchTenant,
       switchTenantById,
       refreshTenants,

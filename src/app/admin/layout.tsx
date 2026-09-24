@@ -20,6 +20,7 @@ import { getRoleLabel, type UserRole } from '@/types/database'
 import { LiveOrderNotification } from '@/components/admin/LiveOrderNotification'
 import { PwaInstallPrompt } from '@/components/admin/PwaInstallPrompt'
 import { LivePresenceHeader } from '@/components/admin/LivePresenceHeader'
+import { InactivityGuard } from '@/components/common/InactivityGuard'
 
 // Mapeo exhaustivo de módulos y permisos por rol (RBAC)
 interface NavItemConfig {
@@ -84,6 +85,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   // Determinar rol sólo cuando profile ya cargó. NUNCA asumir 'admin' mientras carga para evitar parpadeo de menús.
   const userRole = (profile?.role || null) as UserRole | null
   const isSuperAdmin = userRole === 'superadmin'
+  const isStoreAdmin = userRole === 'owner' || userRole === 'admin'
 
   const currentPath = pathname || ''
 
@@ -473,7 +475,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="flex items-center justify-between px-3 sm:px-6 h-16 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-lg flex-shrink-0 gap-2">
+        <header className="relative z-40 flex items-center justify-between px-3 sm:px-6 h-16 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-lg flex-shrink-0 gap-2">
           {/* Botón Menú Móvil */}
           <button
             className="md:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition cursor-pointer"
@@ -606,8 +608,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               </Link>
             )}
 
-            {/* Monitoreo en Vivo de Usuarios Conectados */}
-            <LivePresenceHeader />
+            {/* Monitoreo en Vivo de Usuarios Conectados - Solo para Admin / Owner / Superadmin */}
+            {(isStoreAdmin || isSuperAdmin) && <LivePresenceHeader />}
 
             {/* Dark mode toggle */}
             <button
@@ -753,6 +755,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* Prompt de Instalación PWA para Teléfonos y PC */}
         <PwaInstallPrompt />
+
+        {/* Guardia de Sesión Única y Auto-Logout por Inactividad de 30 minutos */}
+        <InactivityGuard />
 
         {/* Full-screen animated overlay on logout */}
         {isLoggingOut && (

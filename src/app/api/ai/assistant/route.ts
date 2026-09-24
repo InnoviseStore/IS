@@ -90,13 +90,13 @@ export async function POST(req: Request) {
         .from('expenses')
         .select('amount_usd')
         .eq('tenant_id', tenant.id)
-        .eq('expense_date', todayStr),
+        .eq('date', todayStr),
       // Gastos del mes
       supabase
         .from('expenses')
         .select('amount_usd')
         .eq('tenant_id', tenant.id)
-        .gte('expense_date', firstDayOfMonth),
+        .gte('date', firstDayOfMonth),
       // Productos con bajo stock (< 5)
       supabase
         .from('products')

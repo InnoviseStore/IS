@@ -22,6 +22,7 @@ import {
   Camera,
   Check,
   Layers,
+  Coins,
 } from 'lucide-react'
 import {
   detectCategory,
@@ -121,7 +122,7 @@ async function compressImage(file: File): Promise<string> {
 }
 
 export function ProductModal({ product, onClose, onSaved, onDeleted, currentProductCount }: Props) {
-  const { tenant, exchangeRate } = useTenant()
+  const { tenant, exchangeRate, currencyType, currencySymbol } = useTenant()
   const isEditing = product !== null
   const features = getTenantFeatures(tenant)
   const isOverProductLimit = !isEditing && features.maxProducts !== Infinity && (currentProductCount ?? 0) >= features.maxProducts
@@ -767,7 +768,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
       )}
 
       <div 
-        style={{ width: '100%', maxWidth: '720px', maxHeight: '92vh' }}
+        style={{ width: '100%', maxWidth: '820px', maxHeight: '92vh' }}
         className="relative z-10 flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden transition-all my-auto"
       >
         {/* Header */}
@@ -1031,110 +1032,156 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 )
               })()}
 
-              {/* Identificadores: SKU, Marca y Código de Barras */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                      Código / SKU
-                    </label>
-                    <span className="text-[10px] text-slate-400 font-semibold">Interno</span>
-                  </div>
-                  <input 
-                    value={sku} 
-                    onChange={(e) => setSku(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
-                    placeholder="Ej. AUD-001" 
-                  />
+              {/* SECCIÓN 2: IDENTIFICADORES (SKU, MARCA, CÓDIGO DE BARRAS) */}
+              <div className="col-span-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-blue-500" />
+                    Identificadores del Producto
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">SKU / Marca / Barcode</span>
                 </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      <span>Marca</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
-                  </div>
-                  <input 
-                    value={brand} 
-                    onChange={(e) => setBrand(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
-                    placeholder="Ej. SKF, Apple, Toyota..." 
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                      <Barcode className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      <span>Código de Barras</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <div className="relative flex-1">
-                      <input 
-                        value={barcode} 
-                        onChange={(e) => setBarcode(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
-                        placeholder="7591234567890" 
-                      />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                        Código / SKU
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-semibold">Interno</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={startBarcodeScanner}
-                      className="px-2.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
-                      title="Escanear con cámara"
-                    >
-                      <Camera className="w-4 h-4" />
-                    </button>
+                    <input 
+                      value={sku} 
+                      onChange={(e) => setSku(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
+                      placeholder="Ej. AUD-001" 
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Marca</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
+                    </div>
+                    <input 
+                      value={brand} 
+                      onChange={(e) => setBrand(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                      placeholder="Ej. SKF, Apple, Toyota..." 
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                        <Barcode className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Código de Barras</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <div className="relative flex-1">
+                        <input 
+                          value={barcode} 
+                          onChange={(e) => setBarcode(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
+                          placeholder="7591234567890" 
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={startBarcodeScanner}
+                        className="px-2.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                        title="Escanear con cámara"
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                  Stock Disponible
-                </label>
-                <input 
-                  type="number" 
-                  min="0" 
-                  value={stock} 
-                  onChange={(e) => setStock(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold" 
-                />
-              </div>
+              {/* SECCIÓN 3: PRECIOS Y EXISTENCIA EN INVENTARIO */}
+              <div className="col-span-2 p-4 rounded-2xl bg-blue-50/40 dark:bg-slate-800/40 border border-blue-100 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-blue-100 dark:border-slate-700/50">
+                  <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Coins className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    Precios & Existencia en Inventario
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">
+                    Moneda Tienda: {currencySymbol || '$'} {currencyType || 'USD'}
+                  </span>
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                  Precio Base (USD) *
-                </label>
-                <input 
-                  required 
-                  type="number" 
-                  min="0" 
-                  step="0.01" 
-                  value={priceUsd} 
-                  onChange={(e) => setPriceUsd(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
-                  placeholder="0.00" 
-                />
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                      Precio Base ({currencySymbol || '$'} {currencyType || 'USD'}) *
+                    </label>
+                    <input 
+                      required 
+                      type="number" 
+                      min="0" 
+                      step="0.01" 
+                      value={priceUsd} 
+                      onChange={(e) => setPriceUsd(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-blue-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
+                      placeholder="0.00" 
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                  Costo (USD)
-                </label>
-                <input 
-                  type="number" 
-                  min="0" 
-                  step="0.01" 
-                  value={costUsd} 
-                  onChange={(e) => setCostUsd(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="0.00" 
-                />
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                      Costo ({currencySymbol || '$'} {currencyType || 'USD'})
+                    </label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      step="0.01" 
+                      value={costUsd} 
+                      onChange={(e) => setCostUsd(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+                      placeholder="0.00" 
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                      Stock Disponible
+                    </label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      value={stock} 
+                      onChange={(e) => setStock(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold" 
+                    />
+                  </div>
+                </div>
+
+                {/* Live preview integrado de Bolívares y Margen Comercial */}
+                {price > 0 && (
+                  <div className="rounded-xl bg-white dark:bg-slate-900/90 border border-blue-200/80 dark:border-slate-700 px-3.5 py-2.5 flex items-center justify-between gap-4 text-xs shadow-2xs">
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        Precio en Bolívares (Tasa BCV: Bs. {exchangeRate?.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })})
+                      </p>
+                      <p className="font-black text-blue-700 dark:text-blue-400 text-sm sm:text-base">
+                        Bs. {priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    {margin !== null && (
+                      <div className="text-right">
+                        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Margen Comercial</p>
+                        <p className={`font-black text-sm sm:text-base ${parseFloat(margin) >= 20 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                          {margin}%
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1697,26 +1744,6 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 </div>
               )}
             </div>
-
-            {/* Live preview de precios */}
-            {price > 0 && (
-              <div className="rounded-2xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900 px-4 py-3 flex items-center justify-between gap-4 text-sm">
-                <div>
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">Precio en Bolívares (Tasa BCV)</p>
-                  <p className="font-extrabold text-blue-700 dark:text-blue-400 text-base">
-                    Bs. {priceVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-                {margin !== null && (
-                  <div className="text-right">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">Margen Comercial</p>
-                    <p className={`font-extrabold text-base ${parseFloat(margin) >= 20 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                      {margin}%
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="flex items-center gap-2.5 pt-1">
               <input 

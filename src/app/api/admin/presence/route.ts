@@ -13,7 +13,7 @@ function getAdminClient() {
   })
 }
 
-interface LivePresenceRecord {
+export interface LivePresenceRecord {
   userId: string
   tenantId: string
   fullName: string
@@ -21,6 +21,7 @@ interface LivePresenceRecord {
   role: string
   tenantName?: string
   lastActive: number // timestamp ms
+  sessionId?: string
 }
 
 declare global {
@@ -31,8 +32,9 @@ const presenceMap: Map<string, LivePresenceRecord> =
   globalThis.__isLivePresence || (globalThis.__isLivePresence = new Map())
 
 const INACTIVE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutos
+const CONCURRENT_ACTIVE_WINDOW_MS = 90 * 1000 // 90 segundos para considerar dispositivo activo simultáneo
 
-// POST: Heartbeat de presencia periódica
+// POST: Heartbeat de presencia periódica & Control de Sesión Única
 export async function POST(req: Request) {
   try {
     const { auth, errorResponse } = await authenticateApiRequest()
@@ -40,10 +42,47 @@ export async function POST(req: Request) {
       return errorResponse!
     }
 
-    const supabase = getAdminClient()
+    const body = await req.json().catch(() => ({}))
+    const { action, sessionId, force_takeover } = body
     const now = Date.now()
 
-    // 1. Obtener perfil básico del usuario
+    // 1. Desconexión explícita
+    if (action === 'logout') {
+      const current = presenceMap.get(auth.userId)
+      if (current && (!sessionId || current.sessionId === sessionId)) {
+        presenceMap.delete(auth.userId)
+      }
+      return NextResponse.json({ success: true, loggedOut: true })
+    }
+
+    const existing = presenceMap.get(auth.userId)
+
+    // 2. Comprobar si hay otra sesión activa simultánea en otro dispositivo
+    if (existing && existing.sessionId && sessionId && existing.sessionId !== sessionId) {
+      const isOtherDeviceActive = now - existing.lastActive < CONCURRENT_ACTIVE_WINDOW_MS
+
+      if (isOtherDeviceActive) {
+        if (action === 'check_session') {
+          return NextResponse.json({
+            activeOnOtherDevice: true,
+            lastActive: existing.lastActive,
+          })
+        }
+
+        if (!force_takeover) {
+          // Sesión concurrente detectada: este dispositivo debe cerrarse
+          return NextResponse.json({
+            forcedLogout: true,
+            reason: 'concurrent_session',
+            message: 'Tu sesión está activa en otro dispositivo. Solo se permite 1 dispositivo conectado a la vez.',
+          })
+        }
+      }
+    }
+
+    const supabase = getAdminClient()
+
+    // 3. Obtener/actualizar perfil del usuario
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, tenant_id, tenants(name)')
@@ -60,6 +99,7 @@ export async function POST(req: Request) {
         role: profile.role || 'cajero',
         tenantName,
         lastActive: now,
+        sessionId: sessionId || existing?.sessionId,
       })
 
       // Actualizar en base de datos de manera silenciosa
@@ -73,7 +113,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, timestamp: now })
+    return NextResponse.json({ success: true, timestamp: now, sessionId })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -150,12 +190,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
-      activeCount: activeList.length,
-      users: activeList.map(u => ({
-        ...u,
-        minutesAgo: Math.max(0, Math.floor((now - u.lastActive) / 60000)),
-      })),
-      isSuperAdmin: auth.isSuperAdmin,
+      users: activeList,
+      total: activeList.length,
+      timestamp: now,
     })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })

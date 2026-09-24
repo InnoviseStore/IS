@@ -160,7 +160,7 @@ export default function ExpensesPage() {
                 {filtered.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                     <td className="py-3 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      <div>{formatDate(item.expense_date)}</div>
+                      <div>{formatDate(item.date || item.expense_date)}</div>
                       {item.created_at && (
                         <div className="text-[10px] text-slate-400">
                           {formatDateTime(item.created_at).split(' ')[1]}
@@ -169,8 +169,8 @@ export default function ExpensesPage() {
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100 font-semibold">
                       <div>{item.description}</div>
-                      {item.supplier_name && (
-                        <div className="text-[10px] text-slate-400 font-normal">Prov: {item.supplier_name}</div>
+                      {(item.supplier_name || item.reference) && (
+                        <div className="text-[10px] text-slate-400 font-normal">Prov: {item.supplier_name || item.reference}</div>
                       )}
                     </td>
                     <td className="py-3 px-4">

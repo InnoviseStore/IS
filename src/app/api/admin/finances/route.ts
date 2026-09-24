@@ -95,8 +95,8 @@ export async function GET(req: Request) {
         .from('expenses')
         .select('*')
         .eq('tenant_id', tenantId)
-        .gte('expense_date', startDateOnly)
-        .lte('expense_date', endDateOnly),
+        .gte('date', startDateOnly)
+        .lte('date', endDateOnly),
 
       // Todos los productos activos para cálculo de inventario y costos
       supabase
@@ -258,9 +258,8 @@ export async function POST(req: Request) {
       amount_usd: parseFloat(Number(amount_usd).toFixed(4)),
       amount_ves: parseFloat(Number(amount_ves || 0).toFixed(2)),
       payment_method: payment_method || 'transfer_ves',
-      supplier_name: supplier_name || 'Proveedor de Mercancía',
-      is_recurring: false,
-      expense_date: expense_date || new Date().toISOString().split('T')[0],
+      reference: supplier_name || 'Proveedor de Mercancía',
+      date: expense_date || new Date().toISOString().split('T')[0],
       created_by: auth.userId,
     }
 

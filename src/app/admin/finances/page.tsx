@@ -477,10 +477,10 @@ export default function FinancesPage() {
                       {data.reinvestments.map((r: any) => (
                         <tr key={r.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                           <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400">
-                            {formatDate(r.expense_date)}
+                            {formatDate(r.date || r.expense_date)}
                           </td>
                           <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
-                            {r.supplier_name || 'Proveedor'}
+                            {r.supplier_name || r.reference || 'Proveedor'}
                           </td>
                           <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
                             {r.description}

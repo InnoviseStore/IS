@@ -26,12 +26,15 @@ function getTodayFormatted(): string {
   }
 }
 
-interface RateHistoryEntry {
+export interface RateHistoryEntry {
   date: string // YYYY-MM-DD
-  rate: number
+  rate: number // Effective rate
+  rate_usd?: number // USD rate in Bs.
+  rate_eur?: number // EUR rate in Bs.
   fecha_valor?: string
   label?: string
   source?: string
+  is_manual?: boolean
   updated_at?: string
 }
 
@@ -45,14 +48,18 @@ function mergeRateHistory(
 
   const index = list.findIndex((item) => item.date === newItem.date)
   if (index >= 0) {
+    const existing = list[index]
     list[index] = {
-      ...list[index],
+      ...existing,
       ...newItem,
+      rate_usd: newItem.rate_usd ?? existing.rate_usd ?? (newItem.rate > 0 ? newItem.rate : undefined),
+      rate_eur: newItem.rate_eur ?? existing.rate_eur,
       updated_at: new Date().toISOString(),
     }
   } else {
     list.unshift({
       ...newItem,
+      rate_usd: newItem.rate_usd ?? (newItem.rate > 0 ? newItem.rate : undefined),
       updated_at: new Date().toISOString(),
     })
   }
@@ -60,14 +67,13 @@ function mergeRateHistory(
   // Sort descending by date (newest first)
   list.sort((a, b) => b.date.localeCompare(a.date))
 
-  // Keep up to 30 days
-  return list.slice(0, 30)
+  // Keep up to 730 days (2 continuous years of historical records)
+  return list.slice(0, 730)
 }
-
 
 /**
  * GET /api/exchange-rate?tenant=innovise&sync=true
- * Returns the current BCV exchange rate and fecha_valor for a tenant.
+ * Returns the current BCV exchange rate (USD & EUR) and fecha_valor for a tenant.
  * If sync=true, forces live fetch from https://www.bcv.org.ve/ and updates DB.
  */
 export async function GET(request: NextRequest) {
@@ -88,14 +94,18 @@ export async function GET(request: NextRequest) {
   }
 
   const settings = (tenant.settings || {}) as Record<string, unknown>
-  let rate = Number(tenant.currency_rate_bcv)
+  const currencyType = ((settings.currency_type as string) || 'USD').toUpperCase() === 'EUR' ? 'EUR' : 'USD'
+  const rateMode = ((settings.rate_mode as string) || 'official').toLowerCase() === 'custom' ? 'custom' : 'official'
+  const customRate = typeof settings.custom_rate === 'number' ? settings.custom_rate : null
+
+  let rateUsd = typeof settings.bcv_rate_usd === 'number' ? settings.bcv_rate_usd : Number(tenant.currency_rate_bcv) || 0
+  let rateEur = typeof settings.bcv_rate_eur === 'number' ? settings.bcv_rate_eur : 0
   let fechaValor = (settings.bcv_fecha_valor as string) || null
   let lastSync = (settings.bcv_last_sync as string) || null
   let source = (settings.bcv_source as string) || 'https://www.bcv.org.ve/'
-  let ratesHistory = (settings.bcv_rates_history as any[]) || []
+  let ratesHistory = (settings.bcv_rates_history as RateHistoryEntry[]) || []
 
-  // Check if we should auto-sync with BCV
-  // If forced, or if last sync is not from today, or older than 30 minutes
+  // Check if we should auto-sync with BCV (every 30 minutes or if outdated/empty)
   const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000
   const isToday = lastSync && new Date(lastSync).toDateString() === new Date().toDateString()
   const isOutdated = !lastSync || !isToday || new Date(lastSync).getTime() < thirtyMinutesAgo
@@ -103,27 +113,42 @@ export async function GET(request: NextRequest) {
   if (forceSync || isOutdated) {
     try {
       const bcvData = await fetchLiveBcvRate()
-      rate = bcvData.rate
+      rateUsd = bcvData.rate
+      if (bcvData.rateEur && bcvData.rateEur > 0) {
+        rateEur = bcvData.rateEur
+      }
       fechaValor = bcvData.fechaValor
       source = bcvData.source
       lastSync = bcvData.timestamp
 
       const todayDate = new Date().toISOString().split('T')[0]
+      const effectiveDailyRate = currencyType === 'EUR' ? (rateEur || rateUsd) : rateUsd
+
       ratesHistory = mergeRateHistory(settings.bcv_rates_history, {
         date: todayDate,
-        rate,
+        rate: effectiveDailyRate,
+        rate_usd: rateUsd,
+        rate_eur: rateEur > 0 ? rateEur : undefined,
         fecha_valor: fechaValor,
         label: fechaValor,
         source,
+        is_manual: false,
       })
 
       const updatedSettings = {
         ...settings,
+        bcv_rate_usd: rateUsd,
+        bcv_rate_eur: rateEur > 0 ? rateEur : undefined,
         bcv_fecha_valor: fechaValor,
         bcv_last_sync: lastSync,
         bcv_source: source,
         bcv_rates_history: ratesHistory,
       }
+
+      // If official rate mode, also update currency_rate_bcv column
+      const newCurrencyRate = rateMode === 'custom' && customRate && customRate > 0
+        ? customRate
+        : effectiveDailyRate
 
       const adminClient = getAdminClient()
       const dbClient = adminClient || supabase
@@ -131,7 +156,7 @@ export async function GET(request: NextRequest) {
       await dbClient
         .from('tenants')
         .update({
-          currency_rate_bcv: rate,
+          currency_rate_bcv: newCurrencyRate,
           settings: updatedSettings,
         })
         .eq('id', tenant.id)
@@ -144,12 +169,24 @@ export async function GET(request: NextRequest) {
     fechaValor = getTodayFormatted()
   }
 
+  // Calculate final effective rate
+  let effectiveRate = rateUsd
+  if (rateMode === 'custom' && customRate && customRate > 0) {
+    effectiveRate = customRate
+  } else if (currencyType === 'EUR' && rateEur > 0) {
+    effectiveRate = rateEur
+  } else {
+    effectiveRate = rateUsd || Number(tenant.currency_rate_bcv) || 0
+  }
+
   // Ensure today's rate is in history even if no sync was triggered
-  if (ratesHistory.length === 0 && rate > 0) {
+  if (ratesHistory.length === 0 && effectiveRate > 0) {
     const todayDate = new Date().toISOString().split('T')[0]
     ratesHistory = [{
       date: todayDate,
-      rate,
+      rate: effectiveRate,
+      rate_usd: rateUsd,
+      rate_eur: rateEur > 0 ? rateEur : undefined,
       fecha_valor: fechaValor,
       label: fechaValor,
       source: 'initial',
@@ -158,12 +195,17 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    rate,
+    rate: effectiveRate,
+    rate_usd: rateUsd,
+    rate_eur: rateEur,
+    currency_type: currencyType,
+    rate_mode: rateMode,
+    custom_rate: customRate,
     fechaValor,
     source,
     lastSync,
     currency: 'VES',
-    base: 'USD',
+    base: currencyType,
     rates_history: ratesHistory,
     updated_at: tenant.updated_at,
   })
@@ -172,8 +214,11 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/exchange-rate
  * Actions:
- * 1. { action: "sync_bcv" } -> Scrapes https://www.bcv.org.ve/ and updates DB
- * 2. { rate: number } -> Manual override
+ * 1. { action: "sync_bcv", tenant_id?: string } -> Scrapes https://www.bcv.org.ve/ and updates DB
+ * 2. { action: "save_history_rate", ... } -> Adds or edits historical rate for any date
+ * 3. { action: "delete_history_rate", ... } -> Removes a date entry from history
+ * 4. { action: "update_store_currency", ... } -> Updates currency type ($ USD / € EUR) and rate mode
+ * 5. { rate: number } -> Manual override
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -183,10 +228,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
-  // Get tenant from profile
+  // Get tenant and role from profile
   const { data: profile } = await supabase
     .from('profiles')
-    .select('tenant_id')
+    .select('tenant_id, role')
     .eq('id', user.id)
     .single()
 
@@ -194,57 +239,86 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Perfil de usuario no encontrado' }, { status: 404 })
   }
 
-  const body = await request.json().catch(() => ({}))
+  const isSuperAdmin = profile.role === 'superadmin'
+  const isOwner = profile.role === 'owner' || isSuperAdmin
 
-  // Option 1: Live sync from BCV website
-  // Option 1: Live sync from BCV website
+  const body = await request.json().catch(() => ({}))
+  const targetTenantId = (isSuperAdmin && body.tenant_id) ? body.tenant_id : profile.tenant_id
+
+  if (!targetTenantId) {
+    return NextResponse.json({ error: 'Tienda no especificada' }, { status: 400 })
+  }
+
+  const adminClient = getAdminClient()
+  const dbClient = adminClient || supabase
+
+  // Fetch target tenant
+  const { data: currentTenant, error: fetchErr } = await dbClient
+    .from('tenants')
+    .select('id, name, slug, settings, currency_rate_bcv')
+    .eq('id', targetTenantId)
+    .single()
+
+  if (fetchErr || !currentTenant) {
+    return NextResponse.json({ error: 'Comercio no encontrado' }, { status: 404 })
+  }
+
+  const currentSettings = ((currentTenant?.settings || {}) as Record<string, unknown>)
+  const currencyType = ((currentSettings.currency_type as string) || 'USD').toUpperCase() === 'EUR' ? 'EUR' : 'USD'
+  const rateMode = ((currentSettings.rate_mode as string) || 'official').toLowerCase() === 'custom' ? 'custom' : 'official'
+
+  // ACTION 1: Live sync from BCV website
   if (body.action === 'sync_bcv') {
     try {
       const bcvData = await fetchLiveBcvRate()
-
-      const { data: currentTenant } = await supabase
-        .from('tenants')
-        .select('settings')
-        .eq('id', profile.tenant_id)
-        .single()
-
-      const currentSettings = ((currentTenant?.settings || {}) as Record<string, unknown>)
+      const rateUsd = bcvData.rate
+      const rateEur = bcvData.rateEur || 0
       const todayDate = new Date().toISOString().split('T')[0]
+      const effectiveRate = currencyType === 'EUR' && rateEur > 0 ? rateEur : rateUsd
+
       const updatedHistory = mergeRateHistory(currentSettings.bcv_rates_history, {
         date: todayDate,
-        rate: bcvData.rate,
+        rate: effectiveRate,
+        rate_usd: rateUsd,
+        rate_eur: rateEur > 0 ? rateEur : undefined,
         fecha_valor: bcvData.fechaValor,
         label: bcvData.fechaValor,
         source: bcvData.source,
+        is_manual: false,
       })
 
       const newSettings = {
         ...currentSettings,
+        bcv_rate_usd: rateUsd,
+        bcv_rate_eur: rateEur > 0 ? rateEur : undefined,
         bcv_fecha_valor: bcvData.fechaValor,
         bcv_last_sync: bcvData.timestamp,
         bcv_source: bcvData.source,
         bcv_rates_history: updatedHistory,
       }
 
-      const adminClient = getAdminClient()
-      const dbClient = adminClient || supabase
+      const newRateToSave = rateMode === 'custom' && typeof currentSettings.custom_rate === 'number'
+        ? currentSettings.custom_rate
+        : effectiveRate
 
       await dbClient
         .from('tenants')
         .update({
-          currency_rate_bcv: bcvData.rate,
+          currency_rate_bcv: newRateToSave,
           settings: newSettings,
         })
-        .eq('id', profile.tenant_id)
+        .eq('id', targetTenantId)
 
       return NextResponse.json({
         success: true,
-        rate: bcvData.rate,
+        rate: effectiveRate,
+        rate_usd: rateUsd,
+        rate_eur: rateEur,
         fechaValor: bcvData.fechaValor,
         source: bcvData.source,
         timestamp: bcvData.timestamp,
         rates_history: updatedHistory,
-        message: 'Tasa sincronizada exitosamente con el Banco Central de Venezuela',
+        message: 'Tasas oficiales (USD & EUR) sincronizadas exitosamente con el Banco Central de Venezuela',
       })
     } catch (err) {
       return NextResponse.json(
@@ -254,27 +328,27 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Option 2: Save / Edit historical rate for a specific date
+  // ACTION 2: Save / Edit historical rate for a specific date (Annual archive / manual rate)
   if (body.action === 'save_history_rate') {
     const targetDate = String(body.date || '').trim() // YYYY-MM-DD
-    const targetRate = parseFloat(body.rate)
-    if (!targetDate || isNaN(targetRate) || targetRate <= 0) {
-      return NextResponse.json({ error: 'Fecha y tasa válidas requeridas' }, { status: 400 })
+    const inputUsd = parseFloat(body.rate_usd || body.rate)
+    const inputEur = body.rate_eur ? parseFloat(body.rate_eur) : undefined
+
+    if (!targetDate || isNaN(inputUsd) || inputUsd <= 0) {
+      return NextResponse.json({ error: 'Fecha y tasa USD válidas requeridas' }, { status: 400 })
     }
 
-    const { data: currentTenant } = await supabase
-      .from('tenants')
-      .select('settings, currency_rate_bcv')
-      .eq('id', profile.tenant_id)
-      .single()
+    const effectiveRate = currencyType === 'EUR' && inputEur && inputEur > 0 ? inputEur : inputUsd
 
-    const currentSettings = ((currentTenant?.settings || {}) as Record<string, unknown>)
     const updatedHistory = mergeRateHistory(currentSettings.bcv_rates_history, {
       date: targetDate,
-      rate: targetRate,
+      rate: effectiveRate,
+      rate_usd: inputUsd,
+      rate_eur: inputEur && !isNaN(inputEur) && inputEur > 0 ? inputEur : undefined,
       fecha_valor: body.fecha_valor || targetDate,
-      label: body.label || targetDate,
-      source: 'manual',
+      label: body.label || body.fecha_valor || targetDate,
+      source: body.source || 'manual',
+      is_manual: true,
     })
 
     const newSettings = {
@@ -286,47 +360,115 @@ export async function POST(request: NextRequest) {
       settings: newSettings,
     }
 
-    // If targetDate is today, also update current currency_rate_bcv
+    // If targetDate is today and rateMode is official, update active rate
     const todayDate = new Date().toISOString().split('T')[0]
-    if (targetDate === todayDate) {
-      updatePayload.currency_rate_bcv = targetRate
+    if (targetDate === todayDate && rateMode === 'official') {
+      updatePayload.currency_rate_bcv = effectiveRate
     }
-
-    const adminClient = getAdminClient()
-    const dbClient = adminClient || supabase
 
     await dbClient
       .from('tenants')
       .update(updatePayload)
-      .eq('id', profile.tenant_id)
+      .eq('id', targetTenantId)
 
     return NextResponse.json({
       success: true,
       rates_history: updatedHistory,
-      message: `Tasa para el día ${targetDate} guardada exitosamente (Bs. ${targetRate})`,
+      message: `Tasa para el día ${targetDate} guardada exitosamente (USD: Bs. ${inputUsd}${inputEur ? `, EUR: Bs. ${inputEur}` : ''})`,
     })
   }
 
-  // Option 3: Manual override of today's rate
-  const rate = parseFloat(body.rate)
-  if (isNaN(rate) || rate <= 0) {
-    return NextResponse.json({ error: 'Monto de tasa invalido' }, { status: 400 })
+  // ACTION 3: Delete rate from history
+  if (body.action === 'delete_history_rate') {
+    const targetDate = String(body.date || '').trim()
+    if (!targetDate) {
+      return NextResponse.json({ error: 'Fecha requerida para eliminar registro' }, { status: 400 })
+    }
+
+    const existingList: RateHistoryEntry[] = Array.isArray(currentSettings.bcv_rates_history)
+      ? [...(currentSettings.bcv_rates_history as RateHistoryEntry[])]
+      : []
+
+    const updatedHistory = existingList.filter((item) => item.date !== targetDate)
+
+    const newSettings = {
+      ...currentSettings,
+      bcv_rates_history: updatedHistory,
+    }
+
+    await dbClient
+      .from('tenants')
+      .update({ settings: newSettings })
+      .eq('id', targetTenantId)
+
+    return NextResponse.json({
+      success: true,
+      rates_history: updatedHistory,
+      message: `Registro del día ${targetDate} eliminado del historial.`,
+    })
   }
 
-  const { data: currentTenant } = await supabase
-    .from('tenants')
-    .select('settings')
-    .eq('id', profile.tenant_id)
-    .single()
+  // ACTION 4: Update store currency type ($ USD / € EUR) and rate mode (official / custom)
+  if (body.action === 'update_store_currency') {
+    if (!isSuperAdmin && !isOwner) {
+      return NextResponse.json({ error: 'Solo el administrador puede configurar la moneda de la tienda' }, { status: 403 })
+    }
 
-  const currentSettings = ((currentTenant?.settings || {}) as Record<string, unknown>)
+    const newCurrencyType = body.currency_type === 'EUR' ? 'EUR' : 'USD'
+    const newRateMode = body.rate_mode === 'custom' ? 'custom' : 'official'
+    const newCustomRate = typeof body.custom_rate === 'number' && body.custom_rate > 0 ? body.custom_rate : null
+
+    // Determine current currency_rate_bcv
+    let newCurrencyRate: number
+    if (newRateMode === 'custom' && newCustomRate && newCustomRate > 0) {
+      newCurrencyRate = newCustomRate
+    } else {
+      const bcvRateUsd = typeof currentSettings.bcv_rate_usd === 'number' ? currentSettings.bcv_rate_usd : Number(currentTenant.currency_rate_bcv)
+      const bcvRateEur = typeof currentSettings.bcv_rate_eur === 'number' ? currentSettings.bcv_rate_eur : 0
+      newCurrencyRate = newCurrencyType === 'EUR' && bcvRateEur > 0 ? bcvRateEur : bcvRateUsd
+    }
+
+    const newSettings = {
+      ...currentSettings,
+      currency_type: newCurrencyType,
+      rate_mode: newRateMode,
+      custom_rate: newCustomRate,
+    }
+
+    await dbClient
+      .from('tenants')
+      .update({
+        currency_rate_bcv: newCurrencyRate,
+        settings: newSettings,
+      })
+      .eq('id', targetTenantId)
+
+    return NextResponse.json({
+      success: true,
+      currency_type: newCurrencyType,
+      rate_mode: newRateMode,
+      custom_rate: newCustomRate,
+      effective_rate: newCurrencyRate,
+      message: `Configuración monetaria actualizada: Moneda base ${newCurrencyType}, Modo ${newRateMode === 'custom' ? 'Tasa Personalizada' : 'Tasa Oficial BCV'}`,
+    })
+  }
+
+  // ACTION 5: Simple manual rate override
+  const rate = parseFloat(body.rate)
+  if (isNaN(rate) || rate <= 0) {
+    return NextResponse.json({ error: 'Monto de tasa inválido' }, { status: 400 })
+  }
+
   const todayDate = new Date().toISOString().split('T')[0]
   const updatedHistory = mergeRateHistory(currentSettings.bcv_rates_history, {
     date: todayDate,
     rate,
+    rate_usd: currencyType === 'USD' ? rate : (typeof currentSettings.bcv_rate_usd === 'number' ? currentSettings.bcv_rate_usd : rate),
+    rate_eur: currencyType === 'EUR' ? rate : (typeof currentSettings.bcv_rate_eur === 'number' ? currentSettings.bcv_rate_eur : undefined),
     fecha_valor: getTodayFormatted(),
     label: getTodayFormatted(),
     source: 'manual',
+    is_manual: true,
   })
 
   const newSettings = {
@@ -334,16 +476,13 @@ export async function POST(request: NextRequest) {
     bcv_rates_history: updatedHistory,
   }
 
-  const adminClient = getAdminClient()
-  const dbClient = adminClient || supabase
-
   const { data, error } = await dbClient
     .from('tenants')
     .update({
       currency_rate_bcv: rate,
       settings: newSettings,
     })
-    .eq('id', profile.tenant_id)
+    .eq('id', targetTenantId)
     .select('currency_rate_bcv')
     .single()
 

@@ -93,10 +93,13 @@ export interface Tenant {
 export interface BcvRateHistoryItem {
   date: string // YYYY-MM-DD
   rate: number
+  rate_usd?: number
+  rate_eur?: number
   fecha_valor?: string
   label?: string
-  source?: 'bcv_sync' | 'manual'
+  source?: string
   updated_at?: string
+  is_manual?: boolean
 }
 
 
@@ -346,14 +349,16 @@ export interface Expense {
   amount_ves: number
   exchange_rate: number
   payment_method: string
-  supplier_name: string | null
-  receipt_url: string | null
-  is_recurring: boolean
-  recurrence_period: 'weekly' | 'biweekly' | 'monthly' | 'yearly' | null
-  expense_date: string
+  reference?: string | null
+  supplier_name?: string | null
+  receipt_url?: string | null
+  is_recurring?: boolean
+  recurrence_period?: 'weekly' | 'biweekly' | 'monthly' | 'yearly' | null
+  date: string
+  expense_date?: string
   created_by: string | null
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
 export interface QuotationDefaults {

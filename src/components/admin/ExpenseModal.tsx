@@ -41,10 +41,10 @@ export function ExpenseModal({ isOpen, onClose, onSuccess, expense }: Props) {
   const [amountInput, setAmountInput] = useState(expense ? String(expense.amount_usd) : '')
   const [inputCurrency, setInputCurrency] = useState<'USD' | 'VES'>('USD')
   const [paymentMethod, setPaymentMethod] = useState(expense?.payment_method ?? 'pago_movil')
-  const [supplierName, setSupplierName] = useState(expense?.supplier_name ?? '')
+  const [supplierName, setSupplierName] = useState(expense?.supplier_name ?? expense?.reference ?? '')
   const [isRecurring, setIsRecurring] = useState(expense?.is_recurring ?? false)
   const [recurrencePeriod, setRecurrencePeriod] = useState<string>(expense?.recurrence_period ?? 'monthly')
-  const [expenseDate, setExpenseDate] = useState(expense?.expense_date ?? new Date().toISOString().split('T')[0])
+  const [expenseDate, setExpenseDate] = useState(expense?.date ?? expense?.expense_date ?? new Date().toISOString().split('T')[0])
   const [receiptUrl, setReceiptUrl] = useState(expense?.receipt_url ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,11 +77,8 @@ export function ExpenseModal({ isOpen, onClose, onSuccess, expense }: Props) {
         amount_ves: parseFloat(amountVes.toFixed(2)),
         exchange_rate: exchangeRate,
         payment_method: paymentMethod,
-        supplier_name: supplierName.trim() || null,
-        receipt_url: receiptUrl.trim() || null,
-        is_recurring: isRecurring,
-        recurrence_period: isRecurring ? (recurrencePeriod as Expense['recurrence_period']) : null,
-        expense_date: expenseDate,
+        reference: supplierName.trim() || null,
+        date: expenseDate,
         created_by: profile.id,
       }
 
