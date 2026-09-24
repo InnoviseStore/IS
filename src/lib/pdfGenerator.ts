@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Tenant, Order, Quotation, Customer } from '@/types/database'
 import { extractDeliveryInfo, cleanNotesFromDeliveryTag } from '@/lib/delivery'
+import { cleanProductDescription } from '@/lib/categories'
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 function formatUsd(val: number | string | null | undefined): string {
@@ -673,16 +674,25 @@ export interface GenerateQuotationPdfOptions {
   tenant?: Tenant | null
   quotation: Quotation
   showVesPrices?: boolean
+  pdfColor?: string
+  showDescription?: boolean
+  showSku?: boolean
 }
 
 export async function buildQuotationJsPdfDoc({
   quotation,
   tenant,
   showVesPrices,
+  pdfColor,
+  showDescription,
+  showSku,
 }: {
   quotation: Quotation
   tenant?: Tenant | null
   showVesPrices?: boolean
+  pdfColor?: string
+  showDescription?: boolean
+  showSku?: boolean
 }): Promise<{ doc: jsPDF; quoteNumber: string }> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -691,10 +701,24 @@ export async function buildQuotationJsPdfDoc({
     compress: true,
   })
 
+  const settings = (tenant?.settings as Record<string, unknown>) || {}
+  const qDefaults = (settings.quotation_defaults as Record<string, boolean>) || {}
+
+  const effectiveShowDescription = typeof showDescription === 'boolean'
+    ? showDescription
+    : (qDefaults.show_description !== false)
+
+  const effectiveShowSku = typeof showSku === 'boolean'
+    ? showSku
+    : (qDefaults.show_sku !== false)
+
   const shouldShowVes =
     typeof showVesPrices === 'boolean'
       ? showVesPrices
-      : !quotation.notes?.includes('SHOW_VES:false')
+      : (qDefaults.show_ves_prices !== false && !quotation.notes?.includes('SHOW_VES:false'))
+
+  const chosenColor = pdfColor || (settings.quotation_pdf_color as string) || (settings.invoice_pdf_color as string) || 'emerald'
+  const primaryTheme = resolvePdfTheme(chosenColor)
 
   const cleanNotes = (quotation.notes || '')
     .replace(/<!--SHOW_VES:[^>]+-->/gi, '')
@@ -702,7 +726,6 @@ export async function buildQuotationJsPdfDoc({
     .replace(/\(?Cliente Ref:\s*[a-f0-9-]+\)?/gi, '')
     .trim()
 
-  const settings = (tenant?.settings as Record<string, unknown>) || {}
   const logoUrl =
     (settings.imagotype_url as string) ||
     (settings.logo_url as string) ||
@@ -763,7 +786,7 @@ export async function buildQuotationJsPdfDoc({
   // Document Title & Number Badge (Right Side)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.setTextColor(16, 185, 129) // emerald-600
+  doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
   doc.text('COTIZACIÓN / PRESUPUESTO', 196, currentY + 4, { align: 'right' })
 
   doc.setFont('courier', 'bold')
@@ -882,14 +905,14 @@ export async function buildQuotationJsPdfDoc({
     const lineVes = lineUsd * exchangeRate
 
     const prodName = (item.name || 'Producto').trim()
-    const prodSku = item.sku ? ` [SKU: ${item.sku}]` : ''
-    const prodDesc = (item.description && typeof item.description === 'string' && item.description.trim())
-      ? item.description.trim()
-      : ''
+    const prodSku = (effectiveShowSku && item.sku) ? ` [SKU: ${item.sku}]` : ''
+    const itemBrand = (item.brand || (item as any).brand) ? ` [Marca: ${item.brand || (item as any).brand}]` : ''
+    const cleanDesc = cleanProductDescription(item.description)
+    const prodDesc = (effectiveShowDescription && cleanDesc) ? cleanDesc : ''
 
     const fullProductCell = prodDesc
-      ? `${prodName}${prodSku}\n${prodDesc}`
-      : `${prodName}${prodSku}`
+      ? `${prodName}${itemBrand}${prodSku}\n${prodDesc}`
+      : `${prodName}${itemBrand}${prodSku}`
 
     if (shouldShowVes) {
       return [
@@ -943,7 +966,7 @@ export async function buildQuotationJsPdfDoc({
       cellPadding: 2.2,
     },
     headStyles: {
-      fillColor: [16, 185, 129], // Emerald-600
+      fillColor: primaryTheme.rgb,
       textColor: 255,
       fontStyle: 'bold',
       fontSize: 8.5,
@@ -984,7 +1007,7 @@ export async function buildQuotationJsPdfDoc({
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.setTextColor(16, 185, 129)
+  doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
   doc.text('TOTAL ESTIMADO:', summaryBoxX + 6, finalY + (shouldShowVes ? 10 : 11))
   doc.text(formatUsd(totalUsd), 190, finalY + (shouldShowVes ? 10 : 11), { align: 'right' })
 
@@ -1032,8 +1055,18 @@ export async function generateQuotationPdf({
   tenant,
   action = 'download',
   showVesPrices,
+  pdfColor,
+  showDescription,
+  showSku,
 }: GenerateQuotationPdfOptions): Promise<void> {
-  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant, showVesPrices })
+  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({
+    quotation,
+    tenant,
+    showVesPrices,
+    pdfColor,
+    showDescription,
+    showSku,
+  })
   if (action === 'print') {
     doc.autoPrint()
     const blobUrl = doc.output('bloburl')
@@ -1047,12 +1080,25 @@ export async function getQuotationPdfBase64({
   quotation,
   tenant,
   showVesPrices,
+  pdfColor,
+  showDescription,
+  showSku,
 }: {
   quotation: Quotation
   tenant?: Tenant | null
   showVesPrices?: boolean
+  pdfColor?: string
+  showDescription?: boolean
+  showSku?: boolean
 }): Promise<{ base64: string; fileName: string }> {
-  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant, showVesPrices })
+  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({
+    quotation,
+    tenant,
+    showVesPrices,
+    pdfColor,
+    showDescription,
+    showSku,
+  })
   const dataUri = doc.output('datauristring')
   const base64 = dataUri.includes(';base64,')
     ? dataUri.split(';base64,')[1].trim()

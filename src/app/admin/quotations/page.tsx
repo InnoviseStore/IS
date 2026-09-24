@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Quotation, Product, Customer } from '@/types/database'
-import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown, User, Tag, Percent, X, Copy } from 'lucide-react'
+import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown, User, Tag, Percent, X, Copy, Sliders, Check } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { generateQuotationPdf, extractCustomerFromNotes } from '@/lib/pdfGenerator'
+import { cleanProductDescription, extractBrand } from '@/lib/categories'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { WhatsAppQuoteModal } from '@/components/admin/WhatsAppQuoteModal'
@@ -18,11 +19,12 @@ interface QuoteCartItem {
   unit_price_usd: number
   discount_percent: number
   description?: string
+  brand?: string
 }
 
 export default function QuotationsPage() {
   const router = useRouter()
-  const { tenant, profile, exchangeRate } = useTenant()
+  const { tenant, profile, exchangeRate, updateTenantSettings } = useTenant()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
   const [generatingPdf, setGeneratingPdf] = useState(false)
@@ -50,8 +52,17 @@ export default function QuotationsPage() {
   const [validDays, setValidDays] = useState(15)
   const [notes, setNotes] = useState('')
   const [showVesPrices, setShowVesPrices] = useState(true)
+  const [showDescriptionInPdf, setShowDescriptionInPdf] = useState(true)
+  const [showSkuInPdf, setShowSkuInPdf] = useState(true)
   const [saving, setSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
+
+  // Configuración Predeterminada de Cotizaciones Modal
+  const [showDefaultsModal, setShowDefaultsModal] = useState(false)
+  const [defaultShowDesc, setDefaultShowDesc] = useState(true)
+  const [defaultShowSku, setDefaultShowSku] = useState(true)
+  const [defaultShowVes, setDefaultShowVes] = useState(true)
+  const [savingDefaults, setSavingDefaults] = useState(false)
 
   const loadQuotations = useCallback(async () => {
     if (!tenant) return
@@ -92,7 +103,11 @@ export default function QuotationsPage() {
     setCustomCustomerIdPrefix('V-')
     setCustomCustomerIdDigits('')
     setIsCustomerDropdownOpen(false)
-    setShowVesPrices(true)
+
+    const quoteDefs = (tenant.settings as any)?.quotation_defaults
+    setShowVesPrices(quoteDefs?.show_ves_prices ?? true)
+    setShowDescriptionInPdf(quoteDefs?.show_description ?? true)
+    setShowSkuInPdf(quoteDefs?.show_sku ?? true)
     setNotes('')
     const supabase = createClient()
     const [{ data: prodData }, { data: custData }] = await Promise.all([
@@ -163,6 +178,8 @@ export default function QuotationsPage() {
     const rawItems = Array.isArray(sourceQuote.items) ? sourceQuote.items : []
     const quoteCart: QuoteCartItem[] = rawItems.map((it: any, idx: number) => {
       const foundProduct = loadedProducts.find((p) => p.id === it.product_id)
+      const rawBrand = it.brand || (foundProduct ? extractBrand(foundProduct.description) : '')
+      const rawDesc = cleanProductDescription(it.description || foundProduct?.description || '')
       return {
         product: foundProduct || {
           id: it.product_id || `quote-item-${idx}`,
@@ -179,7 +196,8 @@ export default function QuotationsPage() {
         quantity: Number(it.quantity) || 1,
         unit_price_usd: Number(it.unit_price_usd) || 0,
         discount_percent: Number(it.discount_percent) || 0,
-        description: it.description || foundProduct?.description || '',
+        description: rawDesc,
+        brand: rawBrand || undefined,
       }
     })
     setCart(quoteCart)
@@ -187,15 +205,24 @@ export default function QuotationsPage() {
     // Extraer notas limpias (eliminando tags y UUIDs residuales)
     const cleanNotes = (sourceQuote.notes || '')
       .replace(/<!--SHOW_VES:[^>]+-->/gi, '')
+      .replace(/<!--SHOW_DESC:[^>]+-->/gi, '')
+      .replace(/<!--SHOW_SKU:[^>]+-->/gi, '')
+      .replace(/<!--CUST_ADDR:[^>]+-->/gi, '')
       .replace(/<!--[^>]+-->/g, '')
       .replace(/\(?Cliente Ref:\s*[a-f0-9-]+\)?/gi, '')
       .trim()
     setNotes(cleanNotes)
-    setShowVesPrices(!sourceQuote.notes?.includes('SHOW_VES:false'))
+
+    const quoteDefs = (tenant.settings as any)?.quotation_defaults
+    setShowVesPrices(sourceQuote.notes?.includes('SHOW_VES:false') ? false : (quoteDefs?.show_ves_prices ?? true))
+    setShowDescriptionInPdf(sourceQuote.notes?.includes('SHOW_DESC:false') ? false : (quoteDefs?.show_description ?? true))
+    setShowSkuInPdf(sourceQuote.notes?.includes('SHOW_SKU:false') ? false : (quoteDefs?.show_sku ?? true))
     setValidDays(15)
   }
 
   function addProductToQuote(product: Product) {
+    const itemBrand = extractBrand(product.description)
+    const itemDesc = cleanProductDescription(product.description || '')
     setCart((prev) => {
       const exists = prev.find((i) => i.product.id === product.id)
       if (exists) {
@@ -208,7 +235,8 @@ export default function QuotationsPage() {
           quantity: 1,
           unit_price_usd: Number(product.base_price_usd) || 0,
           discount_percent: 0,
-          description: product.description || '',
+          description: itemDesc,
+          brand: itemBrand || undefined,
         },
       ]
     })
@@ -217,6 +245,12 @@ export default function QuotationsPage() {
   function updateItemDescription(productId: string, description: string) {
     setCart((prev) =>
       prev.map((i) => (i.product.id === productId ? { ...i, description } : i))
+    )
+  }
+
+  function updateItemBrand(productId: string, brand: string) {
+    setCart((prev) =>
+      prev.map((i) => (i.product.id === productId ? { ...i, brand } : i))
     )
   }
 
@@ -246,6 +280,29 @@ export default function QuotationsPage() {
     }
   }
 
+  async function handleSaveDefaults() {
+    if (!tenant) return
+    setSavingDefaults(true)
+    try {
+      const res = await updateTenantSettings({
+        quotation_defaults: {
+          show_description: defaultShowDesc,
+          show_sku: defaultShowSku,
+          show_ves_prices: defaultShowVes,
+        }
+      })
+      if (res.success) {
+        setShowDefaultsModal(false)
+      } else {
+        alert(res.error || 'No se pudieron guardar las preferencias.')
+      }
+    } catch {
+      alert('Error al guardar preferencias.')
+    } finally {
+      setSavingDefaults(false)
+    }
+  }
+
   const quoteTotalUsd = cart.reduce((s, i) => {
     const discounted = i.unit_price_usd * (1 - (i.discount_percent || 0) / 100)
     return s + discounted * i.quantity
@@ -267,6 +324,7 @@ export default function QuotationsPage() {
         name: i.product.name,
         description: i.description?.trim() || null,
         sku: i.product.sku,
+        brand: i.brand?.trim() || extractBrand(i.product.description) || null,
         unit_price_usd: parseFloat(i.unit_price_usd.toFixed(4)),
         discount_percent: i.discount_percent || 0,
         quantity: i.quantity,
@@ -287,6 +345,12 @@ export default function QuotationsPage() {
     }
     if (!showVesPrices) {
       finalNotes = finalNotes ? `${finalNotes}\n<!--SHOW_VES:false-->` : '<!--SHOW_VES:false-->'
+    }
+    if (!showDescriptionInPdf) {
+      finalNotes = finalNotes ? `${finalNotes}\n<!--SHOW_DESC:false-->` : '<!--SHOW_DESC:false-->'
+    }
+    if (!showSkuInPdf) {
+      finalNotes = finalNotes ? `${finalNotes}\n<!--SHOW_SKU:false-->` : '<!--SHOW_SKU:false-->'
     }
 
     try {
@@ -422,13 +486,30 @@ export default function QuotationsPage() {
           </p>
         </div>
 
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-xs transition"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Cotización
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const defs = (tenant?.settings as any)?.quotation_defaults
+              setDefaultShowDesc(defs?.show_description ?? true)
+              setDefaultShowSku(defs?.show_sku ?? true)
+              setDefaultShowVes(defs?.show_ves_prices ?? true)
+              setShowDefaultsModal(true)
+            }}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs shadow-2xs transition cursor-pointer"
+            title="Configuración Predeterminada de Cotizaciones"
+          >
+            <Sliders className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+            Configuración Predeterminada
+          </button>
+
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-xs transition"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Cotización
+          </button>
+        </div>
       </div>
 
       {/* Barra de Búsqueda */}
@@ -519,11 +600,15 @@ export default function QuotationsPage() {
                             setGeneratingPdf(true)
                             try {
                               const isVesHidden = q.notes?.includes('SHOW_VES:false')
+                              const isDescHidden = q.notes?.includes('SHOW_DESC:false')
+                              const isSkuHidden = q.notes?.includes('SHOW_SKU:false')
                               await generateQuotationPdf({
                                 quotation: q,
                                 tenant,
                                 action: 'download',
                                 showVesPrices: !isVesHidden,
+                                showDescription: !isDescHidden,
+                                showSku: !isSkuHidden,
                               })
                             } catch (err) {
                               console.error('Error generating quotation PDF:', err)
@@ -917,9 +1002,16 @@ export default function QuotationsPage() {
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-bold text-slate-900 dark:text-white text-xs truncate">
-                                    {item.product.name}
-                                  </p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-bold text-slate-900 dark:text-white text-xs truncate">
+                                      {item.product.name}
+                                    </p>
+                                    {item.brand && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800">
+                                        Marca: {item.brand}
+                                      </span>
+                                    )}
+                                  </div>
                                   {item.product.sku && (
                                     <p className="text-[10px] text-slate-400 font-mono">SKU: {item.product.sku}</p>
                                   )}
@@ -1006,20 +1098,34 @@ export default function QuotationsPage() {
                                 </div>
                               </div>
 
-                              {/* Descripción / Especificación del Producto */}
-                              <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60">
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <span className="text-[10px] text-slate-400 font-semibold">
-                                    Descripción o especificación del producto (aparece en el PDF):
-                                  </span>
+                              {/* Descripción y Marca del Producto */}
+                              <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  <div className="sm:col-span-2">
+                                    <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">
+                                      Descripción o especificación (aparece en el PDF):
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={item.description || ''}
+                                      onChange={(e) => updateItemDescription(item.product.id, e.target.value)}
+                                      placeholder="ej. Modelo 2026, Color negro mate, Garantía..."
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">
+                                      Marca:
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={item.brand || ''}
+                                      onChange={(e) => updateItemBrand(item.product.id, e.target.value)}
+                                      placeholder="ej. SKF, Toyota..."
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </div>
                                 </div>
-                                <input
-                                  type="text"
-                                  value={item.description || ''}
-                                  onChange={(e) => updateItemDescription(item.product.id, e.target.value)}
-                                  placeholder="ej. Modelo 2026, Color negro mate, Garantía de 6 meses..."
-                                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-blue-500"
-                                />
                               </div>
                             </div>
                           )
@@ -1028,30 +1134,77 @@ export default function QuotationsPage() {
                     )}
                   </div>
 
-                  {/* Opciones Adicionales: Precios en Bs. y Observaciones */}
+                  {/* Opciones Adicionales: Precios en Bs., Descripción, SKU y Observaciones */}
                   <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label htmlFor="quote-show-ves" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
-                          Mostrar Precios en Bolívares (Bs. BCV)
+                    <div className="space-y-2.5 divide-y divide-slate-200/60 dark:divide-slate-700/60">
+                      {/* Toggle Bs. */}
+                      <div className="flex items-center justify-between pt-1">
+                        <div>
+                          <label htmlFor="quote-show-ves" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                            Mostrar Precios en Bolívares (Bs. BCV)
+                          </label>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Si se desactiva, la cotización y el PDF se emitirán únicamente en Dólares ($ USD).
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                          <input
+                            id="quote-show-ves"
+                            type="checkbox"
+                            checked={showVesPrices}
+                            onChange={(e) => setShowVesPrices(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
                         </label>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Si se desactiva, la cotización y el PDF se emitirán únicamente en Dólares ($ USD).
-                        </p>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          id="quote-show-ves"
-                          type="checkbox"
-                          checked={showVesPrices}
-                          onChange={(e) => setShowVesPrices(e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
-                      </label>
+
+                      {/* Toggle Descripción */}
+                      <div className="flex items-center justify-between pt-2.5">
+                        <div>
+                          <label htmlFor="quote-show-desc" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                            Mostrar Descripción del Producto en el PDF
+                          </label>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Imprimir detalles y especificaciones técnicas bajo el nombre de cada artículo.
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                          <input
+                            id="quote-show-desc"
+                            type="checkbox"
+                            checked={showDescriptionInPdf}
+                            onChange={(e) => setShowDescriptionInPdf(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                      </div>
+
+                      {/* Toggle SKU */}
+                      <div className="flex items-center justify-between pt-2.5">
+                        <div>
+                          <label htmlFor="quote-show-sku" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                            Mostrar Código / SKU en el PDF
+                          </label>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Incluir la etiqueta [SKU: ...] al lado del nombre del producto.
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                          <input
+                            id="quote-show-sku"
+                            type="checkbox"
+                            checked={showSkuInPdf}
+                            onChange={(e) => setShowSkuInPdf(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                      </div>
                     </div>
 
-                    <div>
+                    <div className="pt-1">
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Notas / Términos del Presupuesto (Opcional)
                       </label>
@@ -1144,6 +1297,106 @@ export default function QuotationsPage() {
           tenantName={tenant?.name || 'Innovise Store'}
           exchangeRate={exchangeRate}
         />
+      )}
+
+      {/* Modal de Configuración Predeterminada de Cotizaciones */}
+      {showDefaultsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Sliders className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Opciones Predeterminadas</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Para nuevas cotizaciones y emisión de PDF</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDefaultsModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={defaultShowDesc}
+                    onChange={(e) => setDefaultShowDesc(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Incluir Descripción del Producto en el PDF
+                    </span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Muestra especificaciones técnicas y detalles debajo del nombre de cada artículo.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={defaultShowSku}
+                    onChange={(e) => setDefaultShowSku(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Incluir Código / SKU en el PDF
+                    </span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Agrega el identificador [SKU: ...] al nombre del producto.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={defaultShowVes}
+                    onChange={(e) => setDefaultShowVes(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Mostrar Precios y Totales en Bolívares (Bs. BCV)
+                    </span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Presenta columna y totales en Bolívares calculados según la tasa oficial.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/30">
+              <button
+                type="button"
+                onClick={() => setShowDefaultsModal(false)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDefaults}
+                disabled={savingDefaults}
+                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {savingDefaults ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Guardar Preferencias
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

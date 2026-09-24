@@ -30,7 +30,7 @@ import {
 import { formatDateTime } from '@/lib/formatters'
 import { getProductBarcode } from '@/lib/barcodeUtils'
 import { getTenantFeatures } from '@/lib/planLimits'
-import { detectCategory, extractSubcategory, cleanCategoryName, cleanSubcategoryName } from '@/lib/categories'
+import { detectCategory, extractSubcategory, cleanCategoryName, cleanSubcategoryName, extractBrand } from '@/lib/categories'
 
 function StockBadge({ stock }: { stock: number }) {
   if (stock < 3) return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900 whitespace-nowrap">Bajo ({stock})</span>
@@ -110,10 +110,12 @@ function InventoryContent() {
     const q = deferredSearch.toLowerCase().trim()
     return products.filter((p) => {
       const bCode = (getProductBarcode(p) || '').toLowerCase()
+      const brand = (p.brand || extractBrand(p.description) || '').toLowerCase()
       const matchesSearch =
         !q ||
         p.name.toLowerCase().includes(q) ||
         (p.sku ?? '').toLowerCase().includes(q) ||
+        brand.includes(q) ||
         bCode.includes(q)
       const cat = cleanCategoryName(detectCategory(p.name, p.description))
       const matchesCategory = selectedCategory === 'all' || cat.toLowerCase() === selectedCategory.toLowerCase()
@@ -340,6 +342,11 @@ function InventoryContent() {
                         )}
                       </div>
                       <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate mt-0.5">{p.name}</p>
+                      {extractBrand(p.description) && (
+                        <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 block truncate">
+                          Marca: {extractBrand(p.description)}
+                        </span>
+                      )}
                       
                       <div className="flex items-baseline gap-2 mt-1">
                         <span className="font-black text-sm text-blue-600 dark:text-blue-400">${p.base_price_usd.toFixed(2)}</span>
@@ -430,7 +437,14 @@ function InventoryContent() {
                                 <Package className="w-4 h-4 text-slate-400" />
                               )}
                             </div>
-                            <span className="max-w-[180px] truncate">{p.name}</span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="max-w-[200px] truncate">{p.name}</span>
+                              {extractBrand(p.description) && (
+                                <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 truncate">
+                                  Marca: {extractBrand(p.description)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">

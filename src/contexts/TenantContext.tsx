@@ -31,6 +31,7 @@ interface TenantContextValue {
     whatsapp_automation?: any;
     invoice_pdf_color?: string;
     quotation_pdf_color?: string;
+    quotation_defaults?: any;
   }) => Promise<{ success: boolean; error?: string }>
   isLoading: boolean
 }
@@ -75,6 +76,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     whatsapp_automation?: any;
     invoice_pdf_color?: string;
     quotation_pdf_color?: string;
+    quotation_defaults?: any;
   }) => {
     if (!tenant) return { success: false, error: 'No hay tienda activa' }
     try {

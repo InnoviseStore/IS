@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       whatsapp_automation,
       invoice_pdf_color,
       quotation_pdf_color,
+      quotation_defaults,
     } = body
 
     if (!tenant_id) {
@@ -85,7 +86,8 @@ export async function POST(req: Request) {
       payment_accounts !== undefined || 
       whatsapp_automation !== undefined ||
       invoice_pdf_color !== undefined ||
-      quotation_pdf_color !== undefined
+      quotation_pdf_color !== undefined ||
+      quotation_defaults !== undefined
     ) {
       const { data: currentTenant } = await supabase
         .from('tenants')
@@ -102,6 +104,7 @@ export async function POST(req: Request) {
       if (whatsapp_automation !== undefined) newSettings.whatsapp_automation = whatsapp_automation
       if (invoice_pdf_color !== undefined) newSettings.invoice_pdf_color = invoice_pdf_color
       if (quotation_pdf_color !== undefined) newSettings.quotation_pdf_color = quotation_pdf_color
+      if (quotation_defaults !== undefined) newSettings.quotation_defaults = quotation_defaults
       if (admin_security_pin !== undefined) {
         const cleanPin = String(admin_security_pin).trim()
         if (cleanPin.length < 4) {

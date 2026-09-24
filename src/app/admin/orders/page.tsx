@@ -88,24 +88,8 @@ interface OrderRecord {
 
 export default function AdminOrdersPage() {
   const router = useRouter()
-  const { tenant, exchangeRate, updateTenantSettings } = useTenant()
-
-  const [invoiceColor, setInvoiceColor] = useState<string>((tenant?.settings as any)?.invoice_pdf_color || 'blue')
-
-  useEffect(() => {
-    if ((tenant?.settings as any)?.invoice_pdf_color) {
-      setInvoiceColor((tenant?.settings as any).invoice_pdf_color)
-    }
-  }, [tenant?.settings])
-
-  const handleChangePdfColor = async (colorKey: string) => {
-    setInvoiceColor(colorKey)
-    try {
-      await updateTenantSettings({ invoice_pdf_color: colorKey })
-    } catch (err) {
-      console.error('Error saving invoice PDF color:', err)
-    }
-  }
+  const { tenant, exchangeRate } = useTenant()
+  const invoiceColor = (tenant?.settings as any)?.invoice_pdf_color || 'blue'
 
   const [orders, setOrders] = useState<OrderRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -393,28 +377,6 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Selector de color para Facturas PDF */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 shadow-xs">
-            <Palette className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-[11px] font-bold text-slate-500 hidden sm:inline">Color Factura:</span>
-            <div className="flex items-center gap-1.5">
-              {Object.entries(INVOICE_PDF_THEMES).map(([themeKey, themeObj]) => (
-                <button
-                  key={themeKey}
-                  type="button"
-                  onClick={() => handleChangePdfColor(themeKey)}
-                  title={`Tema Factura: ${themeObj.name}`}
-                  className={`w-4 h-4 rounded-full border transition-all cursor-pointer ${
-                    invoiceColor === themeKey
-                      ? 'ring-2 ring-blue-500 scale-125 border-white shadow-xs'
-                      : 'border-transparent opacity-65 hover:opacity-100 hover:scale-110'
-                  }`}
-                  style={{ backgroundColor: themeObj.hex }}
-                />
-              ))}
-            </div>
-          </div>
-
           <button
             type="button"
             onClick={() => loadOrders(true)}

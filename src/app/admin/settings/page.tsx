@@ -58,6 +58,10 @@ export default function SettingsPage() {
   const [showPin, setShowPin] = useState(false)
   const [geminiApiKey, setGeminiApiKey] = useState('')
   const [invoicePdfColor, setInvoicePdfColor] = useState('blue')
+  const [quotationPdfColor, setQuotationPdfColor] = useState('emerald')
+  const [quoteDefaultShowDesc, setQuoteDefaultShowDesc] = useState(true)
+  const [quoteDefaultShowSku, setQuoteDefaultShowSku] = useState(true)
+  const [quoteDefaultShowVes, setQuoteDefaultShowVes] = useState(true)
 
   // Estados para gestión de historial de tasas de los últimos días
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -143,6 +147,11 @@ export default function SettingsPage() {
       setAdminSecurityPin((settings.admin_security_pin as string) || '1234')
       setGeminiApiKey((settings.gemini_api_key as string) || '')
       setInvoicePdfColor((settings.invoice_pdf_color as string) || 'blue')
+      setQuotationPdfColor((settings.quotation_pdf_color as string) || 'emerald')
+      const qDefaults = (settings.quotation_defaults as Record<string, boolean>) || {}
+      setQuoteDefaultShowDesc(qDefaults.show_description !== false)
+      setQuoteDefaultShowSku(qDefaults.show_sku !== false)
+      setQuoteDefaultShowVes(qDefaults.show_ves_prices !== false)
 
       if (settings.checkout_mode) {
         setCheckoutMode(settings.checkout_mode as 'whatsapp_only' | 'direct_payment')
@@ -239,10 +248,18 @@ export default function SettingsPage() {
       whatsapp_automation?: any
       gemini_api_key?: string | null
       invoice_pdf_color?: string
+      quotation_pdf_color?: string
+      quotation_defaults?: any
     } = {
       phone_whatsapp: phone.trim(),
       gemini_api_key: geminiApiKey.trim() || null,
       invoice_pdf_color: invoicePdfColor,
+      quotation_pdf_color: quotationPdfColor,
+      quotation_defaults: {
+        show_description: quoteDefaultShowDesc,
+        show_sku: quoteDefaultShowSku,
+        show_ves_prices: quoteDefaultShowVes,
+      },
       checkout_mode: checkoutMode,
       customer_auth_mode: customerAuthMode,
       payment_accounts: paymentAccounts,
@@ -744,15 +761,15 @@ export default function SettingsPage() {
                       No hay tasas históricas adicionales registradas aún. Se guardarán automáticamente con cada sincronización diaria.
                     </p>
                   )}
-                  {/* Personalización de Color de Factura / Nota PDF */}
+                  {/* 1. Personalización de Color de Factura / Nota PDF */}
                   <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
                     <div>
                       <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
                         <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        <span>Color y Apariencia de Factura / Nota PDF</span>
+                        <span>Color de Factura / Nota de Venta PDF</span>
                       </h4>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Personaliza el color de cabeceras, tablas y totales en los comprobantes PDF que imprimes y envías a tus clientes.
+                        Define el color temático para cabeceras, tablas y totales en los comprobantes de facturación (POS y Pedidos Web).
                       </p>
                     </div>
 
@@ -784,10 +801,9 @@ export default function SettingsPage() {
                       })}
                     </div>
 
-                    {/* Previsualización rápida de la cabecera */}
-                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between text-xs">
+                    <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-500 font-semibold">Muestra activa:</span>
+                        <span className="text-[11px] text-slate-500 font-semibold">Tema Factura Activo:</span>
                         <span
                           className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] shadow-xs"
                           style={{ backgroundColor: (INVOICE_PDF_THEMES as any)[invoicePdfColor]?.hex || '#2563eb' }}
@@ -796,8 +812,115 @@ export default function SettingsPage() {
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-400">
-                        Aplica a POS, Pedidos y Facturas PDF
+                        Aplica a POS y Pedidos
                       </span>
+                    </div>
+                  </div>
+
+                  {/* 2. Personalización de Color de Cotización / Presupuesto PDF */}
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                        <Palette className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Color de Cotización / Presupuesto PDF</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Define el color institucional con el que se generarán los presupuestos y cotizaciones para tus clientes.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 pt-1">
+                      {Object.entries(INVOICE_PDF_THEMES).map(([themeKey, themeObj]) => {
+                        const isSelected = quotationPdfColor === themeKey
+                        return (
+                          <button
+                            key={themeKey}
+                            type="button"
+                            onClick={() => setQuotationPdfColor(themeKey)}
+                            className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-emerald-600 dark:border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-2 ring-emerald-500/30'
+                                : 'border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <div
+                              className="w-5 h-5 rounded-full shrink-0 shadow-xs border border-white dark:border-slate-700"
+                              style={{ backgroundColor: themeObj.hex }}
+                            />
+                            <div className="min-w-0">
+                              <span className={`block text-xs font-bold truncate ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                                {themeObj.name}
+                              </span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 font-semibold">Tema Cotización Activo:</span>
+                        <span
+                          className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] shadow-xs"
+                          style={{ backgroundColor: (INVOICE_PDF_THEMES as any)[quotationPdfColor]?.hex || '#059669' }}
+                        >
+                          {(INVOICE_PDF_THEMES as any)[quotationPdfColor]?.name || 'Verde Esmeralda'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Aplica a Cotizaciones PDF
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. Configuración Predeterminada de Cotizaciones */}
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Opciones Predeterminadas de Cotización</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Configura cómo deben generarse los presupuestos por defecto para tu tienda.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2.5 bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={quoteDefaultShowDesc}
+                          onChange={(e) => setQuoteDefaultShowDesc(e.target.checked)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                        />
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          Incluir descripción detallada de los productos en el PDF
+                        </span>
+                      </label>
+
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={quoteDefaultShowSku}
+                          onChange={(e) => setQuoteDefaultShowSku(e.target.checked)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                        />
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          Incluir código / SKU del producto en el PDF
+                        </span>
+                      </label>
+
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={quoteDefaultShowVes}
+                          onChange={(e) => setQuoteDefaultShowVes(e.target.checked)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 dark:bg-slate-900 border-slate-300 dark:border-slate-600 cursor-pointer"
+                        />
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          Mostrar columnas y totales convertidos a Bolívares (Bs. BCV)
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>

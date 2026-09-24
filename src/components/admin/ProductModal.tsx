@@ -31,6 +31,8 @@ import {
   cleanSubcategoryName,
   cleanProductDescription,
   getRubroCategories,
+  extractBrand,
+  injectBrandIntoDescription,
 } from '@/lib/categories'
 import { getProductBarcode, injectBarcodeIntoDescription } from '@/lib/barcodeUtils'
 
@@ -166,6 +168,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [subcategory, setSubcategory] = useState(cleanSubcategoryName(initialSubcategory))
   const [description, setDescription] = useState(cleanProductDescription(parsedApparel.cleanDescription))
   const [sku, setSku] = useState(product?.sku ?? '')
+  const [brand, setBrand] = useState(extractBrand(product?.description) || '')
   const initialBarcode = getProductBarcode(product) || ''
   const [barcode, setBarcode] = useState(initialBarcode)
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false)
@@ -641,6 +644,11 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     // Serializar categoría, subcategoría, atributos de moda y variantes dentro de description
     let baseDesc = cleanProductDescription(description)
 
+    // Si tiene marca asignada
+    if (brand.trim()) {
+      baseDesc = injectBrandIntoDescription(baseDesc, brand.trim())
+    }
+
     // Si tiene subcategoría explícita asignada
     if (subcategory.trim()) {
       baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(subcategory)}-->\n${baseDesc}`
@@ -1023,20 +1031,36 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 )
               })()}
 
-              {/* Códigos del Producto: SKU de Usuario y Código de Barras */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* Identificadores: SKU, Marca y Código de Barras */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                      Código / SKU Interno
+                      Código / SKU
                     </label>
-                    <span className="text-[10px] text-slate-400 font-semibold">Creado por ti</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">Interno</span>
                   </div>
                   <input 
                     value={sku} 
                     onChange={(e) => setSku(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
-                    placeholder="Ej. AUD-001, CASE-IP14" 
+                    placeholder="Ej. AUD-001" 
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>Marca</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-semibold">Opcional</span>
+                  </div>
+                  <input 
+                    value={brand} 
+                    onChange={(e) => setBrand(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                    placeholder="Ej. SKF, Apple, Toyota..." 
                   />
                 </div>
 
@@ -1053,18 +1077,17 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                       <input 
                         value={barcode} 
                         onChange={(e) => setBarcode(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
-                        placeholder="Ej. 7591234567890" 
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono font-bold"
+                        placeholder="7591234567890" 
                       />
                     </div>
                     <button
                       type="button"
                       onClick={startBarcodeScanner}
-                      className="px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
-                      title="Escanear con cámara y rellenar automáticamente"
+                      className="px-2.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                      title="Escanear con cámara"
                     >
                       <Camera className="w-4 h-4" />
-                      <span className="hidden xs:inline">Escanear</span>
                     </button>
                   </div>
                 </div>

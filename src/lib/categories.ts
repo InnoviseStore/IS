@@ -211,19 +211,36 @@ export function extractSubcategory(description?: string | null): string | null {
 }
 
 /**
+ * Extrae la marca de un producto desde la descripción
+ */
+export function extractBrand(description?: string | null): string {
+  if (!description) return ''
+  const match = description.match(/<!--BRAND:(.*?)-->/i)
+  return match ? match[1].trim() : ''
+}
+
+/**
+ * Inyecta o actualiza la etiqueta de marca dentro de la descripción del producto
+ */
+export function injectBrandIntoDescription(description?: string | null, brand?: string | null): string {
+  const cleanBrand = brand ? brand.trim() : ''
+  const withoutBrand = (description || '').replace(/<!--BRAND:(.*?)-->/gi, '').trim()
+  if (!cleanBrand) return withoutBrand
+  return `<!--BRAND:${cleanBrand}-->\n${withoutBrand}`
+}
+
+/**
  * Limpia minuciosamente la descripción de un producto, eliminando cualquier tag interno
- * de serialización (<!--CATEGORY:...-->, <!--SUBCATEGORY:...-->, <!--APPAREL_ATTRIBUTES:...-->, etc.)
- * para que NUNCA aparezca texto técnico o código en textareas ni vistas.
+ * de serialización (<!--CATEGORY:...-->, <!--SUBCATEGORY:...-->, <!--APPAREL_ATTRIBUTES:...-->, <!--BRAND:...-->, etc.)
+ * y badges como 🏷️ Rodamientos para que NUNCA aparezca texto técnico o código en textareas ni vistas.
  */
 export function cleanProductDescription(description?: string | null): string {
   if (!description) return ''
   return description
-    .replace(/<!--CATEGORY:(.*?)-->/gi, '')
-    .replace(/<!--SUBCATEGORY:(.*?)-->/gi, '')
-    .replace(/<!--APPAREL_ATTRIBUTES:(.*?)-->/gi, '')
-    .replace(/<!--COLOR_VARIANTS:(.*?)-->/gi, '')
-    .replace(/<!--BARCODE:(.*?)-->/gi, '')
-    .replace(/^🏷️[^\n]+\n\n?/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '') // elimina cualquier tag técnico HTML o metadata
+    .replace(/🏷️[^\n]*/g, '')         // elimina cualquier etiqueta de badge
+    .replace(/^\s+|\s+$/g, '')        // trim
+    .replace(/\n{3,}/g, '\n\n')       // normalizar saltos de línea
     .trim()
 }
 

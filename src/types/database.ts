@@ -145,6 +145,7 @@ export interface Product {
   tenant_id: string
   sku: string | null
   barcode?: string | null
+  brand?: string | null
   name: string
   description: string | null
   base_price_usd: number
@@ -355,10 +356,17 @@ export interface Expense {
   updated_at: string
 }
 
+export interface QuotationDefaults {
+  show_description?: boolean
+  show_sku?: boolean
+  show_ves_prices?: boolean
+}
+
 // ─── Quotation ────────────────────────────────────────────────────────────────
 export interface QuotationItem {
   product_id: string
   name: string
+  brand?: string | null
   description?: string | null
   sku: string | null
   unit_price_usd: number
