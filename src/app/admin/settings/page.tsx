@@ -39,8 +39,10 @@ import {
   LogIn,
   Calendar,
   Sparkles,
+  Palette,
 } from 'lucide-react'
 import { getTenantFeatures } from '@/lib/planLimits'
+import { INVOICE_PDF_THEMES } from '@/lib/pdfGenerator'
 import Link from 'next/link'
 
 type SectionKey = 'identity' | 'payments' | 'security' | 'about' | 'plan' | 'whatsapp'
@@ -55,6 +57,7 @@ export default function SettingsPage() {
   const [adminSecurityPin, setAdminSecurityPin] = useState('')
   const [showPin, setShowPin] = useState(false)
   const [geminiApiKey, setGeminiApiKey] = useState('')
+  const [invoicePdfColor, setInvoicePdfColor] = useState('blue')
 
   // Estados para gestión de historial de tasas de los últimos días
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -139,6 +142,7 @@ export default function SettingsPage() {
       const about = (settings.about || {}) as Record<string, string>
       setAdminSecurityPin((settings.admin_security_pin as string) || '1234')
       setGeminiApiKey((settings.gemini_api_key as string) || '')
+      setInvoicePdfColor((settings.invoice_pdf_color as string) || 'blue')
 
       if (settings.checkout_mode) {
         setCheckoutMode(settings.checkout_mode as 'whatsapp_only' | 'direct_payment')
@@ -234,9 +238,11 @@ export default function SettingsPage() {
       payment_accounts?: any[]
       whatsapp_automation?: any
       gemini_api_key?: string | null
+      invoice_pdf_color?: string
     } = {
       phone_whatsapp: phone.trim(),
       gemini_api_key: geminiApiKey.trim() || null,
+      invoice_pdf_color: invoicePdfColor,
       checkout_mode: checkoutMode,
       customer_auth_mode: customerAuthMode,
       payment_accounts: paymentAccounts,
@@ -738,6 +744,62 @@ export default function SettingsPage() {
                       No hay tasas históricas adicionales registradas aún. Se guardarán automáticamente con cada sincronización diaria.
                     </p>
                   )}
+                  {/* Personalización de Color de Factura / Nota PDF */}
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                        <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Color y Apariencia de Factura / Nota PDF</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Personaliza el color de cabeceras, tablas y totales en los comprobantes PDF que imprimes y envías a tus clientes.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 pt-1">
+                      {Object.entries(INVOICE_PDF_THEMES).map(([themeKey, themeObj]) => {
+                        const isSelected = invoicePdfColor === themeKey
+                        return (
+                          <button
+                            key={themeKey}
+                            type="button"
+                            onClick={() => setInvoicePdfColor(themeKey)}
+                            className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-blue-600 dark:border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 ring-2 ring-blue-500/30'
+                                : 'border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <div
+                              className="w-5 h-5 rounded-full shrink-0 shadow-xs border border-white dark:border-slate-700"
+                              style={{ backgroundColor: themeObj.hex }}
+                            />
+                            <div className="min-w-0">
+                              <span className={`block text-xs font-bold truncate ${isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                                {themeObj.name}
+                              </span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Previsualización rápida de la cabecera */}
+                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 font-semibold">Muestra activa:</span>
+                        <span
+                          className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] shadow-xs"
+                          style={{ backgroundColor: (INVOICE_PDF_THEMES as any)[invoicePdfColor]?.hex || '#2563eb' }}
+                        >
+                          {(INVOICE_PDF_THEMES as any)[invoicePdfColor]?.name || 'Azul Clásico'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Aplica a POS, Pedidos y Facturas PDF
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

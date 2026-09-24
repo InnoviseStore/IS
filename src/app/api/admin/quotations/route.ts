@@ -80,6 +80,7 @@ export async function POST(req: Request) {
       customer_phone,
       customer_email,
       customer_id_number,
+      customer_address,
       items,
       subtotal_usd,
       total_usd,
@@ -111,10 +112,14 @@ export async function POST(req: Request) {
     // Generar un número de cotización secuencial y correlativo por tienda
     const quotationNumber = await generateNextQuotationNumber(supabase, tenant_id)
 
-    // Notas limpias (sin anexar UUIDs técnicos de base de datos)
-    const finalNotes = notes?.trim() || ''
+    // Notas limpias garantizando tag de dirección si viene informada
+    let finalNotes = notes?.trim() || ''
+    if (customer_address && typeof customer_address === 'string' && customer_address.trim() && !finalNotes.includes('<!--CUST_ADDR:')) {
+      const addrTag = `<!--CUST_ADDR:${encodeURIComponent(customer_address.trim())}-->`
+      finalNotes = finalNotes ? `${finalNotes}\n${addrTag}` : addrTag
+    }
 
-    // OMITIR customer_id del insert a la tabla para evitar PGRST204
+    // OMITIR customer_id del insert a la tabla para evitar PGRST204 si la FK difiere
     const quotePayload = {
       tenant_id,
       customer_name: (customer_name && String(customer_name).trim()) || 'Cliente General',

@@ -375,6 +375,7 @@ export interface Quotation {
   customer_phone?: string | null
   customer_email?: string | null
   customer_id_number?: string | null
+  customer_address?: string | null
   quotation_number: string
   status: 'draft' | 'sent' | 'approved' | 'expired' | 'converted'
   items: QuotationItem[]

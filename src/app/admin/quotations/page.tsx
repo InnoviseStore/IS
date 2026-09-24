@@ -7,7 +7,7 @@ import { useTenant } from '@/contexts/TenantContext'
 import type { Quotation, Product, Customer } from '@/types/database'
 import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown, User, Tag, Percent, X, Copy } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
-import { generateQuotationPdf } from '@/lib/pdfGenerator'
+import { generateQuotationPdf, extractCustomerFromNotes } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { WhatsAppQuoteModal } from '@/components/admin/WhatsAppQuoteModal'
@@ -42,6 +42,8 @@ export default function QuotationsPage() {
   const [catalogSearch, setCatalogSearch] = useState('')
   const [customCustomerName, setCustomCustomerName] = useState('')
   const [customCustomerPhone, setCustomCustomerPhone] = useState('')
+  const [customCustomerEmail, setCustomCustomerEmail] = useState('')
+  const [customCustomerAddress, setCustomCustomerAddress] = useState('')
   const [customCustomerIdPrefix, setCustomCustomerIdPrefix] = useState<'V-' | 'J-' | 'E-' | 'G-'>('V-')
   const [customCustomerIdDigits, setCustomCustomerIdDigits] = useState('')
   const [cart, setCart] = useState<QuoteCartItem[]>([])
@@ -85,6 +87,8 @@ export default function QuotationsPage() {
     setCatalogSearch('')
     setCustomCustomerName('')
     setCustomCustomerPhone('')
+    setCustomCustomerEmail('')
+    setCustomCustomerAddress('')
     setCustomCustomerIdPrefix('V-')
     setCustomCustomerIdDigits('')
     setIsCustomerDropdownOpen(false)
@@ -135,11 +139,16 @@ export default function QuotationsPage() {
       setSelectedCustomer(matchedCustomer)
       setCustomCustomerName('')
       setCustomCustomerPhone('')
+      setCustomCustomerEmail('')
+      setCustomCustomerAddress('')
       setCustomCustomerIdDigits('')
     } else {
       setSelectedCustomer(null)
       setCustomCustomerName(sourceQuote.customer_name || '')
       setCustomCustomerPhone(sourceQuote.customer_phone || '')
+      setCustomCustomerEmail(sourceQuote.customer_email || '')
+      const extracted = extractCustomerFromNotes(sourceQuote.notes)
+      setCustomCustomerAddress((sourceQuote as any).customer_address || extracted.address || '')
       const idNum = sourceQuote.customer_id_number || ''
       if (idNum.startsWith('J-') || idNum.startsWith('V-') || idNum.startsWith('E-') || idNum.startsWith('G-')) {
         setCustomCustomerIdPrefix(idNum.slice(0, 2) as any)
@@ -269,9 +278,13 @@ export default function QuotationsPage() {
     const customerPhone = selectedCustomer?.phone || customCustomerPhone.trim() || null
     const customId = customCustomerIdDigits.trim() ? `${customCustomerIdPrefix}${customCustomerIdDigits.trim()}` : null
     const customerIdNumber = selectedCustomer?.id_number || customId
-    const customerEmail = selectedCustomer?.email || null
+    const customerEmail = selectedCustomer?.email || customCustomerEmail.trim() || null
+    const customerAddress = selectedCustomer?.address || customCustomerAddress.trim() || null
 
     let finalNotes = notes.trim()
+    if (customerAddress) {
+      finalNotes = finalNotes ? `${finalNotes}\n<!--CUST_ADDR:${encodeURIComponent(customerAddress)}-->` : `<!--CUST_ADDR:${encodeURIComponent(customerAddress)}-->`
+    }
     if (!showVesPrices) {
       finalNotes = finalNotes ? `${finalNotes}\n<!--SHOW_VES:false-->` : '<!--SHOW_VES:false-->'
     }
@@ -287,6 +300,7 @@ export default function QuotationsPage() {
           customer_phone: customerPhone,
           customer_email: customerEmail,
           customer_id_number: customerIdNumber,
+          customer_address: customerAddress,
           items,
           subtotal_usd: parseFloat(quoteTotalUsd.toFixed(4)),
           total_usd: parseFloat(quoteTotalUsd.toFixed(4)),
@@ -312,6 +326,8 @@ export default function QuotationsPage() {
       setCatalogSearch('')
       setCustomCustomerName('')
       setCustomCustomerPhone('')
+      setCustomCustomerEmail('')
+      setCustomCustomerAddress('')
       setCustomCustomerIdPrefix('V-')
       setCustomCustomerIdDigits('')
       setNotes('')
@@ -641,15 +657,21 @@ export default function QuotationsPage() {
                               Registrado
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-slate-500 dark:text-slate-400">
                             {selectedCustomer.id_number && <span>CI/RIF: <strong>{selectedCustomer.id_number}</strong></span>}
                             {selectedCustomer.phone && <span>Tlf: <strong>{selectedCustomer.phone}</strong></span>}
+                            {selectedCustomer.email && <span>Email: <strong>{selectedCustomer.email}</strong></span>}
                           </div>
+                          {selectedCustomer.address && (
+                            <p className="text-[10px] text-slate-600 dark:text-slate-300 mt-1 truncate">
+                              📍 <strong>Dirección:</strong> {selectedCustomer.address}
+                            </p>
+                          )}
                         </div>
                         <button
                           type="button"
                           onClick={() => setSelectedCustomer(null)}
-                          className="shrink-0 px-2 py-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition"
+                          className="shrink-0 px-2 py-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition cursor-pointer"
                         >
                           Cambiar
                         </button>
@@ -702,8 +724,13 @@ export default function QuotationsPage() {
                                     <div>
                                       <p className="font-bold text-xs text-slate-900 dark:text-white">{c.full_name}</p>
                                       <p className="text-[10px] text-slate-400">
-                                        {c.id_number || ''} {c.phone ? `• ${c.phone}` : ''}
+                                        {c.id_number || ''} {c.phone ? `• ${c.phone}` : ''} {c.email ? `• ${c.email}` : ''}
                                       </p>
+                                      {c.address && (
+                                        <p className="text-[9px] text-slate-500 dark:text-slate-400 truncate max-w-xs">
+                                          📍 {c.address}
+                                        </p>
+                                      )}
                                     </div>
                                     <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md">
                                       Elegir
@@ -759,6 +786,29 @@ export default function QuotationsPage() {
                                 value={customCustomerPhone}
                                 onChange={(e) => setCustomCustomerPhone(e.target.value)}
                                 placeholder="0414-1234567"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                            <div>
+                              <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Correo Electrónico</span>
+                              <input
+                                type="email"
+                                value={customCustomerEmail}
+                                onChange={(e) => setCustomCustomerEmail(e.target.value)}
+                                placeholder="cliente@empresa.com"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none text-xs"
+                              />
+                            </div>
+                            <div>
+                              <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Dirección Fiscal / Ubicación</span>
+                              <input
+                                type="text"
+                                value={customCustomerAddress}
+                                onChange={(e) => setCustomCustomerAddress(e.target.value)}
+                                placeholder="ej. Av. Francisco de Miranda..."
                                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none text-xs"
                               />
                             </div>

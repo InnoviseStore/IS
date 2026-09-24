@@ -84,9 +84,110 @@ async function getBase64ImageFromUrl(imageUrl: string): Promise<string | null> {
   })
 }
 
+export interface PdfThemeColor {
+  id: string
+  name: string
+  rgb: [number, number, number]
+  hex: string
+}
+
+export const INVOICE_PDF_THEMES: Record<string, PdfThemeColor> = {
+  blue: { id: 'blue', name: 'Azul Corporativo', rgb: [37, 99, 235], hex: '#2563EB' },
+  emerald: { id: 'emerald', name: 'Verde Esmeralda', rgb: [5, 150, 105], hex: '#059669' },
+  indigo: { id: 'indigo', name: 'Índigo Real', rgb: [79, 70, 229], hex: '#4F46E5' },
+  rose: { id: 'rose', name: 'Rojo Carmesí', rgb: [220, 38, 38], hex: '#DC2626' },
+  amber: { id: 'amber', name: 'Ámbar Dorado', rgb: [217, 119, 6], hex: '#D97706' },
+  slate: { id: 'slate', name: 'Negro Grafito', rgb: [30, 41, 59], hex: '#1E293B' },
+  cyan: { id: 'cyan', name: 'Cyan Océano', rgb: [8, 145, 178], hex: '#0891B2' },
+  purple: { id: 'purple', name: 'Púrpura Vibrante', rgb: [147, 51, 234], hex: '#9333EA' },
+  teal: { id: 'teal', name: 'Turquesa Teal', rgb: [13, 148, 136], hex: '#0D9488' },
+}
+
+export function resolvePdfTheme(colorInput?: string | null): PdfThemeColor {
+  if (!colorInput) return INVOICE_PDF_THEMES.blue
+  const clean = colorInput.toLowerCase().trim()
+  if (INVOICE_PDF_THEMES[clean]) return INVOICE_PDF_THEMES[clean]
+
+  const hexMatch = clean.match(/^#?([a-f0-9]{6})$/)
+  if (hexMatch) {
+    const hex = hexMatch[1]
+    const r = parseInt(hex.substring(0, 2), 16)
+    const g = parseInt(hex.substring(2, 4), 16)
+    const b = parseInt(hex.substring(4, 6), 16)
+    return { id: 'custom', name: 'Personalizado', rgb: [r, g, b], hex: `#${hex}` }
+  }
+
+  return INVOICE_PDF_THEMES.blue
+}
+
+export interface ExtractedCustomerInfo {
+  name?: string
+  idNumber?: string
+  phone?: string
+  email?: string
+  address?: string
+}
+
+export function extractCustomerFromNotes(notes?: string | null): ExtractedCustomerInfo {
+  if (!notes) return {}
+  const res: ExtractedCustomerInfo = {}
+
+  // Tag de dirección explícito <!--CUST_ADDR:(.*?)-->
+  const addrMatch = notes.match(/<!--CUST_ADDR:(.*?)-->/i)
+  if (addrMatch && addrMatch[1]) {
+    try {
+      res.address = decodeURIComponent(addrMatch[1]).trim()
+    } catch {
+      res.address = addrMatch[1].trim()
+    }
+  }
+
+  // Tag estructurado <!--CUST_INFO:(.*?)-->
+  const tagMatch = notes.match(/<!--CUST_INFO:(.*?)-->/i)
+  if (tagMatch && tagMatch[1]) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(tagMatch[1]))
+      if (parsed.name) res.name = parsed.name
+      if (parsed.idNumber) res.idNumber = parsed.idNumber
+      if (parsed.phone) res.phone = parsed.phone
+      if (parsed.email) res.email = parsed.email
+      if (parsed.address && !res.address) res.address = parsed.address
+    } catch {}
+  }
+
+  // Patrones comunes en texto libre
+  if (!res.name) {
+    const nameMatch = notes.match(/Cliente:\s*([^|\n]+)/i)
+    if (nameMatch) res.name = nameMatch[1].trim()
+  }
+
+  if (!res.idNumber) {
+    const idMatch = notes.match(/(?:CI\/RIF|RIF|C\.?I\.?|Cédula):\s*([^|\n]+)/i)
+    if (idMatch) res.idNumber = idMatch[1].trim()
+  }
+
+  if (!res.phone) {
+    const phoneMatch = notes.match(/(?:WhatsApp|Teléfono|Tlf|Phone):\s*([^|\n]+)/i)
+    if (phoneMatch) res.phone = phoneMatch[1].trim()
+  }
+
+  if (!res.email) {
+    const emailMatch = notes.match(/(?:Email|Correo):\s*([^|\n]+)/i)
+    if (emailMatch) res.email = emailMatch[1].trim()
+  }
+
+  if (!res.address) {
+    const dirMatch = notes.match(/(?:Dirección|Direccion|Domicilio):\s*([^|\n]+)/i)
+    if (dirMatch) res.address = dirMatch[1].trim()
+  }
+
+  return res
+}
+
 export interface GenerateOrderPdfOptions {
   action?: 'download' | 'print'
   tenant?: Tenant | null
+  pdfColor?: string
   order: (Omit<Partial<Order>, 'payment_condition'> & {
     order_number: string
     status: string
@@ -98,6 +199,7 @@ export interface GenerateOrderPdfOptions {
     notes?: string | null
     payment_breakdown?: any[]
     payment_condition?: string
+    pdfColor?: string
   }) & {
     customer?: Partial<Customer> | null
     order_items?: Array<{
@@ -113,9 +215,11 @@ export interface GenerateOrderPdfOptions {
 export async function buildOrderJsPdfDoc({
   order,
   tenant,
+  pdfColor,
 }: {
   order: GenerateOrderPdfOptions['order']
   tenant?: Tenant | null
+  pdfColor?: string
 }): Promise<{ doc: jsPDF; orderNumber: string }> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -182,10 +286,13 @@ export async function buildOrderJsPdfDoc({
 
   const leftBlockHeight = Math.max(logoUrl ? 26 : 0, (contactY + contactHeight) - currentY)
 
+  const chosenColor = pdfColor || order.pdfColor || (tenant?.settings as any)?.invoice_pdf_color || (tenant?.settings as any)?.invoice_color || 'blue'
+  const primaryTheme = resolvePdfTheme(chosenColor)
+
   // Document Title & Number Badge (Right Side)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.setTextColor(37, 99, 235) // blue-600
+  doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
   doc.text('FACTURA / NOTA DE VENTA', 196, currentY + 4, { align: 'right' })
 
   doc.setFont('courier', 'bold')
@@ -209,15 +316,54 @@ export async function buildOrderJsPdfDoc({
 
   currentY += 6
 
-  // 2. Customer & Condition Block
-  const customerName = order.customer?.full_name || 'Cliente Particular / Mostrador'
-  const customerIdNumber = order.customer?.id_number ? `CI/RIF: ${order.customer.id_number}` : ''
-  const customerPhone = order.customer?.phone ? `Teléfono: ${order.customer.phone}` : ''
+  // 2. Customer & Condition Block (Información Completa del Cliente)
+  const extractedCust = extractCustomerFromNotes(order.notes)
+  const customerName = order.customer?.full_name || extractedCust.name || 'Cliente Particular / Mostrador'
+  const rawIdNumber = order.customer?.id_number || extractedCust.idNumber || ''
+  const customerIdNumber = rawIdNumber
+    ? (rawIdNumber.toLowerCase().includes('ci') || rawIdNumber.toLowerCase().includes('rif') ? rawIdNumber : `CI/RIF: ${rawIdNumber}`)
+    : ''
+  const rawPhone = order.customer?.phone || extractedCust.phone || ''
+  const customerPhone = rawPhone ? `Tel: ${rawPhone}` : ''
+  const rawEmail = order.customer?.email || extractedCust.email || ''
+  const customerEmail = rawEmail ? `Email: ${rawEmail}` : ''
 
   const deliveryInfo = extractDeliveryInfo(order.notes, exchangeRate)
-  const deliveryAddress = deliveryInfo.address || order.customer?.address || ''
-  const hasDeliveryAddress = Boolean(deliveryAddress && deliveryAddress.trim())
-  const custBoxHeight = hasDeliveryAddress ? 26 : 20
+  const fiscalAddress = (order.customer?.address || extractedCust.address || '').trim()
+  const deliveryAddress = (deliveryInfo.address || '').trim()
+  const hasDelivery = deliveryInfo.hasDelivery && Boolean(deliveryAddress)
+
+  const contactParts = [customerIdNumber, customerPhone, customerEmail].filter(Boolean)
+  let contactLine1 = ''
+  let contactLine2 = ''
+  if (contactParts.length <= 2) {
+    contactLine1 = contactParts.join('   |   ')
+  } else {
+    contactLine1 = [customerIdNumber, customerPhone].filter(Boolean).join('   |   ')
+    contactLine2 = customerEmail
+  }
+
+  let fiscalAddrLines: string[] = []
+  if (fiscalAddress) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    fiscalAddrLines = doc.splitTextToSize(`Dirección: ${fiscalAddress}`, 174)
+  }
+
+  let delivAddrLines: string[] = []
+  if (hasDelivery && deliveryAddress && deliveryAddress !== fiscalAddress) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    delivAddrLines = doc.splitTextToSize(`Dirección de Entrega: ${deliveryAddress}`, 174)
+  }
+
+  let calculatedCustHeight = 17
+  if (contactLine1) calculatedCustHeight += 4.5
+  if (contactLine2) calculatedCustHeight += 4
+  if (fiscalAddrLines.length > 0) calculatedCustHeight += fiscalAddrLines.length * 3.8 + 1
+  if (delivAddrLines.length > 0) calculatedCustHeight += delivAddrLines.length * 3.8 + 1
+
+  const custBoxHeight = Math.max(26, calculatedCustHeight)
 
   doc.setFillColor(248, 250, 252) // slate-50
   doc.roundedRect(14, currentY, 182, custBoxHeight, 2, 2, 'F')
@@ -228,27 +374,6 @@ export async function buildOrderJsPdfDoc({
   doc.setFontSize(8.5)
   doc.setTextColor(71, 85, 105)
   doc.text('DATOS DEL CLIENTE:', 18, currentY + 5.5)
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(15, 23, 42)
-  doc.text(customerName, 18, currentY + 11)
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(100, 116, 139)
-  const custDetails = [customerIdNumber, customerPhone].filter(Boolean).join('   |   ')
-  if (custDetails) {
-    doc.text(custDetails, 18, currentY + 16)
-  }
-
-  if (hasDeliveryAddress) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.setTextColor(37, 99, 235) // blue-600
-    const truncatedAddress = deliveryAddress.length > 70 ? deliveryAddress.slice(0, 67) + '...' : deliveryAddress
-    doc.text(`Direccion de Entrega: ${truncatedAddress}`, 18, currentY + 21.5)
-  }
 
   // Condition Badge (Contado / Crédito)
   let creditDays = 0
@@ -269,22 +394,61 @@ export async function buildOrderJsPdfDoc({
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
-  doc.setTextColor(37, 99, 235)
-  doc.text(conditionText, 192, currentY + 6.5, { align: 'right' })
+  doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
+  doc.text(conditionText, 192, currentY + 5.5, { align: 'right' })
 
   if (isCreditOrder && order.due_date) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(180, 83, 9)
-    doc.text(`Vence: ${formatCreditDueDate(order.due_date)}`, 192, currentY + 11.5, { align: 'right' })
+    doc.text(`Vence: ${formatCreditDueDate(order.due_date)}`, 192, currentY + 10.5, { align: 'right' })
   }
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
   doc.setTextColor(order.status === 'completed' ? 16 : 217, order.status === 'completed' ? 185 : 119, order.status === 'completed' ? 129 : 6)
-  doc.text(`Estado: ${statusBadge}`, 192, currentY + (isCreditOrder && order.due_date ? 16.5 : 13.5), { align: 'right' })
+  doc.text(`Estado: ${statusBadge}`, 192, currentY + (isCreditOrder && order.due_date ? 15.5 : 10.5), { align: 'right' })
 
-  currentY += (hasDeliveryAddress ? 32 : 26)
+  // Customer Name
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(15, 23, 42)
+  doc.text(customerName, 18, currentY + 11)
+
+  // Details
+  let textY = currentY + 16
+  if (contactLine1) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text(contactLine1, 18, textY)
+    textY += 4.5
+  }
+
+  if (contactLine2) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text(contactLine2, 18, textY)
+    textY += 4
+  }
+
+  if (fiscalAddrLines.length > 0) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(71, 85, 105)
+    doc.text(fiscalAddrLines, 18, textY)
+    textY += fiscalAddrLines.length * 3.8 + 1
+  }
+
+  if (delivAddrLines.length > 0) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
+    doc.text(delivAddrLines, 18, textY)
+  }
+
+  currentY += custBoxHeight + 6
 
   // 3. Products Table
   const items = order.order_items || []
@@ -311,7 +475,7 @@ export async function buildOrderJsPdfDoc({
     margin: { left: 14, right: 14 },
     theme: 'striped',
     headStyles: {
-      fillColor: [37, 99, 235], // Blue-600
+      fillColor: primaryTheme.rgb,
       textColor: 255,
       fontStyle: 'bold',
       fontSize: 8.5,
@@ -363,12 +527,12 @@ export async function buildOrderJsPdfDoc({
     doc.setTextColor(100, 116, 139)
     doc.text('Servicio de Delivery:', summaryBoxX + 6, finalY + 13)
     doc.setFont('helvetica', 'bold')
-    doc.setTextColor(37, 99, 235)
+    doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
     doc.text(formatUsd(deliveryInfo.amountUsd), 190, finalY + 13, { align: 'right' })
 
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10.5)
-    doc.setTextColor(37, 99, 235)
+    doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
     doc.text('TOTAL FACTURADO:', summaryBoxX + 6, finalY + 22)
     doc.text(formatUsd(totalUsd), 190, finalY + 22, { align: 'right' })
 
@@ -388,7 +552,7 @@ export async function buildOrderJsPdfDoc({
 
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(11)
-    doc.setTextColor(37, 99, 235)
+    doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
     doc.text('TOTAL FACTURADO:', summaryBoxX + 6, finalY + 16)
     doc.text(formatUsd(totalUsd), 190, finalY + 16, { align: 'right' })
 
@@ -468,8 +632,10 @@ export async function generateOrderPdf({
   order,
   tenant,
   action = 'download',
+  pdfColor,
 }: GenerateOrderPdfOptions): Promise<void> {
-  const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant })
+  const chosenColor = pdfColor || order.pdfColor
+  const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant, pdfColor: chosenColor })
 
   if (action === 'print') {
     doc.autoPrint()
@@ -483,11 +649,13 @@ export async function generateOrderPdf({
 export async function getOrderPdfBase64({
   order,
   tenant,
+  pdfColor,
 }: {
   order: GenerateOrderPdfOptions['order']
   tenant?: Tenant | null
+  pdfColor?: string
 }): Promise<{ base64: string; fileName: string }> {
-  const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant })
+  const { doc, orderNumber } = await buildOrderJsPdfDoc({ order, tenant, pdfColor })
   const dataUri = doc.output('datauristring')
   const base64 = dataUri.includes(';base64,')
     ? dataUri.split(';base64,')[1].trim()
@@ -627,16 +795,47 @@ export async function buildQuotationJsPdfDoc({
 
   currentY += 6
 
-  // 2. Customer Block
-  const customerName = quotation.customer_name || 'Cliente Solicitante'
-  const customerIdNumber = quotation.customer_id_number ? `CI/RIF: ${quotation.customer_id_number}` : ''
-  const customerPhone = quotation.customer_phone ? `Teléfono: ${quotation.customer_phone}` : ''
-  const customerEmail = quotation.customer_email ? `Email: ${quotation.customer_email}` : ''
+  // 2. Customer Block (Información Completa del Cliente en Cotización)
+  const extractedCust = extractCustomerFromNotes(quotation.notes)
+  const customerName = quotation.customer_name || extractedCust.name || 'Cliente Solicitante'
+  const rawIdNumber = quotation.customer_id_number || extractedCust.idNumber || ''
+  const customerIdNumber = rawIdNumber
+    ? (rawIdNumber.toLowerCase().includes('ci') || rawIdNumber.toLowerCase().includes('rif') ? rawIdNumber : `CI/RIF: ${rawIdNumber}`)
+    : ''
+  const rawPhone = quotation.customer_phone || extractedCust.phone || ''
+  const customerPhone = rawPhone ? `Tel: ${rawPhone}` : ''
+  const rawEmail = quotation.customer_email || extractedCust.email || ''
+  const customerEmail = rawEmail ? `Email: ${rawEmail}` : ''
+  const customerAddress = ((quotation as any).customer_address || extractedCust.address || (quotation as any).customer?.address || '').trim()
+
+  const qContactParts = [customerIdNumber, customerPhone, customerEmail].filter(Boolean)
+  let qContact1 = ''
+  let qContact2 = ''
+  if (qContactParts.length <= 2) {
+    qContact1 = qContactParts.join('   |   ')
+  } else {
+    qContact1 = [customerIdNumber, customerPhone].filter(Boolean).join('   |   ')
+    qContact2 = customerEmail
+  }
+
+  let qAddrLines: string[] = []
+  if (customerAddress) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    qAddrLines = doc.splitTextToSize(`Dirección: ${customerAddress}`, 174)
+  }
+
+  let qCalculatedHeight = 17
+  if (qContact1) qCalculatedHeight += 4.5
+  if (qContact2) qCalculatedHeight += 4
+  if (qAddrLines.length > 0) qCalculatedHeight += qAddrLines.length * 3.8 + 1
+
+  const custBoxHeight = Math.max(22, qCalculatedHeight)
 
   doc.setFillColor(248, 250, 252)
-  doc.roundedRect(14, currentY, 182, 19, 2, 2, 'F')
+  doc.roundedRect(14, currentY, 182, custBoxHeight, 2, 2, 'F')
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(14, currentY, 182, 19, 2, 2, 'S')
+  doc.roundedRect(14, currentY, 182, custBoxHeight, 2, 2, 'S')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
@@ -648,15 +847,31 @@ export async function buildQuotationJsPdfDoc({
   doc.setTextColor(15, 23, 42)
   doc.text(customerName, 18, currentY + 11)
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(100, 116, 139)
-  const custDetails = [customerIdNumber, customerPhone, customerEmail].filter(Boolean).join('   |   ')
-  if (custDetails) {
-    doc.text(custDetails, 18, currentY + 15.5)
+  let qTextY = currentY + 16
+  if (qContact1) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text(qContact1, 18, qTextY)
+    qTextY += 4.5
   }
 
-  currentY += 25
+  if (qContact2) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text(qContact2, 18, qTextY)
+    qTextY += 4
+  }
+
+  if (qAddrLines.length > 0) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(71, 85, 105)
+    doc.text(qAddrLines, 18, qTextY)
+  }
+
+  currentY += custBoxHeight + 6
 
   // 3. Products Table
   const items = quotation.items || []

@@ -16,7 +16,21 @@ function getAdminClient() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { tenant_id, phone_whatsapp, currency_rate_bcv, name, plan, about, admin_security_pin, checkout_mode, customer_auth_mode, payment_accounts, whatsapp_automation } = body
+    const { 
+      tenant_id, 
+      phone_whatsapp, 
+      currency_rate_bcv, 
+      name, 
+      plan, 
+      about, 
+      admin_security_pin, 
+      checkout_mode, 
+      customer_auth_mode, 
+      payment_accounts, 
+      whatsapp_automation,
+      invoice_pdf_color,
+      quotation_pdf_color,
+    } = body
 
     if (!tenant_id) {
       return NextResponse.json(
@@ -62,7 +76,17 @@ export async function POST(req: Request) {
       updateData.name = name.trim()
     }
 
-    if (plan !== undefined || about !== undefined || admin_security_pin !== undefined || checkout_mode !== undefined || customer_auth_mode !== undefined || payment_accounts !== undefined || whatsapp_automation !== undefined) {
+    if (
+      plan !== undefined || 
+      about !== undefined || 
+      admin_security_pin !== undefined || 
+      checkout_mode !== undefined || 
+      customer_auth_mode !== undefined || 
+      payment_accounts !== undefined || 
+      whatsapp_automation !== undefined ||
+      invoice_pdf_color !== undefined ||
+      quotation_pdf_color !== undefined
+    ) {
       const { data: currentTenant } = await supabase
         .from('tenants')
         .select('settings')
@@ -76,6 +100,8 @@ export async function POST(req: Request) {
       if (customer_auth_mode !== undefined) newSettings.customer_auth_mode = customer_auth_mode
       if (payment_accounts !== undefined) newSettings.payment_accounts = payment_accounts
       if (whatsapp_automation !== undefined) newSettings.whatsapp_automation = whatsapp_automation
+      if (invoice_pdf_color !== undefined) newSettings.invoice_pdf_color = invoice_pdf_color
+      if (quotation_pdf_color !== undefined) newSettings.quotation_pdf_color = quotation_pdf_color
       if (admin_security_pin !== undefined) {
         const cleanPin = String(admin_security_pin).trim()
         if (cleanPin.length < 4) {

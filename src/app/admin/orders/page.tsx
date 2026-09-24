@@ -28,9 +28,10 @@ import {
   Navigation,
   Calendar,
   Truck,
+  Palette,
 } from 'lucide-react'
 import Link from 'next/link'
-import { generateOrderPdf } from '@/lib/pdfGenerator'
+import { generateOrderPdf, INVOICE_PDF_THEMES } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
 import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
@@ -87,7 +88,24 @@ interface OrderRecord {
 
 export default function AdminOrdersPage() {
   const router = useRouter()
-  const { tenant, exchangeRate } = useTenant()
+  const { tenant, exchangeRate, updateTenantSettings } = useTenant()
+
+  const [invoiceColor, setInvoiceColor] = useState<string>((tenant?.settings as any)?.invoice_pdf_color || 'blue')
+
+  useEffect(() => {
+    if ((tenant?.settings as any)?.invoice_pdf_color) {
+      setInvoiceColor((tenant?.settings as any).invoice_pdf_color)
+    }
+  }, [tenant?.settings])
+
+  const handleChangePdfColor = async (colorKey: string) => {
+    setInvoiceColor(colorKey)
+    try {
+      await updateTenantSettings({ invoice_pdf_color: colorKey })
+    } catch (err) {
+      console.error('Error saving invoice PDF color:', err)
+    }
+  }
 
   const [orders, setOrders] = useState<OrderRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -287,11 +305,12 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // Extraer nombre de cliente, cédula, teléfono, dirección y coordenadas GPS del objeto customer o de las notas
+  // Extraer nombre de cliente, cédula, teléfono, email, dirección y coordenadas GPS del objeto customer o de las notas
   const getCustomerDisplay = (o: OrderRecord) => {
     let name = o.customer?.full_name || ''
     let phone = o.customer?.phone || ''
     let idNumber = o.customer?.id_number || ''
+    let email = o.customer?.email || ''
     let address = o.customer?.address || ''
     let gpsUrl = ''
 
@@ -303,7 +322,7 @@ export default function AdminOrdersPage() {
       gpsUrl = `https://maps.google.com/?q=${custAny.deliveryCoords.lat},${custAny.deliveryCoords.lng}`
     }
 
-    // Fallback: parsear de o.notes ("Cliente: X | CI/RIF: Y | WhatsApp: Z | Dirección: W | GPS: https://...")
+    // Fallback: parsear de o.notes ("Cliente: X | CI/RIF: Y | WhatsApp: Z | Email: E | Dirección: W | GPS: https://...")
     if (o.notes) {
       const parts = o.notes.split('|').map((p) => p.trim())
       parts.forEach((p) => {
@@ -313,6 +332,9 @@ export default function AdminOrdersPage() {
         }
         if (!phone && (p.toLowerCase().startsWith('whatsapp:') || p.toLowerCase().startsWith('tel:') || p.toLowerCase().startsWith('teléfono:'))) {
           phone = p.replace(/(whatsapp|teléfono|telefono|tel):/i, '').trim()
+        }
+        if (!email && (p.toLowerCase().startsWith('email:') || p.toLowerCase().startsWith('correo:'))) {
+          email = p.replace(/(email|correo):/i, '').trim()
         }
         if (!address && (p.toLowerCase().startsWith('dirección:') || p.toLowerCase().startsWith('direccion:'))) {
           address = p.replace(/(dirección|direccion):/i, '').trim()
@@ -343,6 +365,7 @@ export default function AdminOrdersPage() {
       name: name || 'Cliente Web',
       phone,
       idNumber,
+      email,
       address,
       gpsUrl,
     }
@@ -369,7 +392,29 @@ export default function AdminOrdersPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Selector de color para Facturas PDF */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 shadow-xs">
+            <Palette className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-[11px] font-bold text-slate-500 hidden sm:inline">Color Factura:</span>
+            <div className="flex items-center gap-1.5">
+              {Object.entries(INVOICE_PDF_THEMES).map(([themeKey, themeObj]) => (
+                <button
+                  key={themeKey}
+                  type="button"
+                  onClick={() => handleChangePdfColor(themeKey)}
+                  title={`Tema Factura: ${themeObj.name}`}
+                  className={`w-4 h-4 rounded-full border transition-all cursor-pointer ${
+                    invoiceColor === themeKey
+                      ? 'ring-2 ring-blue-500 scale-125 border-white shadow-xs'
+                      : 'border-transparent opacity-65 hover:opacity-100 hover:scale-110'
+                  }`}
+                  style={{ backgroundColor: themeObj.hex }}
+                />
+              ))}
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={() => loadOrders(true)}
@@ -780,6 +825,13 @@ export default function AdminOrdersPage() {
                       </div>
                     )}
 
+                    {cust.email && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                        <span className="text-slate-400 font-semibold shrink-0">✉️ Correo:</span>
+                        <span className="font-mono text-slate-700 dark:text-slate-300 truncate">{cust.email}</span>
+                      </div>
+                    )}
+
                     {cust.address && (
                       <div className="flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-400">
                         <span className="text-slate-400 font-semibold shrink-0">📍 Entrega:</span>
@@ -910,7 +962,7 @@ export default function AdminOrdersPage() {
                             onClick={async () => {
                               setGeneratingPdf(true)
                               try {
-                                await generateOrderPdf({ order, tenant, action: 'download' })
+                                await generateOrderPdf({ order, tenant, action: 'download', pdfColor: invoiceColor })
                               } catch (err) {
                                 console.error('Error generating PDF:', err)
                                 alert('No se pudo generar el PDF. Revisa la consola.')

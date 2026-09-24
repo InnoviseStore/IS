@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { CartItem, Customer, PaymentMethodType, CreditPlanFrequency, InstallmentsPlan, InstallmentScheduleItem } from '@/types/database'
 import { 
-  X, Plus, Trash2, Loader2, CheckCircle, Info, UserPlus, MessageCircle, Lock, 
+  X, Plus, Trash2, Loader2, CheckCircle, Check, Info, UserPlus, MessageCircle, Lock, 
   FileDown, Printer, Pencil, ShoppingCart, Calendar, Clock, CalendarDays, Calculator,
   Truck, MapPin
 } from 'lucide-react'
@@ -14,7 +14,7 @@ import { CreditCollectionModal, type InitialCreditSaleInfo } from '@/components/
 import { WhatsAppInvoiceModal } from '@/components/admin/WhatsAppInvoiceModal'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
-import { generateOrderPdf } from '@/lib/pdfGenerator'
+import { generateOrderPdf, INVOICE_PDF_THEMES } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
 import { type DeliveryInfo, formatDeliveryTag, extractDeliveryInfo } from '@/lib/delivery'
 
@@ -82,7 +82,19 @@ export function SplitPaymentModal({
   onClose,
   onSuccess,
 }: Props) {
-  const { tenant, profile, bcvRatesHistory } = useTenant()
+  const { tenant, profile, bcvRatesHistory, updateTenantSettings } = useTenant()
+
+  // Control de Color del PDF de Factura
+  const [selectedPdfColor, setSelectedPdfColor] = useState<string>(
+    (tenant?.settings as any)?.invoice_pdf_color || 'blue'
+  )
+
+  const handleChangePdfColor = (colorId: string) => {
+    setSelectedPdfColor(colorId)
+    if (updateTenantSettings) {
+      updateTenantSettings({ invoice_pdf_color: colorId }).catch(() => {})
+    }
+  }
 
   // Control de fecha de operación y tasa BCV (permite ventas de ayer o tasas históricas)
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
@@ -657,6 +669,7 @@ export function SplitPaymentModal({
       await generateOrderPdf({
         tenant,
         action,
+        pdfColor: selectedPdfColor,
         order: {
           id: existingOrderId || 'temp-id',
           order_number: success,
@@ -690,7 +703,10 @@ export function SplitPaymentModal({
           customer: selectedCustomer
             ? {
                 ...selectedCustomer,
-                address: deliveryAddress.trim() || selectedCustomer.address,
+                id_number: selectedCustomer.id_number || null,
+                phone: selectedCustomer.phone || null,
+                email: selectedCustomer.email || null,
+                address: deliveryAddress.trim() || selectedCustomer.address || null,
               }
             : (deliveryAddress.trim() ? { full_name: 'Consumidor Final', address: deliveryAddress.trim() } : null),
           order_items: cartItems.map((i) => {
@@ -748,6 +764,43 @@ export function SplitPaymentModal({
           <p className="text-base font-extrabold text-slate-900 dark:text-white mt-1 mb-4">
             Total: <span className="text-blue-600 dark:text-blue-400">${grandTotalUsd.toFixed(2)} USD</span>
           </p>
+
+          {/* Selector de Color del PDF de Facturación */}
+          <div className="mb-3.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 text-left">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span
+                  className="w-3.5 h-3.5 rounded-full inline-block shadow-xs"
+                  style={{ backgroundColor: INVOICE_PDF_THEMES[selectedPdfColor]?.hex || '#2563EB' }}
+                />
+                Color de Factura PDF:
+              </span>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                {INVOICE_PDF_THEMES[selectedPdfColor]?.name || 'Azul Corporativo'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+              {Object.values(INVOICE_PDF_THEMES).map((theme) => {
+                const isSelected = selectedPdfColor === theme.id
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => handleChangePdfColor(theme.id)}
+                    title={theme.name}
+                    className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                      isSelected
+                        ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white scale-110 shadow-sm'
+                        : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                    style={{ backgroundColor: theme.hex }}
+                  >
+                    {isSelected && <Check className="w-3.5 h-3.5 text-white drop-shadow-sm" />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           {/* Botones de Factura PDF e Impresión */}
           <div className="grid grid-cols-2 gap-2 mb-3">
