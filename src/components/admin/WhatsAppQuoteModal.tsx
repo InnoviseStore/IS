@@ -73,8 +73,9 @@ export function WhatsAppQuoteModal({
       lines.push('📦 *Detalle de Productos:*')
       items.forEach((it: any) => {
         const disc = it.discount_percent ? ` (${it.discount_percent}% desc)` : ''
+        const descStr = it.description ? `\n   ↳ _${it.description}_` : ''
         const linePrice = it.subtotal_usd ?? (it.unit_price_usd * it.quantity)
-        lines.push(`• ${it.quantity}x ${it.name} — $${Number(linePrice).toFixed(2)} USD${disc}`)
+        lines.push(`• ${it.quantity}x ${it.name} — $${Number(linePrice).toFixed(2)} USD${disc}${descStr}`)
       })
       lines.push('')
     }

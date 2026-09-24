@@ -666,10 +666,20 @@ export async function buildQuotationJsPdfDoc({
     const lineUsd = item.subtotal_usd ?? qty * priceUsd
     const lineVes = lineUsd * exchangeRate
 
+    const prodName = (item.name || 'Producto').trim()
+    const prodSku = item.sku ? ` [SKU: ${item.sku}]` : ''
+    const prodDesc = (item.description && typeof item.description === 'string' && item.description.trim())
+      ? item.description.trim()
+      : ''
+
+    const fullProductCell = prodDesc
+      ? `${prodName}${prodSku}\n${prodDesc}`
+      : `${prodName}${prodSku}`
+
     if (shouldShowVes) {
       return [
         idx + 1,
-        item.name || 'Producto',
+        fullProductCell,
         qty,
         formatUsd(priceUsd),
         formatUsd(lineUsd),
@@ -678,7 +688,7 @@ export async function buildQuotationJsPdfDoc({
     } else {
       return [
         idx + 1,
-        item.name || 'Producto',
+        fullProductCell,
         qty,
         formatUsd(priceUsd),
         formatUsd(lineUsd),
@@ -692,19 +702,19 @@ export async function buildQuotationJsPdfDoc({
 
   const tableColumnStyles: Record<number, any> = shouldShowVes
     ? {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 'auto' },
-        2: { cellWidth: 16, halign: 'center' },
-        3: { cellWidth: 26, halign: 'right' },
-        4: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-        5: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
+        0: { cellWidth: 8, halign: 'center', valign: 'top' },
+        1: { cellWidth: 'auto', valign: 'top' },
+        2: { cellWidth: 14, halign: 'center', valign: 'top' },
+        3: { cellWidth: 23, halign: 'right', valign: 'top' },
+        4: { cellWidth: 25, halign: 'right', fontStyle: 'bold', valign: 'top' },
+        5: { cellWidth: 30, halign: 'right', fontStyle: 'bold', valign: 'top' },
       }
     : {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 'auto' },
-        2: { cellWidth: 18, halign: 'center' },
-        3: { cellWidth: 32, halign: 'right' },
-        4: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
+        0: { cellWidth: 8, halign: 'center', valign: 'top' },
+        1: { cellWidth: 'auto', valign: 'top' },
+        2: { cellWidth: 16, halign: 'center', valign: 'top' },
+        3: { cellWidth: 28, halign: 'right', valign: 'top' },
+        4: { cellWidth: 30, halign: 'right', fontStyle: 'bold', valign: 'top' },
       }
 
   autoTable(doc, {
@@ -713,6 +723,10 @@ export async function buildQuotationJsPdfDoc({
     body: tableRows,
     margin: { left: 14, right: 14 },
     theme: 'striped',
+    styles: {
+      overflow: 'linebreak',
+      cellPadding: 2.2,
+    },
     headStyles: {
       fillColor: [16, 185, 129], // Emerald-600
       textColor: 255,
@@ -721,13 +735,24 @@ export async function buildQuotationJsPdfDoc({
       halign: 'left',
     },
     bodyStyles: {
-      fontSize: 8.5,
+      fontSize: 8,
       textColor: [51, 65, 85],
     },
     columnStyles: tableColumnStyles,
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 1) {
+        data.cell.styles.cellPadding = { top: 2.5, bottom: 2.5, left: 3, right: 3 }
+      }
+    },
   })
 
-  const finalY = ((doc as any).lastAutoTable?.finalY ?? currentY + 40) + 8
+  let finalY = ((doc as any).lastAutoTable?.finalY ?? currentY + 40) + 8
+
+  // Si la tabla ocupó gran parte de la página, pasar caja de totales a la siguiente página
+  if (finalY + 34 > 270) {
+    doc.addPage()
+    finalY = 20
+  }
 
   // 4. Totals Summary Box
   const summaryBoxWidth = shouldShowVes ? 84 : 76

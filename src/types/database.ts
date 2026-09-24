@@ -359,6 +359,7 @@ export interface Expense {
 export interface QuotationItem {
   product_id: string
   name: string
+  description?: string | null
   sku: string | null
   unit_price_usd: number
   quantity: number

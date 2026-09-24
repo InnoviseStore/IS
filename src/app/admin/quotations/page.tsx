@@ -17,6 +17,7 @@ interface QuoteCartItem {
   quantity: number
   unit_price_usd: number
   discount_percent: number
+  description?: string
 }
 
 export default function QuotationsPage() {
@@ -169,6 +170,7 @@ export default function QuotationsPage() {
         quantity: Number(it.quantity) || 1,
         unit_price_usd: Number(it.unit_price_usd) || 0,
         discount_percent: Number(it.discount_percent) || 0,
+        description: it.description || foundProduct?.description || '',
       }
     })
     setCart(quoteCart)
@@ -197,9 +199,16 @@ export default function QuotationsPage() {
           quantity: 1,
           unit_price_usd: Number(product.base_price_usd) || 0,
           discount_percent: 0,
+          description: product.description || '',
         },
       ]
     })
+  }
+
+  function updateItemDescription(productId: string, description: string) {
+    setCart((prev) =>
+      prev.map((i) => (i.product.id === productId ? { ...i, description } : i))
+    )
   }
 
   function updateItemPrice(productId: string, newPrice: number) {
@@ -247,6 +256,7 @@ export default function QuotationsPage() {
       return {
         product_id: i.product.id,
         name: i.product.name,
+        description: i.description?.trim() || null,
         sku: i.product.sku,
         unit_price_usd: parseFloat(i.unit_price_usd.toFixed(4)),
         discount_percent: i.discount_percent || 0,
@@ -944,6 +954,22 @@ export default function QuotationsPage() {
                                     </span>
                                   </div>
                                 </div>
+                              </div>
+
+                              {/* Descripción / Especificación del Producto */}
+                              <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60">
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <span className="text-[10px] text-slate-400 font-semibold">
+                                    Descripción o especificación del producto (aparece en el PDF):
+                                  </span>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={item.description || ''}
+                                  onChange={(e) => updateItemDescription(item.product.id, e.target.value)}
+                                  placeholder="ej. Modelo 2026, Color negro mate, Garantía de 6 meses..."
+                                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-blue-500"
+                                />
                               </div>
                             </div>
                           )
