@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle, Zap, Loader2, FileText } from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 import { COUNTRY_CODES, normalizeWhatsAppPhone, createWhatsAppWebUrl, createWhatsAppUrl } from '@/lib/whatsapp'
@@ -28,6 +28,10 @@ export function WhatsAppQuoteModal({
   // Extraer datos del cliente
   const customerName = quotation.customer_name || 'Cliente'
   const rawPhone = quotation.customer_phone || ''
+
+  // Opción de visualización de precios en Bs.
+  const hasVesDisabledInNotes = Boolean(quotation.notes?.includes('SHOW_VES:false'))
+  const [includeVes, setIncludeVes] = useState(!hasVesDisabledInNotes)
 
   // Determinar código de país inicial y número local
   const initialCountry = useMemo(() => {
@@ -78,18 +82,27 @@ export function WhatsAppQuoteModal({
     const totalUsd = Number(quotation.total_usd) || 0
     const totalVes = Number(quotation.total_ves) || totalUsd * exchangeRate
 
-    lines.push(`💰 *Total Presupuesto: $${totalUsd.toFixed(2)} USD* | Bs. ${totalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
-    lines.push(`📊 Tasa referencial aplicada: Bs. ${exchangeRate.toFixed(2)}/USD`)
-    lines.push('')
-    lines.push(`💡 *Condición de Pago:* Los pagos en Bolívares se calculan a la tasa oficial del BCV del día en que se efectúen.`)
+    if (includeVes) {
+      lines.push(`💰 *Total Presupuesto: $${totalUsd.toFixed(2)} USD* | Bs. ${totalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+      lines.push(`📊 Tasa referencial aplicada: Bs. ${exchangeRate.toFixed(2)}/USD`)
+      lines.push('')
+      lines.push(`💡 *Condición de Pago:* Los pagos en Bolívares se calculan a la tasa oficial del BCV del día en que se efectúen.`)
+    } else {
+      lines.push(`💰 *Total Presupuesto: $${totalUsd.toFixed(2)} USD*`)
+    }
     lines.push('')
     lines.push('Si deseas confirmar este pedido o requieres ajustes, respóndenos a este mensaje. ¡Estamos a tu orden! 🙌')
 
     return lines.join('\n')
-  }, [customerName, tenantName, quotation, exchangeRate])
+  }, [customerName, tenantName, quotation, exchangeRate, includeVes])
 
   const { tenant } = useTenant()
   const [message, setMessage] = useState(defaultMessage)
+
+  useEffect(() => {
+    setMessage(defaultMessage)
+  }, [defaultMessage])
+
   const [sendingDirect, setSendingDirect] = useState(false)
   const [sendingDirectPdf, setSendingDirectPdf] = useState(false)
   const [directSuccess, setDirectSuccess] = useState<string | null>(null)
@@ -147,6 +160,7 @@ export function WhatsAppQuoteModal({
       const { base64, fileName } = await getQuotationPdfBase64({
         quotation,
         tenant,
+        showVesPrices: includeVes,
       })
 
       const res = await fetch('/api/admin/whatsapp/direct-send', {
@@ -249,6 +263,23 @@ export function WhatsAppQuoteModal({
             <p className="text-[10px] text-slate-400 mt-1">
               Destinatario: <span className="font-mono font-semibold text-emerald-600">+{normalizedFullPhone || '...'}</span>
             </p>
+          </div>
+
+          {/* Selector para Precios en Bs. */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 text-xs">
+            <div>
+              <span className="font-bold text-slate-800 dark:text-slate-200">Mostrar Precios en Bs. (BCV)</span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Incluir montos en Bolívares en el mensaje y en el PDF adjunto</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeVes}
+                onChange={(e) => setIncludeVes(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+            </label>
           </div>
 
           {/* Mensaje */}

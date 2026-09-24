@@ -4,6 +4,7 @@ import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 import { formatDate } from '@/lib/formatters'
+import { generateNextOrderNumber } from '@/lib/tenantDocSequence'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -304,16 +305,13 @@ export async function POST(req: Request) {
       }))
       await supabase.from('order_items').insert(orderItemsPayload)
     } else {
-      // 1C. Generar order_number seguro para nueva venta POS directa
-      const now = new Date()
-      const year = now.getFullYear()
-      const randSeq = Math.floor(1000 + Math.random() * 9000)
-      const fallbackOrderNumber = 'IS-' + year + '-' + randSeq
+      // 1C. Generar order_number secuencial asociado a la tienda
+      const orderNumber = await generateNextOrderNumber(supabase, tenant_id)
 
       const orderPayload: Record<string, any> = {
         tenant_id,
         customer_id: customer_id || null,
-        order_number: fallbackOrderNumber,
+        order_number: orderNumber,
         status: status || (isCredit ? 'credit' : 'completed'),
         payment_condition: payment_condition || (isCredit ? 'credit_7d' : 'immediate'),
         exchange_rate_at_sale: Number(exchange_rate_at_sale) || 91.5,

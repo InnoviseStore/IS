@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
+import { generateNextQuotationNumber } from '@/lib/tenantDocSequence'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -107,17 +108,11 @@ export async function POST(req: Request) {
 
     const supabase = getAdminClient()
 
-    // Generar un número de cotización infalible
-    const now = new Date()
-    const year = now.getFullYear()
-    const randSeq = Math.floor(1000 + Math.random() * 9000)
-    const quotationNumber = `COT-${year}-${randSeq}`
+    // Generar un número de cotización secuencial y correlativo por tienda
+    const quotationNumber = await generateNextQuotationNumber(supabase, tenant_id)
 
-    // Nota con id de cliente si aplica
-    let finalNotes = notes?.trim() || ''
-    if (customer_id && !finalNotes.includes(customer_id)) {
-      finalNotes = finalNotes ? `${finalNotes} (Cliente Ref: ${customer_id})` : `(Cliente Ref: ${customer_id})`
-    }
+    // Notas limpias (sin anexar UUIDs técnicos de base de datos)
+    const finalNotes = notes?.trim() || ''
 
     // OMITIR customer_id del insert a la tabla para evitar PGRST204
     const quotePayload = {

@@ -4,6 +4,7 @@ import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 import { normalizeIdNumber, normalizePhoneDigits } from '@/lib/customerUtils'
 import { formatDeliveryTag } from '@/lib/delivery'
+import { generateNextOrderNumber } from '@/lib/tenantDocSequence'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -212,11 +213,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Generar número de orden seguro
-    const now = new Date()
-    const year = now.getFullYear()
-    const randSeq = Math.floor(1000 + Math.random() * 9000)
-    const orderNumber = `IS-${year}-${randSeq}`
+    // 3. Generar número de orden correlativo asociado a la tienda
+    const orderNumber = await generateNextOrderNumber(supabase, tenantId, tenant)
 
     // Sumar subtotales de los items directamente como fallback infalible
     const computedItemsTotalUsd = items.reduce((acc: number, item: any) => {

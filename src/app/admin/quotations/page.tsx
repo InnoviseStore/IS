@@ -45,6 +45,7 @@ export default function QuotationsPage() {
   const [cart, setCart] = useState<QuoteCartItem[]>([])
   const [validDays, setValidDays] = useState(15)
   const [notes, setNotes] = useState('')
+  const [showVesPrices, setShowVesPrices] = useState(true)
   const [saving, setSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
 
@@ -82,6 +83,8 @@ export default function QuotationsPage() {
     setCustomCustomerIdPrefix('V-')
     setCustomCustomerIdDigits('')
     setIsCustomerDropdownOpen(false)
+    setShowVesPrices(true)
+    setNotes('')
     const supabase = createClient()
     const [{ data: prodData }, { data: custData }] = await Promise.all([
       supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
@@ -168,6 +171,11 @@ export default function QuotationsPage() {
     const customerIdNumber = selectedCustomer?.id_number || customId
     const customerEmail = selectedCustomer?.email || null
 
+    let finalNotes = notes.trim()
+    if (!showVesPrices) {
+      finalNotes = finalNotes ? `${finalNotes}\n<!--SHOW_VES:false-->` : '<!--SHOW_VES:false-->'
+    }
+
     try {
       const res = await fetch('/api/admin/quotations', {
         method: 'POST',
@@ -185,7 +193,7 @@ export default function QuotationsPage() {
           total_ves: parseFloat(quoteTotalVes.toFixed(2)),
           exchange_rate: exchangeRate,
           valid_until: validUntilDate.toISOString().split('T')[0],
-          notes: notes.trim() || null,
+          notes: finalNotes || null,
           created_by: profile?.id ?? null,
         }),
       })
@@ -369,7 +377,11 @@ export default function QuotationsPage() {
                       ${q.total_usd.toFixed(2)}
                     </td>
                     <td className="py-3 px-4 text-right font-semibold text-blue-600 dark:text-blue-400">
-                      Bs. {q.total_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      {q.notes?.includes('SHOW_VES:false') ? (
+                        <span className="text-[11px] text-slate-400 font-normal">Solo USD</span>
+                      ) : (
+                        `Bs. ${q.total_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+                      )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="inline-block px-2 py-0.5 rounded-md text-[10px] uppercase font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -389,7 +401,13 @@ export default function QuotationsPage() {
                           onClick={async () => {
                             setGeneratingPdf(true)
                             try {
-                              await generateQuotationPdf({ quotation: q, tenant, action: 'download' })
+                              const isVesHidden = q.notes?.includes('SHOW_VES:false')
+                              await generateQuotationPdf({
+                                quotation: q,
+                                tenant,
+                                action: 'download',
+                                showVesPrices: !isVesHidden,
+                              })
                             } catch (err) {
                               console.error('Error generating quotation PDF:', err)
                               alert('No se pudo generar el PDF del presupuesto.')
@@ -398,7 +416,7 @@ export default function QuotationsPage() {
                             }
                           }}
                           className="p-1 rounded-md text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition cursor-pointer"
-                          title="Descargar Presupuesto en PDF"
+                          title={q.notes?.includes('SHOW_VES:false') ? 'Descargar Presupuesto en PDF (Solo USD)' : 'Descargar Presupuesto en PDF (USD + Bs.)'}
                         >
                           <FileDown className="w-3.5 h-3.5" />
                         </button>
@@ -770,12 +788,53 @@ export default function QuotationsPage() {
               )}
             </div>
 
+            {/* Opciones Adicionales: Precios en Bs. y Observaciones */}
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800">
+                <div>
+                  <label htmlFor="quote-show-ves" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                    Mostrar Precios en Bolívares (Bs. BCV)
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Si se desactiva, la cotización y el PDF se emitirán únicamente en Dólares ($ USD).
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    id="quote-show-ves"
+                    type="checkbox"
+                    checked={showVesPrices}
+                    onChange={(e) => setShowVesPrices(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Notas / Términos del Presupuesto (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="ej. Precios válidos por 15 días continuos. Entrega inmediata tras confirmación de pago."
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500/40 resize-none"
+                />
+              </div>
+            </div>
+
             {/* Totales */}
             <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl text-xs font-semibold">
               <span className="text-slate-600 dark:text-slate-400">Total Cotizado:</span>
               <div className="text-right">
                 <p className="text-sm font-extrabold text-slate-900 dark:text-white">${quoteTotalUsd.toFixed(2)} USD</p>
-                <p className="text-[11px] text-blue-600 dark:text-blue-400">Bs. {quoteTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                {showVesPrices ? (
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400">Bs. {quoteTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                ) : (
+                  <p className="text-[10px] text-slate-400">Solo en Dólares ($)</p>
+                )}
               </div>
             </div>
 

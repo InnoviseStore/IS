@@ -153,40 +153,54 @@ export async function buildOrderJsPdfDoc({
 
   // Store & Doc Info (Right aligned or beside logo)
   const textStartX = logoUrl ? 42 : 14
+  const maxStoreNameWidth = 122 - textStartX
+
+  // Dynamic store name font size based on length
+  const nameLen = storeName.length
+  const storeFontSize = nameLen > 24 ? 12 : nameLen > 18 ? 13.5 : 15.5
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(16)
+  doc.setFontSize(storeFontSize)
   doc.setTextColor(30, 41, 59) // slate-800
-  doc.text(storeName, textStartX, currentY + 6)
+  const storeNameLines = doc.splitTextToSize(storeName, maxStoreNameWidth)
+  doc.text(storeNameLines, textStartX, currentY + 5)
+  const storeNameHeight = storeNameLines.length * (storeFontSize * 0.38)
 
+  let contactY = currentY + 5 + storeNameHeight + 1.5
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
+  doc.setFontSize(8.5)
   doc.setTextColor(100, 116, 139) // slate-500
   let contactLine = ''
   if (storePhone) contactLine += `WhatsApp: +${storePhone.replace(/\D/g, '')}  `
   if (storeInstagram) contactLine += `Instagram: @${storeInstagram.replace('@', '')}`
+  let contactHeight = 0
   if (contactLine) {
-    doc.text(contactLine, textStartX, currentY + 12)
+    const contactLines = doc.splitTextToSize(contactLine, maxStoreNameWidth)
+    doc.text(contactLines, textStartX, contactY)
+    contactHeight = contactLines.length * 4
   }
+
+  const leftBlockHeight = Math.max(logoUrl ? 26 : 0, (contactY + contactHeight) - currentY)
 
   // Document Title & Number Badge (Right Side)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
+  doc.setFontSize(11)
   doc.setTextColor(37, 99, 235) // blue-600
-  doc.text('FACTURA / NOTA DE VENTA', 196, currentY + 5, { align: 'right' })
+  doc.text('FACTURA / NOTA DE VENTA', 196, currentY + 4, { align: 'right' })
 
   doc.setFont('courier', 'bold')
-  doc.setFontSize(13)
+  doc.setFontSize(12.5)
   doc.setTextColor(15, 23, 42) // slate-900
-  doc.text(orderNumber, 196, currentY + 11, { align: 'right' })
+  doc.text(orderNumber, 196, currentY + 9.5, { align: 'right' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(100, 116, 139)
-  doc.text(`Fecha: ${formatDate(order.created_at)}`, 196, currentY + 16, { align: 'right' })
-  doc.text(`Tasa Oficial BCV: ${formatVes(exchangeRate)}/USD`, 196, currentY + 20, { align: 'right' })
+  doc.text(`Fecha: ${formatDate(order.created_at)}`, 196, currentY + 14.5, { align: 'right' })
+  doc.text(`Tasa Oficial BCV: ${formatVes(exchangeRate)}/USD`, 196, currentY + 18.5, { align: 'right' })
 
-  currentY += 28
+  const rightBlockHeight = 22
+  currentY += Math.max(leftBlockHeight, rightBlockHeight) + 5
 
   // Divider line
   doc.setDrawColor(226, 232, 240) // slate-200
@@ -490,14 +504,17 @@ export interface GenerateQuotationPdfOptions {
   action?: 'download' | 'print'
   tenant?: Tenant | null
   quotation: Quotation
+  showVesPrices?: boolean
 }
 
 export async function buildQuotationJsPdfDoc({
   quotation,
   tenant,
+  showVesPrices,
 }: {
   quotation: Quotation
   tenant?: Tenant | null
+  showVesPrices?: boolean
 }): Promise<{ doc: jsPDF; quoteNumber: string }> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -505,6 +522,17 @@ export async function buildQuotationJsPdfDoc({
     format: 'a4',
     compress: true,
   })
+
+  const shouldShowVes =
+    typeof showVesPrices === 'boolean'
+      ? showVesPrices
+      : !quotation.notes?.includes('SHOW_VES:false')
+
+  const cleanNotes = (quotation.notes || '')
+    .replace(/<!--SHOW_VES:[^>]+-->/gi, '')
+    .replace(/<!--[^>]+-->/g, '')
+    .replace(/\(?Cliente Ref:\s*[a-f0-9-]+\)?/gi, '')
+    .trim()
 
   const settings = (tenant?.settings as Record<string, unknown>) || {}
   const logoUrl =
@@ -533,44 +561,64 @@ export async function buildQuotationJsPdfDoc({
     }
   }
 
+  // Store & Doc Info (Dynamic spacing so long store names do not collide)
   const textStartX = logoUrl ? 42 : 14
+  const maxStoreNameWidth = 120 - textStartX
+
+  // Dynamic store name font size based on length
+  const nameLen = storeName.length
+  const storeFontSize = nameLen > 24 ? 12 : nameLen > 18 ? 13.5 : 15.5
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(16)
+  doc.setFontSize(storeFontSize)
   doc.setTextColor(30, 41, 59)
-  doc.text(storeName, textStartX, currentY + 6)
+  const storeNameLines = doc.splitTextToSize(storeName, maxStoreNameWidth)
+  doc.text(storeNameLines, textStartX, currentY + 5)
+  const storeNameHeight = storeNameLines.length * (storeFontSize * 0.38)
 
+  let contactY = currentY + 5 + storeNameHeight + 1.5
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
+  doc.setFontSize(8.5)
   doc.setTextColor(100, 116, 139)
   let contactLine = ''
   if (storePhone) contactLine += `WhatsApp: +${storePhone.replace(/\D/g, '')}  `
   if (storeInstagram) contactLine += `Instagram: @${storeInstagram.replace('@', '')}`
+  let contactHeight = 0
   if (contactLine) {
-    doc.text(contactLine, textStartX, currentY + 12)
+    const contactLines = doc.splitTextToSize(contactLine, maxStoreNameWidth)
+    doc.text(contactLines, textStartX, contactY)
+    contactHeight = contactLines.length * 4
   }
 
-  // Document Title & Number Badge
+  const leftBlockHeight = Math.max(logoUrl ? 26 : 0, (contactY + contactHeight) - currentY)
+
+  // Document Title & Number Badge (Right Side)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
+  doc.setFontSize(11)
   doc.setTextColor(16, 185, 129) // emerald-600
-  doc.text('COTIZACIÓN / PRESUPUESTO', 196, currentY + 5, { align: 'right' })
+  doc.text('COTIZACIÓN / PRESUPUESTO', 196, currentY + 4, { align: 'right' })
 
   doc.setFont('courier', 'bold')
-  doc.setFontSize(13)
+  doc.setFontSize(12.5)
   doc.setTextColor(15, 23, 42)
-  doc.text(quoteNumber, 196, currentY + 11, { align: 'right' })
+  doc.text(quoteNumber, 196, currentY + 9.5, { align: 'right' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(100, 116, 139)
-  doc.text(`Fecha: ${formatDate(quotation.created_at)}`, 196, currentY + 16, { align: 'right' })
+  let rightY = currentY + 14.5
+  doc.text(`Fecha: ${formatDate(quotation.created_at)}`, 196, rightY, { align: 'right' })
   if (quotation.valid_until) {
-    doc.text(`Válido hasta: ${formatDate(quotation.valid_until)}`, 196, currentY + 20, { align: 'right' })
+    rightY += 4
+    doc.text(`Válido hasta: ${formatDate(quotation.valid_until)}`, 196, rightY, { align: 'right' })
   }
-  doc.text(`Tasa Oficial BCV: ${formatVes(exchangeRate)}/USD`, 196, currentY + 24, { align: 'right' })
+  if (shouldShowVes) {
+    rightY += 4
+    doc.text(`Tasa Oficial BCV: ${formatVes(exchangeRate)}/USD`, 196, rightY, { align: 'right' })
+  }
 
-  currentY += 30
+  const rightBlockHeight = rightY - currentY + 2
+  currentY += Math.max(leftBlockHeight, rightBlockHeight) + 5
 
   // Divider line
   doc.setDrawColor(226, 232, 240)
@@ -581,13 +629,14 @@ export async function buildQuotationJsPdfDoc({
 
   // 2. Customer Block
   const customerName = quotation.customer_name || 'Cliente Solicitante'
+  const customerIdNumber = quotation.customer_id_number ? `CI/RIF: ${quotation.customer_id_number}` : ''
   const customerPhone = quotation.customer_phone ? `Teléfono: ${quotation.customer_phone}` : ''
   const customerEmail = quotation.customer_email ? `Email: ${quotation.customer_email}` : ''
 
   doc.setFillColor(248, 250, 252)
-  doc.roundedRect(14, currentY, 182, 18, 2, 2, 'F')
+  doc.roundedRect(14, currentY, 182, 19, 2, 2, 'F')
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(14, currentY, 182, 18, 2, 2, 'S')
+  doc.roundedRect(14, currentY, 182, 19, 2, 2, 'S')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
@@ -602,12 +651,12 @@ export async function buildQuotationJsPdfDoc({
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(100, 116, 139)
-  const custDetails = [customerPhone, customerEmail].filter(Boolean).join('   |   ')
+  const custDetails = [customerIdNumber, customerPhone, customerEmail].filter(Boolean).join('   |   ')
   if (custDetails) {
-    doc.text(custDetails, 18, currentY + 15)
+    doc.text(custDetails, 18, currentY + 15.5)
   }
 
-  currentY += 24
+  currentY += 25
 
   // 3. Products Table
   const items = quotation.items || []
@@ -617,19 +666,50 @@ export async function buildQuotationJsPdfDoc({
     const lineUsd = item.subtotal_usd ?? qty * priceUsd
     const lineVes = lineUsd * exchangeRate
 
-    return [
-      idx + 1,
-      item.name || 'Producto',
-      qty,
-      formatUsd(priceUsd),
-      formatUsd(lineUsd),
-      formatVes(lineVes),
-    ]
+    if (shouldShowVes) {
+      return [
+        idx + 1,
+        item.name || 'Producto',
+        qty,
+        formatUsd(priceUsd),
+        formatUsd(lineUsd),
+        formatVes(lineVes),
+      ]
+    } else {
+      return [
+        idx + 1,
+        item.name || 'Producto',
+        qty,
+        formatUsd(priceUsd),
+        formatUsd(lineUsd),
+      ]
+    }
   })
+
+  const tableHead = shouldShowVes
+    ? [['#', 'Descripción del Producto', 'Cant.', 'Precio USD', 'Subtotal USD', 'Subtotal Bs. (BCV)']]
+    : [['#', 'Descripción del Producto', 'Cant.', 'Precio USD', 'Subtotal USD']]
+
+  const tableColumnStyles: Record<number, any> = shouldShowVes
+    ? {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 16, halign: 'center' },
+        3: { cellWidth: 26, halign: 'right' },
+        4: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+        5: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
+      }
+    : {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 18, halign: 'center' },
+        3: { cellWidth: 32, halign: 'right' },
+        4: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
+      }
 
   autoTable(doc, {
     startY: currentY,
-    head: [['#', 'Descripción del Producto', 'Cant.', 'Precio USD', 'Subtotal USD', 'Subtotal Bs. (BCV)']],
+    head: tableHead,
     body: tableRows,
     margin: { left: 14, right: 14 },
     theme: 'striped',
@@ -644,26 +724,20 @@ export async function buildQuotationJsPdfDoc({
       fontSize: 8.5,
       textColor: [51, 65, 85],
     },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 16, halign: 'center' },
-      3: { cellWidth: 26, halign: 'right' },
-      4: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-      5: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
-    },
+    columnStyles: tableColumnStyles,
   })
 
   const finalY = ((doc as any).lastAutoTable?.finalY ?? currentY + 40) + 8
 
   // 4. Totals Summary Box
-  const summaryBoxWidth = 84
+  const summaryBoxWidth = shouldShowVes ? 84 : 76
+  const summaryBoxHeight = shouldShowVes ? 26 : 18
   const summaryBoxX = 196 - summaryBoxWidth
 
   doc.setFillColor(248, 250, 252)
-  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, 26, 2, 2, 'F')
+  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, summaryBoxHeight, 2, 2, 'F')
   doc.setDrawColor(226, 232, 240)
-  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, 26, 2, 2, 'S')
+  doc.roundedRect(summaryBoxX, finalY, summaryBoxWidth, summaryBoxHeight, 2, 2, 'S')
 
   const totalUsd = Number(quotation.total_usd) || 0
   const totalVes = Number(quotation.total_ves) || totalUsd * exchangeRate
@@ -671,17 +745,19 @@ export async function buildQuotationJsPdfDoc({
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   doc.setTextColor(16, 185, 129)
-  doc.text('TOTAL ESTIMADO:', summaryBoxX + 6, finalY + 10)
-  doc.text(formatUsd(totalUsd), 190, finalY + 10, { align: 'right' })
+  doc.text('TOTAL ESTIMADO:', summaryBoxX + 6, finalY + (shouldShowVes ? 10 : 11))
+  doc.text(formatUsd(totalUsd), 190, finalY + (shouldShowVes ? 10 : 11), { align: 'right' })
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(15, 23, 42)
-  doc.text('Total en Bolívares:', summaryBoxX + 6, finalY + 18)
-  doc.text(formatVes(totalVes), 190, finalY + 18, { align: 'right' })
+  if (shouldShowVes) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(15, 23, 42)
+    doc.text('Total en Bolívares:', summaryBoxX + 6, finalY + 18)
+    doc.text(formatVes(totalVes), 190, finalY + 18, { align: 'right' })
+  }
 
-  // Notes left box
-  if (quotation.notes && quotation.notes.trim()) {
+  // Notes left box (cleaned from technical UUIDs and tags)
+  if (cleanNotes) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8.5)
     doc.setTextColor(71, 85, 105)
@@ -690,7 +766,8 @@ export async function buildQuotationJsPdfDoc({
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(100, 116, 139)
-    doc.text(quotation.notes.trim(), 14, finalY + 12, { maxWidth: 90 })
+    const noteLines = doc.splitTextToSize(cleanNotes, summaryBoxX - 20)
+    doc.text(noteLines.slice(0, 3), 14, finalY + 11)
   }
 
   // 5. Footer Note
@@ -701,12 +778,10 @@ export async function buildQuotationJsPdfDoc({
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(148, 163, 184)
-  doc.text(
-    `Cotización formal emitida por ${storeName}. Precios sujetos a disponibilidad y tasa oficial BCV del día.`,
-    105,
-    footerY - 1,
-    { align: 'center' }
-  )
+  const footerText = shouldShowVes
+    ? `Cotización formal emitida por ${storeName}. Precios sujetos a disponibilidad y tasa oficial BCV del día.`
+    : `Cotización formal emitida por ${storeName}. Precios expresados en Dólares Americanos (USD) sujetos a disponibilidad.`
+  doc.text(footerText, 105, footerY - 1, { align: 'center' })
   doc.text('¡Estamos a su entera disposición para cualquier consulta!', 105, footerY + 3, { align: 'center' })
 
   return { doc, quoteNumber }
@@ -716,8 +791,9 @@ export async function generateQuotationPdf({
   quotation,
   tenant,
   action = 'download',
+  showVesPrices,
 }: GenerateQuotationPdfOptions): Promise<void> {
-  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant })
+  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant, showVesPrices })
   if (action === 'print') {
     doc.autoPrint()
     const blobUrl = doc.output('bloburl')
@@ -730,11 +806,13 @@ export async function generateQuotationPdf({
 export async function getQuotationPdfBase64({
   quotation,
   tenant,
+  showVesPrices,
 }: {
   quotation: Quotation
   tenant?: Tenant | null
+  showVesPrices?: boolean
 }): Promise<{ base64: string; fileName: string }> {
-  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant })
+  const { doc, quoteNumber } = await buildQuotationJsPdfDoc({ quotation, tenant, showVesPrices })
   const dataUri = doc.output('datauristring')
   const base64 = dataUri.includes(';base64,')
     ? dataUri.split(';base64,')[1].trim()
