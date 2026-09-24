@@ -42,6 +42,7 @@ export interface StoreData {
   primary_color?: string | null
   accent_color?: string | null
   checkout_mode?: 'whatsapp_only' | 'direct_payment'
+  customer_auth_mode?: 'optional' | 'customer_login_required' | 'guest_only' | string
 }
 
 export interface StoreCategory {
@@ -282,24 +283,26 @@ function StorefrontHeader({
                 </span>
               </button>
 
-              {/* Botón Iniciar Sesión / Mi Cuenta (Proporcionado en Móvil y Escritorio) */}
-              <Link
-                href={`/${store.slug}/cuenta`}
-                className={`flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl text-white transition active:scale-95 text-xs font-bold shadow-md shadow-blue-500/20 shrink-0 ${
-                  customer
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20'
-                }`}
-                aria-label={customer ? `Mi Cuenta (${customer.full_name})` : "Iniciar Sesión"}
-                title={customer ? `Sesión iniciada como ${customer.full_name}` : "Iniciar Sesión / Mi Cuenta"}
-              >
-                <User className="w-4 h-4 text-white shrink-0" />
-                <span className="hidden sm:inline line-clamp-1 max-w-[120px] sm:max-w-[160px]">
-                  {customer
-                    ? (customer.full_name.split(' ')[0] ? `Hola, ${customer.full_name.split(' ')[0]}` : customer.full_name)
-                    : 'Iniciar Sesión'}
-                </span>
-              </Link>
+              {/* Botón Iniciar Sesión / Mi Cuenta (Visible si no es guest_only o si ya hay sesión iniciada) */}
+              {!(store.customer_auth_mode === 'guest_only' && !customer) && (
+                <Link
+                  href={`/${store.slug}/cuenta`}
+                  className={`flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl text-white transition active:scale-95 text-xs font-bold shadow-md shadow-blue-500/20 shrink-0 ${
+                    customer
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20'
+                  }`}
+                  aria-label={customer ? `Mi Cuenta (${customer.full_name})` : "Iniciar Sesión"}
+                  title={customer ? `Sesión iniciada como ${customer.full_name}` : "Iniciar Sesión / Mi Cuenta"}
+                >
+                  <User className="w-4 h-4 text-white shrink-0" />
+                  <span className="hidden sm:inline line-clamp-1 max-w-[120px] sm:max-w-[160px]">
+                    {customer
+                      ? (customer.full_name.split(' ')[0] ? `Hola, ${customer.full_name.split(' ')[0]}` : customer.full_name)
+                      : 'Iniciar Sesión'}
+                  </span>
+                </Link>
+              )}
 
               {/* Modo Oscuro */}
               <button
@@ -427,7 +430,7 @@ function StorefrontHeader({
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
-              ) : (
+              ) : store.customer_auth_mode !== 'guest_only' ? (
                 <Link
                   href={`/${store.slug}/cuenta`}
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -444,7 +447,7 @@ function StorefrontHeader({
                   </div>
                   <ArrowRight className="w-4 h-4 text-white/80" />
                 </Link>
-              )}
+              ) : null}
 
               {/* Search button in mobile drawer */}
               <button
@@ -481,17 +484,19 @@ function StorefrontHeader({
                   <ArrowRight className="w-4 h-4 opacity-50" />
                 </Link>
 
-                <Link
-                  href={`/${store.slug}/cuenta`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                >
-                  <span className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    Mi Cuenta / Pedidos
-                  </span>
-                  <ArrowRight className="w-4 h-4 opacity-50" />
-                </Link>
+                {!(store.customer_auth_mode === 'guest_only' && !customer) && (
+                  <Link
+                    href={`/${store.slug}/cuenta`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      Mi Cuenta / Pedidos
+                    </span>
+                    <ArrowRight className="w-4 h-4 opacity-50" />
+                  </Link>
+                )}
 
                 <button
                   type="button"
@@ -760,6 +765,7 @@ function StorefrontShell({
         storePhone={store.phone_whatsapp || '584121234567'}
         storeName={store.name}
         checkoutMode={store.checkout_mode || 'direct_payment'}
+        customerAuthMode={store.customer_auth_mode}
       />
 
       {/* Floating Add to Cart Toast Animation */}

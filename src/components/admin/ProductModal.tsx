@@ -21,8 +21,17 @@ import {
   Barcode,
   Camera,
   Check,
+  Layers,
 } from 'lucide-react'
-import { detectCategory, extractCategory } from '@/lib/categories'
+import {
+  detectCategory,
+  extractCategory,
+  extractSubcategory,
+  cleanCategoryName,
+  cleanSubcategoryName,
+  cleanProductDescription,
+  getRubroCategories,
+} from '@/lib/categories'
 import { getProductBarcode, injectBarcodeIntoDescription } from '@/lib/barcodeUtils'
 
 import { parseColorVariants, type ColorVariantItem } from '@/lib/colorVariants'
@@ -141,16 +150,21 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     }
   }
 
+  const rubro = ((tenant?.settings as Record<string, unknown>)?.rubro as string) || 'tecnologia'
+  const isFashionRubro = rubro === 'moda' || tenant?.slug === 'emeve-vzla'
+
   const parsedInitial = parseColorVariants(product?.description)
   const parsedApparel = parseApparelAttributes(parsedInitial.baseDescription)
 
   const initialCategory = product
     ? (extractCategory(product.description) || detectCategory(product.name, product.description))
     : ''
+  const initialSubcategory = product ? extractSubcategory(product.description) || '' : ''
 
   const [name, setName] = useState(product?.name ?? '')
-  const [category, setCategory] = useState(initialCategory === 'General' ? '' : initialCategory)
-  const [description, setDescription] = useState(parsedApparel.cleanDescription)
+  const [category, setCategory] = useState(cleanCategoryName(initialCategory === 'General' ? '' : initialCategory))
+  const [subcategory, setSubcategory] = useState(cleanSubcategoryName(initialSubcategory))
+  const [description, setDescription] = useState(cleanProductDescription(parsedApparel.cleanDescription))
   const [sku, setSku] = useState(product?.sku ?? '')
   const initialBarcode = getProductBarcode(product) || ''
   const [barcode, setBarcode] = useState(initialBarcode)
@@ -162,17 +176,11 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [stock, setStock] = useState(product?.stock?.toString() ?? '0')
   const [isActive, setIsActive] = useState(product?.is_active ?? true)
 
-  // Rubro Ropa / Calzado (Especializado)
-  const isFashionRubro =
-    (tenant?.settings as Record<string, unknown>)?.rubro === 'moda' ||
-    tenant?.slug === 'emeve-vzla'
-
-  const [showApparelSection, setShowApparelSection] = useState(
-    Boolean(isFashionRubro || parsedApparel.apparel.garmentType || parsedApparel.apparel.sizes.length > 0)
-  )
-  const [apparelGarmentType, setApparelGarmentType] = useState(parsedApparel.apparel.garmentType || '')
-  const [apparelGender, setApparelGender] = useState(parsedApparel.apparel.gender || '')
-  const [apparelSizes, setApparelSizes] = useState<string[]>(parsedApparel.apparel.sizes || [])
+  // Rubro Ropa / Calzado (Especializado) - Exclusivo para tiendas de moda
+  const showApparelSection = isFashionRubro
+  const [apparelGarmentType, setApparelGarmentType] = useState(isFashionRubro ? (parsedApparel.apparel.garmentType || '') : '')
+  const [apparelGender, setApparelGender] = useState(isFashionRubro ? (parsedApparel.apparel.gender || '') : '')
+  const [apparelSizes, setApparelSizes] = useState<string[]>(isFashionRubro ? (parsedApparel.apparel.sizes || []) : [])
   const [customSizeInput, setCustomSizeInput] = useState('')
 
   // Variantes de color
@@ -347,16 +355,21 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
           name: name.trim(),
           tenantId: tenant?.id,
           tenantSlug: tenant?.slug,
+          rubro,
         }),
       })
 
       const data = await res.json()
       if (data.success && data.suggestedSku) {
-        if (data.category && !category.trim()) {
-          setCategory(data.category)
+        const cleanCat = cleanCategoryName(data.category)
+        if (cleanCat && !category.trim()) {
+          setCategory(cleanCat)
+        }
+        if (data.subcategory && !subcategory.trim()) {
+          setSubcategory(cleanSubcategoryName(data.subcategory))
         }
         setAiSuggestion({
-          category: data.category,
+          category: cleanCat,
           suggestedSku: data.suggestedSku,
         })
       } else {
@@ -373,7 +386,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     if (!aiSuggestion) return
     setSku(aiSuggestion.suggestedSku)
     if (aiSuggestion.category) {
-      setCategory(aiSuggestion.category)
+      setCategory(cleanCategoryName(aiSuggestion.category))
     }
     setAiSuggestion(null)
   }
@@ -392,24 +405,26 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          category: category.trim() || aiSuggestion?.category || apparelGarmentType,
+          category: cleanCategoryName(category.trim()) || aiSuggestion?.category || (isFashionRubro ? apparelGarmentType : undefined),
+          subcategory: cleanSubcategoryName(subcategory.trim()) || undefined,
           barcode: barcode.trim() || undefined,
           sku: sku.trim() || undefined,
           priceUsd: priceUsd ? parseFloat(priceUsd) : undefined,
-          apparelAttributes: {
+          apparelAttributes: isFashionRubro ? {
             garmentType: apparelGarmentType,
             gender: apparelGender,
             sizes: apparelSizes,
-          },
+          } : undefined,
           colors: colors.map((c) => ({ name: c.name, hex: c.hex })),
           tenantId: tenant?.id,
           tenantSlug: tenant?.slug,
+          rubro,
         }),
       })
 
       const data = await res.json()
       if (data.success && data.description) {
-        setDescription(data.description)
+        setDescription(cleanProductDescription(data.description))
       } else {
         setError(data.error || 'No se pudo generar la descripción con IA.')
       }
@@ -623,21 +638,21 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
 
     const primaryImage = allImages[0] || null
 
-    // Serializar atributos de moda, variantes de color y categoría dentro de description
-    let baseDesc = description
-      .replace(/<!--COLOR_VARIANTS:(.*?)-->/, '')
-      .replace(/<!--APPAREL_ATTRIBUTES:(.*?)-->/, '')
-      .replace(/<!--CATEGORY:(.*?)-->/, '')
-      .replace(/^🏷️[^\n]+\n\n?/, '')
-      .trim()
+    // Serializar categoría, subcategoría, atributos de moda y variantes dentro de description
+    let baseDesc = cleanProductDescription(description)
+
+    // Si tiene subcategoría explícita asignada
+    if (subcategory.trim()) {
+      baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(subcategory)}-->\n${baseDesc}`
+    }
 
     // Si tiene categoría explícita asignada
     if (category.trim()) {
-      baseDesc = `<!--CATEGORY:${category.trim()}-->\n${baseDesc}`
+      baseDesc = `<!--CATEGORY:${cleanCategoryName(category)}-->\n${baseDesc}`
     }
 
-    // Si tiene atributos de ropa/calzado, generar la etiqueta estructurada y la insignia legible
-    if (apparelGarmentType || apparelGender || apparelSizes.length > 0) {
+    // Si tiene atributos de ropa/calzado y la tienda es del rubro moda
+    if (isFashionRubro && (apparelGarmentType || apparelGender || apparelSizes.length > 0)) {
       const apparelData: ApparelAttributes = {
         garmentType: apparelGarmentType || undefined,
         gender: apparelGender || undefined,
@@ -892,62 +907,121 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                 />
               </div>
 
-              {/* CATEGORÍA DEL PRODUCTO */}
-              <div className="col-span-2 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                    <Tag className="w-3.5 h-3.5 text-blue-500" />
-                    Categoría del Producto
-                  </label>
-                  {category && (
-                    <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-200/60 dark:border-blue-800/60">
-                      Asignada: {category}
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    list="product-categories-list"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    placeholder="Ej. Audio, Calzado & Zapatos, Fundas, Accesorios..."
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
-                  />
-                  <datalist id="product-categories-list">
-                    <option value="Audio" />
-                    <option value="Cables y Conexiones" />
-                    <option value="Cargadores y Baterías" />
-                    <option value="Fundas" />
-                    <option value="Micas y Protectores" />
-                    <option value="Calzado & Zapatos" />
-                    <option value="Pantalones & Jeans" />
-                    <option value="Prendas Superiores" />
-                    <option value="Vestidos & Faldas" />
-                    <option value="Bolsos & Carteras" />
-                    <option value="Accesorios" />
-                    <option value="Tecnología" />
-                  </datalist>
-                </div>
-                {/* Sugerencias rápidas */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Sugerencias:</span>
-                  {['Audio', 'Cables y Conexiones', 'Cargadores y Baterías', 'Fundas', 'Micas y Protectores', 'Calzado & Zapatos', 'Prendas Superiores', 'Accesorios'].map((catName) => (
-                    <button
-                      key={catName}
-                      type="button"
-                      onClick={() => setCategory(catName)}
-                      className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border transition cursor-pointer ${
-                        category.toLowerCase() === catName.toLowerCase()
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
-                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
-                      }`}
-                    >
-                      {catName}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* CATEGORÍA Y SUBCATEGORÍA DEL PRODUCTO ADAPTADAS AL RUBRO */}
+              {(() => {
+                const rubroCats = getRubroCategories(rubro)
+                const currentCatConfig = rubroCats.find(
+                  (c) => c.name.toLowerCase() === category.toLowerCase().trim()
+                )
+                const activeSubcategories = currentCatConfig ? currentCatConfig.subcategories : []
+
+                return (
+                  <div className="col-span-2 space-y-3 p-3.5 rounded-2xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60">
+                    {/* Campo Categoría */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                          <Tag className="w-3.5 h-3.5 text-blue-500" />
+                          Categoría Principal
+                        </label>
+                        {category && (
+                          <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-200/60 dark:border-blue-800/60">
+                            {cleanCategoryName(category)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          list="product-categories-list"
+                          value={category}
+                          onChange={(e) => setCategory(cleanCategoryName(e.target.value))}
+                          placeholder="Ej. Audio & Sonido, Cargadores, Frenos, Franelas..."
+                          className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                        />
+                        <datalist id="product-categories-list">
+                          {rubroCats.map((rc) => (
+                            <option key={rc.name} value={rc.name} />
+                          ))}
+                        </datalist>
+                      </div>
+                      {/* Sugerencias de categorías del rubro */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Sugerencias:</span>
+                        {rubroCats.slice(0, 6).map((rc) => (
+                          <button
+                            key={rc.name}
+                            type="button"
+                            onClick={() => {
+                              setCategory(rc.name)
+                              if (rc.subcategories.length > 0 && !subcategory) {
+                                setSubcategory(rc.subcategories[0])
+                              }
+                            }}
+                            className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border transition cursor-pointer ${
+                              category.toLowerCase() === rc.name.toLowerCase()
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                            }`}
+                          >
+                            {rc.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Campo Subcategoría */}
+                    <div className="space-y-1.5 pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                          <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                          Subcategoría (Opcional para organizar mejor)
+                        </label>
+                        {subcategory && (
+                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/60">
+                            {cleanSubcategoryName(subcategory)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          list="product-subcategories-list"
+                          value={subcategory}
+                          onChange={(e) => setSubcategory(cleanSubcategoryName(e.target.value))}
+                          placeholder={activeSubcategories[0] ? `Ej. ${activeSubcategories[0]}` : "Especifica una subcategoría..."}
+                          className="w-full px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs sm:text-sm font-semibold"
+                        />
+                        <datalist id="product-subcategories-list">
+                          {activeSubcategories.map((sub) => (
+                            <option key={sub} value={sub} />
+                          ))}
+                        </datalist>
+                      </div>
+                      {/* Sugerencias de subcategorías */}
+                      {activeSubcategories.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          <span className="text-[10px] uppercase font-bold text-slate-400">Subcategorías:</span>
+                          {activeSubcategories.map((subName) => (
+                            <button
+                              key={subName}
+                              type="button"
+                              onClick={() => setSubcategory(subName)}
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                                subcategory.toLowerCase() === subName.toLowerCase()
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                              }`}
+                            >
+                              {subName}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Códigos del Producto: SKU de Usuario y Código de Barras */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -1041,8 +1115,8 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
               </div>
             </div>
 
-            {/* SECCIÓN ESPECIALIZADA: RUBRO ROPA & CALZADO */}
-            {(isFashionRubro || showApparelSection) && (
+            {/* SECCIÓN ESPECIALIZADA: RUBRO ROPA & CALZADO (Sólo para tiendas de Moda & Calzado) */}
+            {isFashionRubro && (
               <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-50/60 via-purple-50/40 to-blue-50/30 dark:from-slate-800/90 dark:to-slate-800/50 border border-pink-200/80 dark:border-slate-700 space-y-3.5 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

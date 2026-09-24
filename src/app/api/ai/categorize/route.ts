@@ -187,7 +187,7 @@ export async function POST(req: Request) {
       return errorResponse!
     }
 
-    const { name, tenantId, tenantSlug } = await req.json()
+    const { name, tenantId, tenantSlug, rubro: reqRubro } = await req.json()
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Nombre de producto requerido' }, { status: 400 })
@@ -197,18 +197,22 @@ export async function POST(req: Request) {
     const n = cleanName.toLowerCase()
     const supabase = getAdminClient()
 
-    // 1. Resolver tenant_id efectivo
+    // 1. Resolver tenant_id efectivo y configuración
     let targetTenantId = tenantId
+    let tenantSettings: Record<string, unknown> = {}
     if (!targetTenantId && tenantSlug) {
       const { data: tenant } = await supabase
         .from('tenants')
         .select('id, settings')
         .eq('slug', tenantSlug)
         .maybeSingle()
-      if (tenant) targetTenantId = tenant.id
+      if (tenant) {
+        targetTenantId = tenant.id
+        tenantSettings = (tenant.settings || {}) as Record<string, unknown>
+      }
     }
 
-    // 2. Obtener clave de Gemini disponible (en env o en tenant settings)
+    // 2. Obtener clave de Gemini disponible y rubro
     let geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
     let existingCategories: string[] = []
 
@@ -219,13 +223,15 @@ export async function POST(req: Request) {
           supabase.from('products').select('category').eq('tenant_id', targetTenantId).not('category', 'is', null).limit(100),
         ])
 
-        const tSettings = (tenantRes.data?.settings || {}) as Record<string, unknown>
+        if (tenantRes.data?.settings) {
+          tenantSettings = tenantRes.data.settings as Record<string, unknown>
+        }
         if (!geminiKey) {
-          geminiKey = (tSettings?.gemini_api_key || tSettings?.google_api_key) as string | undefined
+          geminiKey = (tenantSettings?.gemini_api_key || tenantSettings?.google_api_key) as string | undefined
         }
 
         if (catsRes.data) {
-          const rawCats = catsRes.data.map(p => (p.category as string)?.trim()).filter(Boolean)
+          const rawCats = catsRes.data.map(p => (p.category as string)?.replace(/<!--.*?-->/g, '').trim()).filter(Boolean)
           existingCategories = Array.from(new Set(rawCats))
         }
       } catch (err) {
@@ -233,25 +239,32 @@ export async function POST(req: Request) {
       }
     }
 
+    const effectiveRubro = (reqRubro || tenantSettings?.rubro || 'tecnologia') as string
+
     let category = ''
+    let subcategory = ''
     let prefix = ''
     let confidence = 0.85
 
-    // 3. Si hay Gemini disponible, solicitar categorización ultra-específica
+    // 3. Si hay Gemini disponible, solicitar categorización ultra-específica adaptada al rubro
     if (geminiKey) {
       try {
-        const prompt = `Actúa como un experto en catalogación de inventario y comercio electrónico minorista.
-Clasifica este producto en una subcategoría de producto MUY ESPECÍFICA y precisa (no uses categorías genéricas como "Tecnología", "Accesorios" o "Varios").
+        const prompt = `Actúa como un experto en catalogación de inventario y comercio minorista.
+Clasifica este producto en una CATEGORÍA y SUBCATEGORÍA precisa adaptada estrictamente al rubro de la tienda.
 
 Nombre del Producto: "${cleanName}"
+Rubro de la Tienda: "${effectiveRubro}" (tecnología, repuestos automotrices, moda, etc.)
 ${existingCategories.length > 0 ? `Categorías ya utilizadas en esta tienda: ${existingCategories.slice(0, 20).join(', ')}` : ''}
 
 REGLAS DE CATEGORIZACIÓN:
-1. La categoría debe ser específica y describir el tipo exacto de producto (ejemplos: "Vidrios Templados & Micas", "Fundas & Carcasas Antigolpe", "Cables & Conectividad Rápida", "Cargadores de Pared & GaN", "Audífonos Bluetooth & TWS", "Correas para Smartwatch", "Repuestos & Pantallas", "Calzado Deportivo & Sneakers", "Pantalones & Jeans", "Perfumería & Fragancias", etc.).
-2. Si coincide con una de las categorías ya utilizadas en la tienda, reutilízala preferentemente.
-3. El prefijo SKU ("prefix") debe ser exactamente de 3 o 4 letras mayúsculas alusivas (ej. VID, CRG, CAB, TWS, AUD, CAS, MAG, REP, SNE, CAL, FRA, PAN, BOL).
+1. Adapta la clasificación estrictamente al rubro "${effectiveRubro}".
+   - Si es "tecnologia": clasifica en componentes electrónicos, accesorios móviles, audio, computación, etc. NO uses ropa ni repuestos de autos.
+   - Si es "automotriz": clasifica en repuestos mecánicos, eléctricos, filtros, frenos, lubricantes, suspensión, etc.
+   - Si es "moda": clasifica en calzado, ropa, pantalones, camisas, etc.
+2. NO incluyas etiquetas de comentarios HTML tipo <!--CATEGORY:...--> ni caracteres extraños.
+3. El prefijo SKU ("prefix") debe ser exactamente de 3 letras mayúsculas alusivas (ej. AUD, CAR, VID, FIL, FRE, SUS, SNE).
 4. Responde ÚNICAMENTE en formato JSON con la siguiente estructura:
-{"category": "Nombre Específico de Categoría", "prefix": "PRE"}`
+{"category": "Nombre Categoría", "subcategory": "Nombre Subcategoría", "prefix": "PRE"}`
 
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`
         const res = await fetch(endpoint, {
@@ -273,7 +286,10 @@ REGLAS DE CATEGORIZACIÓN:
             const cleanJson = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
             const parsed = JSON.parse(cleanJson)
             if (parsed.category && typeof parsed.category === 'string') {
-              category = parsed.category.trim()
+              category = parsed.category.replace(/<!--.*?-->/g, '').trim()
+              if (parsed.subcategory && typeof parsed.subcategory === 'string') {
+                subcategory = parsed.subcategory.replace(/<!--.*?-->/g, '').trim()
+              }
               prefix = (parsed.prefix || '').trim().toUpperCase().slice(0, 4)
               confidence = 0.98
             }
@@ -344,6 +360,7 @@ REGLAS DE CATEGORIZACIÓN:
     return NextResponse.json({
       success: true,
       category,
+      subcategory,
       prefix,
       suggestedSku,
       confidence,

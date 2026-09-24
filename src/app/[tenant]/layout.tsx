@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Tenant } from '@/types/database'
@@ -10,6 +11,45 @@ export const revalidate = 0
 interface StorefrontLayoutProps {
   children: React.ReactNode
   params: Promise<{ tenant: string }>
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string }>
+}): Promise<Metadata> {
+  const { tenant: slug } = await params
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('tenants')
+    .select('name, logo_url, settings')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  const storeName = data?.name || 'Catálogo Virtual'
+  const settings = (data?.settings || {}) as Record<string, unknown>
+  const rawDesc = (settings.description as string) || ''
+  const isOldDefault = !rawDesc || rawDesc.toLowerCase().includes('tecnolog') || rawDesc.toLowerCase().includes('en caracas')
+  const description = isOldDefault
+    ? `Catálogo oficial de ${storeName} — Consulta disponibilidad, precios en USD/VES y realiza tu pedido directo.`
+    : rawDesc
+
+  const storeIcon =
+    (settings.isotype_url as string) ||
+    (settings.logo_url as string) ||
+    data?.logo_url ||
+    '/favicon.ico'
+
+  return {
+    title: `Sistema IS - ${storeName}`,
+    description,
+    icons: {
+      icon: storeIcon,
+      shortcut: storeIcon,
+      apple: storeIcon,
+    },
+  }
 }
 
 export default async function StorefrontLayout({
@@ -51,6 +91,7 @@ export default async function StorefrontLayout({
     primary_color: themeObj.primaryColor || null,
     accent_color: themeObj.accentColor || null,
     checkout_mode: (settings.checkout_mode as 'whatsapp_only' | 'direct_payment') || 'direct_payment',
+    customer_auth_mode: (settings.customer_auth_mode as string) || 'optional',
   }
 
   const exchangeRate = Number(tenant.currency_rate_bcv) || 91.5

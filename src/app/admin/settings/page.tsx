@@ -147,41 +147,11 @@ export default function SettingsPage() {
         setCustomerAuthMode(settings.customer_auth_mode as 'optional' | 'customer_login_required' | 'guest_only')
       }
 
-      if (Array.isArray(settings.payment_accounts) && settings.payment_accounts.length > 0) {
+      if (Array.isArray(settings.payment_accounts)) {
         setPaymentAccounts(settings.payment_accounts)
       } else {
-        // Inicializar con métodos por defecto si no existen
-        setPaymentAccounts([
-          {
-            id: 'pago_movil_1',
-            method: 'pago_movil',
-            enabled: true,
-            label: 'Pago Móvil Provincial',
-            bank_name: 'Banco Provincial (0108)',
-            phone: '0426-2485369',
-            id_number: 'V-27.250.266',
-            instructions: 'Enviar comprobante o últimos 6 dígitos de la referencia.',
-          },
-          {
-            id: 'transfer_1',
-            method: 'transferencia',
-            enabled: true,
-            label: 'Transferencia Bancaria Provincial',
-            bank_name: 'Banco Provincial',
-            account_holder: 'Yiovanner Miguel Parra Ceballos',
-            id_number: 'V-27.250.266',
-            account_number: '01080119250100684672',
-            instructions: 'Transferencias del mismo banco o interbancarias inmediatas.',
-          },
-          {
-            id: 'binance_1',
-            method: 'binance_pay',
-            enabled: true,
-            label: 'Binance Pay (USDT)',
-            qr_image_url: 'https://lh3.googleusercontent.com/pw/AP1GczMGJg-gOgVpO57ohIPRF8YtHT-4eQSDOB_K6ggCifrqW794_xmHC4ztcuSQCix5TiNCOThVWJ11gXZ_oVdAnATlAJEvU9BJvPScxhQg2o6dQRHfIZfmb9iCPQ7oO1d4zNtbwaoLh3oBlJap13aSqJH4LA=w288-h340-s-no-gm',
-            instructions: 'Escanea el código QR desde tu app de Binance y paga en USDT.',
-          },
-        ])
+        // Cada tienda debe configurar sus propias cuentas bancarias y de pago
+        setPaymentAccounts([])
       }
 
       // Sincronizar configuración de WhatsApp Automático

@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     const {
       name,
       category,
+      subcategory,
       barcode,
       sku,
       priceUsd,
@@ -43,9 +44,11 @@ export async function POST(req: Request) {
       colors,
       tenantId,
       tenantSlug,
+      rubro: reqRubro,
     }: {
       name?: string
       category?: string
+      subcategory?: string
       barcode?: string
       sku?: string
       priceUsd?: number
@@ -53,6 +56,7 @@ export async function POST(req: Request) {
       colors?: ColorItem[]
       tenantId?: string
       tenantSlug?: string
+      rubro?: string
     } = body
 
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -64,22 +68,11 @@ export async function POST(req: Request) {
 
     const cleanName = name.trim()
 
-    // Formatear cadenas auxiliares
-    const sizesStr =
-      apparelAttributes?.sizes && apparelAttributes.sizes.length > 0
-        ? apparelAttributes.sizes.join(', ')
-        : ''
-
-    const colorsStr =
-      colors && colors.length > 0
-        ? colors.map((c) => c.name).join(', ')
-        : ''
-
-    const genderStr = apparelAttributes?.gender ? apparelAttributes.gender : ''
-
-    // 1. Obtener posible clave de Gemini (variables de entorno o configuración del tenant)
+    // 1. Obtener posible clave de Gemini (variables de entorno o configuración del tenant) y rubro
     let geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-    if (!geminiKey && (tenantId || tenantSlug)) {
+    let tenantRubro: string | undefined = undefined
+
+    if (tenantId || tenantSlug) {
       try {
         const supabase = getAdminClient()
         let query = supabase.from('tenants').select('settings')
@@ -90,38 +83,68 @@ export async function POST(req: Request) {
         }
         const { data: tenantData } = await query.maybeSingle()
         const tSettings = (tenantData?.settings || {}) as Record<string, unknown>
-        geminiKey = (tSettings?.gemini_api_key || tSettings?.google_api_key) as string | undefined
+        if (!geminiKey) {
+          geminiKey = (tSettings?.gemini_api_key || tSettings?.google_api_key) as string | undefined
+        }
+        tenantRubro = tSettings?.rubro as string | undefined
       } catch (err) {
-        console.warn('Error reading tenant settings for Gemini key:', err)
+        console.warn('Error reading tenant settings for Gemini key/rubro:', err)
       }
     }
 
-    // 2. Si hay clave de Gemini, invocar investigación profunda con IA
+    const effectiveRubro = reqRubro || tenantRubro || 'tecnologia'
+    const isFashion = effectiveRubro === 'moda'
+
+    // Formatear cadenas auxiliares (solo tallas si es rubro moda)
+    const sizesStr =
+      isFashion && apparelAttributes?.sizes && apparelAttributes.sizes.length > 0
+        ? apparelAttributes.sizes.join(', ')
+        : ''
+
+    const colorsStr =
+      colors && colors.length > 0
+        ? colors.map((c) => c.name).join(', ')
+        : ''
+
+    const genderStr = isFashion && apparelAttributes?.gender ? apparelAttributes.gender : ''
+
+    // 2. Si hay clave de Gemini, invocar investigación profunda con IA adaptada al rubro
     if (geminiKey) {
       try {
-        const prompt = `Eres un redactor técnico y especialista en e-commerce minorista. Tu objetivo es investigar las características reales de este producto e identificar qué lo hace destacar en el mercado para redactar una descripción persuasiva, profesional y técnicamente precisa.
+        let rubroContext = `Rubro de la Tienda: ${effectiveRubro}.`
+        if (effectiveRubro === 'automotriz') {
+          rubroContext += ` Es una tienda de repuestos y autopartes. Enfócate en compatibilidad vehicular, durabilidad de materiales, estándares mecánicos/eléctricos, resistencia al calor/fricción y recomendaciones de instalación. NUNCA menciones ropa, telas ni tallas.`
+        } else if (effectiveRubro === 'tecnologia') {
+          rubroContext += ` Es una tienda de tecnología y accesorios electrónicos. Enfócate en potencia, conectividad (USB-C, Bluetooth, etc.), compatibilidad con smartphones/laptops, rendimiento y durabilidad. NUNCA menciones ropa, telas ni partes de autos.`
+        } else if (effectiveRubro === 'moda') {
+          rubroContext += ` Es una tienda de moda y calzado. Enfócate en corte, estilo, tipo de tela/material, comodidad y ocasiones de uso.`
+        }
+
+        const prompt = `Eres un redactor técnico y especialista en e-commerce minorista. Tu objetivo es investigar las características reales de este producto según su rubro y redactar una descripción persuasiva, profesional y técnicamente precisa.
 
 DATOS DEL PRODUCTO:
 - Nombre o Modelo: "${cleanName}"
+- ${rubroContext}
 ${category ? `- Categoría: ${category}` : ''}
-${barcode ? `- Código de Barras / EAN / UPC: ${barcode}` : ''}
+${subcategory ? `- Subcategoría: ${subcategory}` : ''}
+${barcode ? `- Código de Barras / EAN / UPC / Referencia: ${barcode}` : ''}
 ${sku ? `- Código Interno / SKU: ${sku}` : ''}
 ${priceUsd ? `- Precio aproximado: $${priceUsd} USD` : ''}
-${colorsStr ? `- Colores / Variantes: ${colorsStr}` : ''}
+${colorsStr ? `- Colores / Acabados disponibles: ${colorsStr}` : ''}
 ${sizesStr ? `- Tallas disponibles: ${sizesStr}` : ''}
 ${genderStr ? `- Género / Público objetivo: ${genderStr}` : ''}
 
 PAUTAS DE INVESTIGACIÓN Y REDACCIÓN:
-1. Identifica el tipo de producto y marca (si es visible en el nombre como Apple, Samsung, Xiaomi, JBL, Anker, Sony, Nike, Huawei, Baseus, Lenovo, etc.).
-2. Explica especificaciones técnicas reales esperadas para este tipo de producto (potencia en Watts, protocolos de carga rápida, versiones de conectividad inalámbrica, capacidad, materiales duraderos como aleaciones, silicona líquida o vidrio templado 9H, ergonomía, etc.).
+1. Identifica el tipo de producto y marca.
+2. Explica especificaciones técnicas reales esperadas para este producto según su rubro.
 3. Escribe en un formato estructurado con viñetas en Markdown limpio:
    - **Párrafo introductorio** (1-2 oraciones atractivas destacando su propuesta de valor).
    - ✨ **Características Principales** (3 a 5 viñetas concisas con beneficios claros).
-   - ⚙️ **Ficha Técnica & Especificaciones** (datos concretos como conectividad, materiales, compatibilidad o potencia).
-   - 📦 **Compatibilidad & Uso Recomendado** (con qué dispositivos o situaciones funciona mejor).
-${colorsStr ? `   - 🎨 **Colores disponibles**: ${colorsStr}\n` : ''}${sizesStr ? `   - 📏 **Tallas disponibles**: ${sizesStr}\n` : ''}
+   - ⚙️ **Ficha Técnica & Especificaciones** (datos concretos según corresponda).
+   - 📦 **Compatibilidad & Uso Recomendado** (con qué vehículos, equipos o situaciones funciona mejor).
+${colorsStr ? `   - 🎨 **Colores / Acabados**: ${colorsStr}\n` : ''}${sizesStr ? `   - 📏 **Tallas disponibles**: ${sizesStr}\n` : ''}
 4. Tono comercial en español latinoamericano, profesional, claro y vendedor.
-5. NO incluyas introducciones ("Aquí está...", "Claro, con gusto..."), ni bloques de código \`\`\`markdown. Entrega exclusivamente el contenido de la descripción.`
+5. NO incluyas etiquetas HTML como <!--CATEGORY:...--> ni introducciones como "Aquí está...". Entrega exclusivamente el contenido de la descripción.`
 
         // Intentar con gemini-1.5-flash y fallback a gemini-2.0-flash
         const models = ['gemini-1.5-flash', 'gemini-2.0-flash']
@@ -168,30 +191,50 @@ ${colorsStr ? `   - 🎨 **Colores disponibles**: ${colorsStr}\n` : ''}${sizesSt
 
     // 3. Fallback Heurístico Avanzado y Enriquecido (cuando no hay clave o falla conexión)
     const n = cleanName.toLowerCase()
-    let profile = 'general'
+    let profile = effectiveRubro === 'automotriz' ? 'automotive' : 'general'
 
     if (
-      category?.toLowerCase().includes('calzado') ||
-      category?.toLowerCase().includes('zapato') ||
-      n.includes('zapato') ||
-      n.includes('sneaker') ||
-      n.includes('zapatilla') ||
-      n.includes('bota') ||
-      n.includes('sandalia')
+      effectiveRubro === 'automotriz' ||
+      category?.toLowerCase().includes('repuesto') ||
+      category?.toLowerCase().includes('filtro') ||
+      category?.toLowerCase().includes('freno') ||
+      n.includes('filtro') ||
+      n.includes('freno') ||
+      n.includes('pastilla') ||
+      n.includes('amortiguador') ||
+      n.includes('bujia') ||
+      n.includes('bujía') ||
+      n.includes('aceite') ||
+      n.includes('bobina') ||
+      n.includes('correa')
+    ) {
+      profile = 'automotive'
+    } else if (
+      isFashion && (
+        category?.toLowerCase().includes('calzado') ||
+        category?.toLowerCase().includes('zapato') ||
+        n.includes('zapato') ||
+        n.includes('sneaker') ||
+        n.includes('zapatilla') ||
+        n.includes('bota') ||
+        n.includes('sandalia')
+      )
     ) {
       profile = 'footwear'
     } else if (
-      category?.toLowerCase().includes('ropa') ||
-      category?.toLowerCase().includes('pantalon') ||
-      category?.toLowerCase().includes('camisa') ||
-      category?.toLowerCase().includes('franela') ||
-      n.includes('franela') ||
-      n.includes('pantalon') ||
-      n.includes('pantalón') ||
-      n.includes('jean') ||
-      n.includes('camisa') ||
-      n.includes('vestido') ||
-      n.includes('chaqueta')
+      isFashion && (
+        category?.toLowerCase().includes('ropa') ||
+        category?.toLowerCase().includes('pantalon') ||
+        category?.toLowerCase().includes('camisa') ||
+        category?.toLowerCase().includes('franela') ||
+        n.includes('franela') ||
+        n.includes('pantalon') ||
+        n.includes('pantalón') ||
+        n.includes('jean') ||
+        n.includes('camisa') ||
+        n.includes('vestido') ||
+        n.includes('chaqueta')
+      )
     ) {
       profile = 'apparel'
     } else if (
@@ -306,6 +349,17 @@ ${colorsStr ? `   - 🎨 **Colores disponibles**: ${colorsStr}\n` : ''}${sizesSt
 • Compartimentos interiores acolchados diseñados para proteger laptops, tablets y accesorios.
 • Tejido impermeable de alta densidad resistente a rasgaduras y salpicaduras de lluvia.
 • Correas ajustables ergonómicas para una distribución cómoda del peso.`
+    } else if (profile === 'automotive') {
+      description = `Garantiza el máximo rendimiento y confiabilidad para tu vehículo con ${cleanName}. Fabricado bajo estrictos estándares de calidad automotriz para ofrecer durabilidad superior y respuesta óptima en carretera.
+
+✨ Beneficios Clave:
+• Fabricación con materiales resistentes al desgaste severo, fricción y altas temperaturas.
+• Ajuste y calibración exacta que facilitan un reemplazo directo y seguro.
+• Diseñado para maximizar la vida útil del sistema mecánico y proteger los demás componentes.
+
+⚙️ Especificaciones:
+• Aplicación: Diseñado para cumplir o exceder especificaciones de equipo original (OEM).
+• Recomendación: Se recomienda su instalación por personal técnico calificado.`
     } else {
       description = `Descubre el rendimiento, practicidad y calidad que ofrece ${cleanName}. Fabricado con estándares estrictos para ofrecerte una solución confiable y moderna que supera tus expectativas diarias.
 

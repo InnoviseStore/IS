@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
+import type { Product } from '@/types/database'
 import { 
   X, 
   UploadCloud, 
@@ -14,22 +15,37 @@ import {
   Image as ImageIcon,
   Check,
   Eye,
-  Trash2
+  Trash2,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react'
+import {
+  extractCategory,
+  extractSubcategory,
+  detectCategory,
+  cleanCategoryName,
+  cleanSubcategoryName,
+  cleanProductDescription,
+  getRubroCategories
+} from '@/lib/categories'
+import { getProductBarcode, injectBarcodeIntoDescription } from '@/lib/barcodeUtils'
 
 interface Props {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  existingProducts?: Product[]
 }
 
 interface ParsedProductRow {
   name: string
   sku: string | null
+  barcode?: string | null
   base_price_usd: number
   cost_usd: number | null
   stock: number
   category?: string
+  subcategory?: string
   gender?: string
   sizes?: string[]
   color?: string
@@ -37,56 +53,107 @@ interface ParsedProductRow {
   description?: string | null
 }
 
-export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
+export function ImportProductsModal({ isOpen, onClose, onSuccess, existingProducts = [] }: Props) {
   const { tenant } = useTenant()
   const [csvText, setCsvText] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [parsedRows, setParsedRows] = useState<ParsedProductRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ count: number } | null>(null)
+  const [result, setResult] = useState<{ updated: number; inserted: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   if (!isOpen) return null
 
-  // 1. Descargar Plantilla Excel Modelo (Formato CSV compatible con Excel en Windows)
+  const rubro = ((tenant?.settings as Record<string, unknown>)?.rubro as string) || 'tecnologia'
+  const isFashionRubro = rubro === 'moda' || tenant?.slug === 'emeve-vzla'
+  const hasExistingProducts = existingProducts.length > 0
+
+  // 1. Descargar Plantilla Excel / Exportar Productos Existentes para Edición
   function handleDownloadTemplate() {
-    const headers = [
-      'Nombre',
-      'SKU',
-      'Precio_USD',
-      'Costo_USD',
-      'Stock',
-      'Categoria',
-      'Genero',
-      'Tallas',
-      'Color',
-      'Imagen_URL',
-      'Descripcion'
-    ].join(',')
+    const isFashion = isFashionRubro
 
-    const sampleRows = [
-      'Franela Casual Oversize Cotton,FRA-001,22.50,11.00,20,Franelas & Camisetas,Unisex,"S, M, L, XL",Negro Lavado,https://images.unsplash.com/photo-1521572267360-ee0c2909d518,Franela 100% algodon peinado corte oversize',
-      'Sneakers Urbanos Running Pro,CAL-002,48.00,24.00,15,Calzado Deportivo / Sneakers,Unisex,"38, 39, 40, 41, 42",Blanco,https://images.unsplash.com/photo-1542291026-7eec264c27ff,Zapatillas deportivas ligeras con amortiguacion y suela antideslizante',
-      'Camisa Manga Larga Oxford,CAM-003,32.00,15.00,12,Camisas & Blusas,Hombre,"M, L, XL",Azul Celeste,https://images.unsplash.com/photo-1596755094514-f87e34085b2c,Camisa casual formal con botones ideal para oficina y salidas',
-      'Vestido Estampado Verano,VES-004,29.00,14.00,10,Vestidos & Faldas,Mujer,"S, M",Floral,https://images.unsplash.com/photo-1572804013309-59a88b7e92f1,Vestido fresco de tela suave con estampado moderno'
-    ].join('\r\n')
+    // Si la tienda ya tiene productos, exportar todos los productos actuales para edición masiva
+    if (hasExistingProducts) {
+      const headers = isFashion
+        ? ['Nombre', 'SKU', 'Codigo_Barras', 'Precio_USD', 'Costo_USD', 'Stock', 'Categoria', 'Subcategoria', 'Genero', 'Tallas', 'Color', 'Imagen_URL', 'Descripcion']
+        : ['Nombre', 'SKU', 'Codigo_Barras', 'Precio_USD', 'Costo_USD', 'Stock', 'Categoria', 'Subcategoria', 'Imagen_URL', 'Descripcion']
 
-    // Prefijo BOM UTF-8 (\uFEFF) para que Excel en Windows interprete tildes y columnas con coma
-    const csvContent = '\uFEFF' + headers + '\r\n' + sampleRows
+      const lines = existingProducts.map((p) => {
+        const cat = cleanCategoryName(extractCategory(p.description) || detectCategory(p.name, p.description))
+        const subcat = cleanSubcategoryName(extractSubcategory(p.description) || '')
+        const barcode = getProductBarcode(p) || ''
+        const cleanDesc = cleanProductDescription(p.description)
+        const safeDesc = cleanDesc.replace(/"/g, '""').replace(/\r?\n/g, ' ')
+        const safeName = p.name.replace(/"/g, '""')
+        const sku = p.sku || ''
+        const price = p.base_price_usd.toFixed(2)
+        const cost = p.cost_usd ? p.cost_usd.toFixed(2) : ''
+        const stock = p.stock || 0
+        const img = p.image_url || ''
 
+        if (isFashion) {
+          return `"${safeName}","${sku}","${barcode}",${price},${cost},${stock},"${cat}","${subcat}","","","","${img}","${safeDesc}"`
+        }
+
+        return `"${safeName}","${sku}","${barcode}",${price},${cost},${stock},"${cat}","${subcat}","${img}","${safeDesc}"`
+      })
+
+      const csvContent = '\uFEFF' + headers.join(',') + '\r\n' + lines.join('\r\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `inventario_${tenant?.slug ?? 'tienda'}_para_edicion.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      return
+    }
+
+    // Si la tienda aún no tiene productos, generar plantilla de ejemplo adaptada a su rubro comercial
+    let headers: string[] = []
+    let sampleRows: string[] = []
+
+    if (rubro === 'automotriz') {
+      headers = ['Nombre', 'SKU', 'Codigo_Barras', 'Precio_USD', 'Costo_USD', 'Stock', 'Categoria', 'Subcategoria', 'Imagen_URL', 'Descripcion']
+      sampleRows = [
+        '"Pastillas de Freno Delanteras Corolla 2012-2018","FRE-001","7591234567890",35.00,18.00,10,"Frenos & Suspensión","Pastillas de Freno","https://images.unsplash.com/photo-1486006920555-c77dce18193b","Pastillas cerámicas de alto frenado sin ruido."',
+        '"Filtro de Aceite PH4967","FIL-002","7591234567891",8.50,4.00,25,"Filtros & Lubricantes","Filtros de Aceite","https://images.unsplash.com/photo-1486006920555-c77dce18193b","Filtro de alta filtración para vehículos Toyota y Chevrolet."',
+        '"Bujías Iridium Laser Juego de 4","MOT-003","7591234567892",28.00,14.00,15,"Motor & Transmisión","Bujías & Bobinas","","Juego de bujías iridium larga vida util 100.000km."'
+      ]
+    } else if (rubro === 'moda') {
+      headers = ['Nombre', 'SKU', 'Codigo_Barras', 'Precio_USD', 'Costo_USD', 'Stock', 'Categoria', 'Subcategoria', 'Genero', 'Tallas', 'Color', 'Imagen_URL', 'Descripcion']
+      sampleRows = [
+        '"Franela Casual Oversize Cotton","FRA-001","7591234567890",22.50,11.00,20,"Prendas Superiores","Franelas / T-Shirts","Unisex","S, M, L, XL","Negro Lavado","https://images.unsplash.com/photo-1521572267360-ee0c2909d518","Franela 100% algodon corte oversize"',
+        '"Sneakers Urbanos Running Pro","CAL-002","7591234567891",48.00,24.00,15,"Calzado & Zapatos","Calzado Deportivo / Sneakers","Unisex","38, 39, 40, 41, 42","Blanco","https://images.unsplash.com/photo-1542291026-7eec264c27ff","Zapatillas deportivas con amortiguacion y suela antideslizante"',
+        '"Jean Denim Skinny Fit","PAN-003","7591234567892",34.00,16.00,12,"Pantalones & Jeans","Jeans Denim","Hombre","30, 32, 34","Azul Oscuro","","Pantalon jean stretch de alta durabilidad"'
+      ]
+    } else {
+      // Tecnología & General por defecto
+      headers = ['Nombre', 'SKU', 'Codigo_Barras', 'Precio_USD', 'Costo_USD', 'Stock', 'Categoria', 'Subcategoria', 'Imagen_URL', 'Descripcion']
+      sampleRows = [
+        '"Cargador Rápido GaN 30W USB-C","CRG-001","7591234567890",15.00,7.50,25,"Cargadores & Energía","Cargadores de Pared GaN","https://images.unsplash.com/photo-1583863788434-e58a36330cf0","Cargador ultracompacto carga rápida compatible con iPhone y Android."',
+        '"Vidrio Templado 9D Pantalla Completa","VID-002","7591234567891",5.00,1.20,50,"Vidrios Templados & Protección","Vidrios Templados 9D / 11D","https://images.unsplash.com/photo-1584438784894-089d6a62b8fa","Protector de pantalla vidrio templado dureza 9H antihuellas."',
+        '"Cable Tipo-C a Tipo-C 60W Reforzado 1.2m","CAB-003","7591234567892",8.00,3.00,30,"Cables & Conectividad","Cables Tipo-C a Tipo-C","https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c","Cable trenzado de alta resistencia compatible con carga rápida."',
+        '"Audífonos Inalámbricos Bluetooth TWS Pro","TWS-004","7591234567893",25.00,12.00,15,"Audio & Sonido","Audífonos Bluetooth / TWS","https://images.unsplash.com/photo-1590658268037-6bf12165a8df","Audífonos inalámbricos estéreo con estuche de carga y baja latencia."'
+      ]
+    }
+
+    const csvContent = '\uFEFF' + headers.join(',') + '\r\n' + sampleRows.join('\r\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `plantilla_modelo_productos_${tenant?.slug ?? 'tienda'}.csv`)
+    link.setAttribute('download', `plantilla_${rubro}_${tenant?.slug ?? 'tienda'}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   }
 
-  // 2. Parser inteligente de líneas CSV soportando comillas y delimitadores , o ;
+  // 2. Parser inteligente de líneas CSV soportando comillas dobles y delimitadores , o ;
   function parseCSVLine(text: string, delimiter: string = ','): string[] {
     const result: string[] = []
     let current = ''
@@ -95,7 +162,12 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
     for (let i = 0; i < text.length; i++) {
       const char = text[i]
       if (char === '"') {
-        insideQuotes = !insideQuotes
+        if (insideQuotes && text[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          insideQuotes = !insideQuotes
+        }
       } else if (char === delimiter && !insideQuotes) {
         result.push(current.trim().replace(/^"|"$/g, ''))
         current = ''
@@ -127,11 +199,13 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
     // Mapeo de índices de columnas
     const nameIdx = rawHeaders.findIndex((h) => h.includes('nombre') || h.includes('name') || h.includes('producto'))
     const skuIdx = rawHeaders.findIndex((h) => h.includes('sku') || h.includes('codigo') || h.includes('código'))
+    const barcodeIdx = rawHeaders.findIndex((h) => h.includes('barras') || h.includes('barcode') || h.includes('ean') || h.includes('upc'))
     const priceIdx = rawHeaders.findIndex((h) => h.includes('precio') || h.includes('price'))
     const costIdx = rawHeaders.findIndex((h) => h.includes('costo') || h.includes('cost'))
     const stockIdx = rawHeaders.findIndex((h) => h.includes('stock') || h.includes('cantidad') || h.includes('existencia'))
-    const catIdx = rawHeaders.findIndex((h) => h.includes('categoria') || h.includes('categoría') || h.includes('prenda'))
-    const genderIdx = rawHeaders.findIndex((h) => h.includes('genero') || h.includes('género') || h.includes('publico') || h.includes('público'))
+    const catIdx = rawHeaders.findIndex((h) => h === 'categoria' || h === 'categoría' || h.includes('categoria'))
+    const subcatIdx = rawHeaders.findIndex((h) => h.includes('subcategoria') || h.includes('subcategoría') || h.includes('sub_categoria'))
+    const genderIdx = rawHeaders.findIndex((h) => h.includes('genero') || h.includes('género') || h.includes('publico'))
     const sizesIdx = rawHeaders.findIndex((h) => h.includes('talla') || h.includes('sizes') || h.includes('size'))
     const colorIdx = rawHeaders.findIndex((h) => h.includes('color'))
     const imgIdx = rawHeaders.findIndex((h) => h.includes('imagen') || h.includes('image') || h.includes('foto') || h.includes('link'))
@@ -157,26 +231,34 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
 
       if (!name || price <= 0) continue
 
-      const sku = skuIdx !== -1 && cols[skuIdx] ? cols[skuIdx] : null
+      const sku = skuIdx !== -1 && cols[skuIdx] ? cols[skuIdx].trim() : null
+      const barcode = barcodeIdx !== -1 && cols[barcodeIdx] ? cols[barcodeIdx].trim() : null
       const rawCost = costIdx !== -1 && cols[costIdx] ? (cols[costIdx] || '').replace(',', '.') : null
       const cost = rawCost ? parseFloat(rawCost) || null : null
       const stock = stockIdx !== -1 && cols[stockIdx] ? parseInt(cols[stockIdx], 10) || 0 : 0
       
-      const category = catIdx !== -1 ? cols[catIdx] : undefined
+      const rawCategory = catIdx !== -1 ? cols[catIdx] : undefined
+      const category = cleanCategoryName(rawCategory)
+      const rawSubcat = subcatIdx !== -1 ? cols[subcatIdx] : undefined
+      const subcategory = cleanSubcategoryName(rawSubcat)
+      
       const gender = genderIdx !== -1 ? cols[genderIdx] : undefined
       const rawSizes = sizesIdx !== -1 ? cols[sizesIdx] : undefined
       const sizes = rawSizes ? rawSizes.split(/[,/|]/).map((s) => s.trim()).filter(Boolean) : []
       const color = colorIdx !== -1 ? cols[colorIdx] : undefined
       const image_url = imgIdx !== -1 && cols[imgIdx]?.startsWith('http') ? cols[imgIdx].trim() : null
-      const description = descIdx !== -1 ? cols[descIdx] : null
+      const rawDesc = descIdx !== -1 ? cols[descIdx] : null
+      const description = cleanProductDescription(rawDesc)
 
       rows.push({
         name,
         sku,
+        barcode,
         base_price_usd: price,
         cost_usd: cost,
         stock,
         category,
+        subcategory,
         gender,
         sizes,
         color,
@@ -205,7 +287,7 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
     reader.readAsText(file)
   }
 
-  // 5. Enviar a Supabase para inserción masiva
+  // 5. Enviar a Supabase para Upsert / Inserción Masiva
   async function handleConfirmImport() {
     if (!tenant || parsedRows.length === 0) return
     setLoading(true)
@@ -213,12 +295,29 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
     const supabase = createClient()
 
     try {
-      const rowsToInsert = parsedRows.map((r) => {
-        // Estructurar atributos de moda y badges si aplica
-        let finalDesc = r.description ? r.description.trim() : ''
-        const hasApparel = r.category || r.gender || (r.sizes && r.sizes.length > 0) || r.color
+      // Indexar productos existentes por SKU y por Nombre en minúsculas para actualización rápida
+      const existingBySku = new Map<string, Product>()
+      const existingByName = new Map<string, Product>()
+      existingProducts.forEach((p) => {
+        if (p.sku) existingBySku.set(p.sku.toLowerCase().trim(), p)
+        if (p.name) existingByName.set(p.name.toLowerCase().trim(), p)
+      })
 
-        if (hasApparel) {
+      let updatedCount = 0
+      const rowsToInsert: any[] = []
+
+      for (const r of parsedRows) {
+        let baseDesc = cleanProductDescription(r.description)
+
+        if (r.subcategory?.trim()) {
+          baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(r.subcategory)}-->\n${baseDesc}`
+        }
+        if (r.category?.trim()) {
+          baseDesc = `<!--CATEGORY:${cleanCategoryName(r.category)}-->\n${baseDesc}`
+        }
+
+        // Si es tienda de moda y tiene atributos
+        if (isFashionRubro && (r.gender || (r.sizes && r.sizes.length > 0) || r.color)) {
           const apparelData = {
             garmentType: r.category || undefined,
             gender: r.gender || undefined,
@@ -233,245 +332,279 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess }: Props) {
           if (r.color) badgeParts.push(`Color: ${r.color}`)
 
           const badgeLine = badgeParts.length > 0 ? `🏷️ ${badgeParts.join(' | ')}\n\n` : ''
-          finalDesc = `<!--APPAREL_ATTRIBUTES:${JSON.stringify(apparelData)}-->\n${badgeLine}${finalDesc}`
+          baseDesc = `<!--APPAREL_ATTRIBUTES:${JSON.stringify(apparelData)}-->\n${badgeLine}${baseDesc}`
         }
 
-        return {
-          tenant_id: tenant.id,
-          name: r.name,
-          sku: r.sku,
-          base_price_usd: r.base_price_usd,
-          cost_usd: r.cost_usd,
-          stock: r.stock,
-          is_active: true,
-          image_url: r.image_url || null,
-          images: r.image_url ? [r.image_url] : [],
-          description: finalDesc || null
+        const finalDescWithBarcode = injectBarcodeIntoDescription(baseDesc, r.barcode || null)
+
+        // Verificar si este producto ya existe en la tienda (Upsert)
+        const matchBySku = r.sku ? existingBySku.get(r.sku.toLowerCase().trim()) : null
+        const matchByName = existingByName.get(r.name.toLowerCase().trim())
+        const existingMatch = matchBySku || matchByName
+
+        if (existingMatch) {
+          // Actualizar producto existente
+          const updatePayload: Record<string, any> = {
+            name: r.name,
+            sku: r.sku || existingMatch.sku,
+            barcode: r.barcode || existingMatch.barcode || null,
+            base_price_usd: r.base_price_usd,
+            cost_usd: r.cost_usd ?? existingMatch.cost_usd,
+            stock: r.stock,
+            description: finalDescWithBarcode || existingMatch.description,
+            updated_at: new Date().toISOString()
+          }
+          if (r.image_url) {
+            updatePayload.image_url = r.image_url
+            updatePayload.images = [r.image_url]
+          }
+
+          const { error: updErr } = await supabase
+            .from('products')
+            .update(updatePayload)
+            .eq('id', existingMatch.id)
+            .eq('tenant_id', tenant.id)
+
+          if (updErr) throw updErr
+          updatedCount++
+        } else {
+          // Insertar nuevo producto
+          rowsToInsert.push({
+            tenant_id: tenant.id,
+            name: r.name,
+            sku: r.sku,
+            barcode: r.barcode || null,
+            base_price_usd: r.base_price_usd,
+            cost_usd: r.cost_usd,
+            stock: r.stock,
+            is_active: true,
+            image_url: r.image_url || null,
+            images: r.image_url ? [r.image_url] : [],
+            description: finalDescWithBarcode || null
+          })
         }
-      })
+      }
 
-      const { error: insertErr } = await supabase.from('products').insert(rowsToInsert)
-      if (insertErr) throw insertErr
+      if (rowsToInsert.length > 0) {
+        const { error: insErr } = await supabase.from('products').insert(rowsToInsert)
+        if (insErr) throw insErr
+      }
 
-      setResult({ count: rowsToInsert.length })
+      setResult({ updated: updatedCount, inserted: rowsToInsert.length })
       onSuccess()
     } catch (err) {
-      setError((err as Error).message || 'Error al guardar los productos en lote')
+      setError((err as Error).message || 'Error al procesar los productos')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs" onClick={onClose} />
-      
-      <div className="relative z-10 w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 my-6 transition-all space-y-4 text-xs font-medium">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+        
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <UploadCloud className="w-5 h-5" />
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                Importación Masiva de Productos
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Carga Masiva & Edición en Excel
               </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Sube tu catálogo completo mediante archivo Excel / CSV con imágenes por link
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {hasExistingProducts 
+                  ? `Tienda con ${existingProducts.length} productos registrados · Edita precios o agrega nuevos`
+                  : `Carga rápida de catálogo adaptada al rubro ${rubro.toUpperCase()}`
+                }
               </p>
             </div>
           </div>
-          <button
+          <button 
             onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {result ? (
-          /* Estado Exitoso */
-          <div className="text-center py-8 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-md shadow-emerald-500/20">
-              <CheckCircle2 className="w-9 h-9" />
-            </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                ¡Catálogo Importado con Éxito!
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Se agregaron <strong className="text-emerald-600 dark:text-emerald-400">{result.count} productos</strong> correctamente al inventario de {tenant?.name ?? 'tu tienda'}.
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto space-y-6 flex-1">
+          
+          {/* Tarjeta de descarga de plantilla inteligente */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:from-slate-800/80 dark:to-indigo-950/30 border border-blue-100 dark:border-blue-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                  {hasExistingProducts ? 'Exportar Inventario Actual para Editar' : 'Plantilla Modelo para este Rubro'}
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                  {rubro.toUpperCase()}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-xl">
+                {hasExistingProducts
+                  ? `Descarga tu archivo con los ${existingProducts.length} productos que ya tienes registrados. Modifica precios, costos o stock en Excel y vuelve a subirlo aquí mismo para actualizarlos automáticamente.`
+                  : `Descarga el formato modelo con columnas y ejemplos específicos para tu rubro (${rubro}). Llénalo en Excel y súbelo para poblar tu tienda al instante.`
+                }
               </p>
             </div>
+
             <button
               type="button"
-              onClick={onClose}
-              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+              onClick={handleDownloadTemplate}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition active:scale-95 whitespace-nowrap cursor-pointer shrink-0"
             >
-              Cerrar y Ver Inventario
+              <Download className="w-4 h-4" />
+              <span>{hasExistingProducts ? `Descargar Inventario (${existingProducts.length})` : 'Descargar Plantilla CSV'}</span>
             </button>
           </div>
-        ) : (
-          <>
-            {/* Tarjeta de Descarga de Plantilla Modelo */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/70 to-indigo-50/50 dark:from-slate-800/80 dark:to-slate-800/40 border border-blue-200/80 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
-                  <FileSpreadsheet className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                    Plantilla Excel Modelo Detallada
-                  </h4>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Incluye columnas de Ropa, Calzado, Tallas, Género y Enlaces de Imágenes
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleDownloadTemplate}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex-shrink-0"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Descargar Plantilla (.csv)</span>
-              </button>
-            </div>
 
-            {/* Subir Archivo o Arrastrar */}
-            <div className="space-y-2">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                1. Selecciona o Arrastra tu archivo Excel / CSV:
-              </label>
-              
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl p-5 text-center bg-slate-50/50 dark:bg-slate-800/30 transition cursor-pointer group"
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept=".csv,.txt,.tsv"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <UploadCloud className="w-8 h-8 text-slate-400 group-hover:text-blue-500 mx-auto mb-2 transition" />
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  {fileName ? (
-                    <span className="text-blue-600 dark:text-blue-400 font-extrabold flex items-center justify-center gap-1">
-                      <Check className="w-4 h-4 text-emerald-500" /> {fileName}
-                    </span>
-                  ) : (
-                    'Haz clic aquí para seleccionar el archivo CSV de tu computadora'
-                  )}
+          {/* Zona de Drop / Carga de Archivo */}
+          <div className="space-y-3">
+            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+              Subir Archivo Editado (CSV o Excel guardado como CSV)
+            </label>
+            
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              accept=".csv,text/csv" 
+              className="hidden" 
+              onChange={handleFileChange} 
+            />
+
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <UploadCloud className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  {fileName ? fileName : 'Haz clic para seleccionar o arrastra tu archivo CSV'}
                 </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Compatible con hojas de cálculo de Excel exportadas como CSV UTF-8
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                  Compatible con delimitadores de coma (,) o punto y coma (;) de Excel
                 </p>
               </div>
             </div>
+          </div>
 
-            {/* Alternativa: Pegar texto directo */}
-            <div className="space-y-1">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                O pega los datos CSV directamente:
-              </label>
-              <textarea
-                rows={3}
-                value={csvText}
-                onChange={(e) => processCSV(e.target.value)}
-                placeholder="Pega aquí el contenido de tu hoja con encabezados..."
-                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none font-mono text-[10px] leading-relaxed resize-none"
-              />
+          {/* Mensaje de Error */}
+          {error && (
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
             </div>
+          )}
 
-            {/* Vista Previa de Productos Detectados */}
-            {parsedRows.length > 0 && (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <Eye className="w-3.5 h-3.5 text-blue-500" />
-                    Vista Previa: <strong className="text-blue-600 dark:text-blue-400">{parsedRows.length} productos detectados</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setParsedRows([])
-                      setCsvText('')
-                      setFileName(null)
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                    }}
-                    className="text-[10px] text-rose-500 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" /> Limpiar
-                  </button>
-                </div>
-
-                <div className="max-h-44 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                  {parsedRows.slice(0, 6).map((p, idx) => (
-                    <div key={idx} className="p-2.5 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                        {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <ImageIcon className="w-4 h-4 text-slate-400" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-slate-900 dark:text-white truncate">{p.name}</p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5 flex-wrap">
-                          {p.sku && <span className="font-mono">SKU: {p.sku}</span>}
-                          {p.category && <span className="text-blue-600 font-semibold">{p.category}</span>}
-                          {p.gender && <span className="text-purple-600 font-semibold">({p.gender})</span>}
-                          {p.sizes && p.sizes.length > 0 && <span>Tallas: {p.sizes.join(', ')}</span>}
-                          <span>Stock: {p.stock}</span>
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <span className="font-extrabold text-blue-600 dark:text-blue-400 text-xs">
-                          ${p.base_price_usd.toFixed(2)} USD
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  {parsedRows.length > 6 && (
-                    <div className="p-2 text-center text-[10px] text-slate-400 bg-slate-50 dark:bg-slate-800/40">
-                      y {parsedRows.length - 6} productos más listos para importar...
-                    </div>
-                  )}
-                </div>
+          {/* Resultado de la Importación */}
+          {result && (
+            <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <span className="font-bold">
+                  ¡Actualización masiva completada! {result.updated > 0 ? `${result.updated} productos actualizados` : ''} {result.inserted > 0 ? `y ${result.inserted} productos nuevos agregados` : ''}.
+                </span>
               </div>
-            )}
-
-            {error && (
-              <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {error}
-              </p>
-            )}
-
-            {/* Acciones */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
+              <button 
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition cursor-pointer"
+                className="font-bold underline cursor-pointer text-emerald-900 dark:text-emerald-100"
               >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmImport}
-                disabled={loading || parsedRows.length === 0}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition disabled:opacity-40 flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/20"
-              >
-                {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Confirmar e Importar {parsedRows.length > 0 ? `(${parsedRows.length})` : ''}</span>
+                Cerrar
               </button>
             </div>
-          </>
-        )}
+          )}
+
+          {/* Vista Previa de Filas Parseadas */}
+          {parsedRows.length > 0 && !result && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                  Vista Previa ({parsedRows.length} filas detectadas)
+                </span>
+                <span className="text-xs text-slate-400">
+                  Los productos con SKU o Nombre existente se actualizarán automáticamente
+                </span>
+              </div>
+
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-64 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-500 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Producto</th>
+                      <th className="px-3 py-2 font-semibold">SKU / Barras</th>
+                      <th className="px-3 py-2 font-semibold">Categoría / Subcat</th>
+                      <th className="px-3 py-2 font-semibold">Precio USD</th>
+                      <th className="px-3 py-2 font-semibold">Costo</th>
+                      <th className="px-3 py-2 font-semibold">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {parsedRows.slice(0, 50).map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
+                        <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200 max-w-[200px] truncate">
+                          {r.name}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-slate-500">
+                          {r.sku || r.barcode || '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {r.category || 'General'}{r.subcategory ? ` • ${r.subcategory}` : ''}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-bold text-slate-900 dark:text-white">
+                          ${r.base_price_usd.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500">
+                          {r.cost_usd ? `$${r.cost_usd.toFixed(2)}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-300">
+                          {r.stock}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-white dark:hover:bg-slate-800 transition"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            disabled={parsedRows.length === 0 || loading || !!result}
+            onClick={handleConfirmImport}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition disabled:opacity-50 active:scale-95 cursor-pointer"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Procesando e Importando...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                <span>Confirmar e Importar ({parsedRows.length} productos)</span>
+              </>
+            )}
+          </button>
+        </div>
+
       </div>
     </div>
   )

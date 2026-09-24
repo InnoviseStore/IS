@@ -55,6 +55,7 @@ async function getStorefrontData(slug: string) {
   }))
 
   const settings = (tenant.settings || {}) as Record<string, unknown>
+  const customerAuthMode = (settings.customer_auth_mode as string) || 'optional'
   let fechaValor = (settings.bcv_fecha_valor as string) || null
   let exchangeRate = Number(tenant.currency_rate_bcv) || 91.5
   const lastSync = (settings.bcv_last_sync as string) || null
@@ -131,6 +132,7 @@ export default async function StorefrontPage({ params }: PageProps) {
 
   const { tenant, products, exchangeRate, rateDate, fechaValor } = data
   const settings = (tenant.settings || {}) as Record<string, unknown>
+  const customerAuthMode = (settings.customer_auth_mode as string) || 'optional'
   const themeConfig = (settings.storefront_theme as StorefrontThemeConfig | undefined) || DEFAULT_THEME_CONFIG
   const templateId = themeConfig.template || 'aurora'
   const templateDef = TEMPLATE_DEFINITIONS.find((t) => t.id === templateId) || TEMPLATE_DEFINITIONS[0]
@@ -206,13 +208,9 @@ export default async function StorefrontPage({ params }: PageProps) {
               </p>
 
               <div className="flex flex-col xs:flex-row items-stretch xs:items-center justify-center md:justify-start gap-2 sm:gap-3 pt-2">
-                <StorefrontHeroAuthButton tenantSlug={tenant.slug} />
-                <Link
-                  href={`/${tenant.slug}/nosotros`}
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs sm:text-sm font-semibold transition active:scale-95"
-                >
-                  <span>Sobre Nosotros</span>
-                </Link>
+                {customerAuthMode !== 'guest_only' && (
+                  <StorefrontHeroAuthButton tenantSlug={tenant.slug} />
+                )}
               </div>
             </div>
           </div>

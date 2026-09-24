@@ -30,7 +30,7 @@ import {
 import { formatDateTime } from '@/lib/formatters'
 import { getProductBarcode } from '@/lib/barcodeUtils'
 import { getTenantFeatures } from '@/lib/planLimits'
-import { detectCategory } from '@/lib/categories'
+import { detectCategory, extractSubcategory, cleanCategoryName, cleanSubcategoryName } from '@/lib/categories'
 
 function StockBadge({ stock }: { stock: number }) {
   if (stock < 3) return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900 whitespace-nowrap">Bajo ({stock})</span>
@@ -48,6 +48,7 @@ function InventoryContent() {
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedSubcategory, setSelectedSubcategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
@@ -87,9 +88,23 @@ function InventoryContent() {
   // Categorías presentes en este inventario
   const categories = useMemo(() => {
     const set = new Set<string>()
-    products.forEach((p) => set.add(detectCategory(p.name, p.description)))
+    products.forEach((p) => set.add(cleanCategoryName(detectCategory(p.name, p.description))))
     return ['all', ...Array.from(set)]
   }, [products])
+
+  // Subcategorías disponibles según la categoría seleccionada
+  const subcategories = useMemo(() => {
+    if (selectedCategory === 'all') return []
+    const set = new Set<string>()
+    products.forEach((p) => {
+      const cat = cleanCategoryName(detectCategory(p.name, p.description))
+      if (cat.toLowerCase() === selectedCategory.toLowerCase()) {
+        const sub = extractSubcategory(p.description)
+        if (sub) set.add(cleanSubcategoryName(sub))
+      }
+    })
+    return Array.from(set)
+  }, [products, selectedCategory])
 
   const filtered = useMemo(() => {
     const q = deferredSearch.toLowerCase().trim()
@@ -100,11 +115,13 @@ function InventoryContent() {
         p.name.toLowerCase().includes(q) ||
         (p.sku ?? '').toLowerCase().includes(q) ||
         bCode.includes(q)
-      const cat = detectCategory(p.name, p.description)
-      const matchesCategory = selectedCategory === 'all' || cat === selectedCategory
-      return matchesSearch && matchesCategory
+      const cat = cleanCategoryName(detectCategory(p.name, p.description))
+      const matchesCategory = selectedCategory === 'all' || cat.toLowerCase() === selectedCategory.toLowerCase()
+      const sub = cleanSubcategoryName(extractSubcategory(p.description) || '')
+      const matchesSubcategory = selectedSubcategory === 'all' || sub.toLowerCase() === selectedSubcategory.toLowerCase()
+      return matchesSearch && matchesCategory && matchesSubcategory
     })
-  }, [products, deferredSearch, selectedCategory])
+  }, [products, deferredSearch, selectedCategory, selectedSubcategory])
 
   function openCreate() { setEditingProduct(null); setModalOpen(true) }
   function openEdit(p: Product) { setEditingProduct(p); setModalOpen(true) }
@@ -223,12 +240,15 @@ function InventoryContent() {
             <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             <select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value)
+                setSelectedSubcategory('all')
+              }}
               className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer truncate"
             >
               <option value="all">Todas las categorías ({products.length})</option>
               {categories.filter((c) => c !== 'all').map((cat) => {
-                const count = products.filter((p) => detectCategory(p.name, p.description) === cat).length
+                const count = products.filter((p) => cleanCategoryName(detectCategory(p.name, p.description)).toLowerCase() === cat.toLowerCase()).length
                 return (
                   <option key={cat} value={cat}>
                     {cat} ({count})
@@ -238,6 +258,34 @@ function InventoryContent() {
             </select>
           </div>
         </div>
+
+        {/* Filtro Dinámico de Subcategoría */}
+        {subcategories.length > 0 && (
+          <div className="w-full sm:w-56 flex-shrink-0">
+            <div className="relative">
+              <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400 pointer-events-none" />
+              <select
+                value={selectedSubcategory}
+                onChange={(e) => setSelectedSubcategory(e.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-slate-800/90 text-indigo-900 dark:text-indigo-200 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs cursor-pointer truncate"
+              >
+                <option value="all">Todas las subcategorías</option>
+                {subcategories.map((sub) => {
+                  const count = products.filter((p) => {
+                    const matchesCat = cleanCategoryName(detectCategory(p.name, p.description)).toLowerCase() === selectedCategory.toLowerCase()
+                    const matchesSub = cleanSubcategoryName(extractSubcategory(p.description) || '').toLowerCase() === sub.toLowerCase()
+                    return matchesCat && matchesSub
+                  }).length
+                  return (
+                    <option key={sub} value={sub}>
+                      {sub} ({count})
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Estados de Carga y Vacío */}
@@ -276,8 +324,13 @@ function InventoryContent() {
                           {p.is_active ? 'Activo' : 'Inactivo'}
                         </span>
                         <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          {detectCategory(p.name, p.description)}
+                          {cleanCategoryName(detectCategory(p.name, p.description))}
                         </span>
+                        {extractSubcategory(p.description) && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/60">
+                            {cleanSubcategoryName(extractSubcategory(p.description))}
+                          </span>
+                        )}
                         {p.sku && <span className="font-mono text-[10px] text-slate-500 font-bold">#{p.sku}</span>}
                         {getProductBarcode(p) && (
                           <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-0.5">
@@ -381,9 +434,16 @@ function InventoryContent() {
                           </div>
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                            {detectCategory(p.name, p.description)}
-                          </span>
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              {cleanCategoryName(detectCategory(p.name, p.description))}
+                            </span>
+                            {extractSubcategory(p.description) && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/60">
+                                {cleanSubcategoryName(extractSubcategory(p.description))}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
                           <div className="flex flex-col gap-0.5">
@@ -509,6 +569,7 @@ function InventoryContent() {
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         onSuccess={() => { setImportModalOpen(false); load() }}
+        existingProducts={products}
       />
 
       {/* Modal de Confirmación para Eliminar Producto */}
