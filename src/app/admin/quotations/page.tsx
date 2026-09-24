@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant } from '@/contexts/TenantContext'
 import type { Quotation, Product, Customer } from '@/types/database'
-import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown, User, Tag, Percent, X } from 'lucide-react'
+import { Plus, Search, FileText, CheckCircle2, ArrowRight, Clock, Trash2, Loader2, Send, AlertCircle, FileDown, User, Tag, Percent, X, Copy } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/formatters'
 import { generateQuotationPdf } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
@@ -28,6 +28,7 @@ export default function QuotationsPage() {
   const [whatsAppQuote, setWhatsAppQuote] = useState<Quotation | null>(null)
   const [search, setSearch] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [editingSourceQuote, setEditingSourceQuote] = useState<Quotation | null>(null)
   const [quotationToDelete, setQuotationToDelete] = useState<Quotation | null>(null)
   const [deletingQuotation, setDeletingQuotation] = useState(false)
 
@@ -75,6 +76,9 @@ export default function QuotationsPage() {
   async function openCreateModal() {
     if (!tenant) return
     setIsCreating(true)
+    setEditingSourceQuote(null)
+    setCart([])
+    setSelectedCustomer(null)
     setModalError(null)
     setCustomerSearch('')
     setCatalogSearch('')
@@ -92,6 +96,92 @@ export default function QuotationsPage() {
     ])
     setProducts(prodData ?? [])
     setCustomers(custData ?? [])
+  }
+
+  // Modificar cotización existente cargando sus datos (al guardar se creará con nuevo correlativo)
+  async function handleEditQuotation(sourceQuote: Quotation) {
+    if (!tenant) return
+    setIsCreating(true)
+    setEditingSourceQuote(sourceQuote)
+    setModalError(null)
+    setCustomerSearch('')
+    setCatalogSearch('')
+    setIsCustomerDropdownOpen(false)
+
+    // Cargar productos y clientes frescos
+    const supabase = createClient()
+    const [{ data: prodData }, { data: custData }] = await Promise.all([
+      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('customers').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('full_name'),
+    ])
+    const loadedProducts = prodData ?? []
+    const loadedCustomers = custData ?? []
+    setProducts(loadedProducts)
+    setCustomers(loadedCustomers)
+
+    // Asociar cliente registrado si coincide, o cargar campos manuales
+    let matchedCustomer: Customer | null = null
+    if (sourceQuote.customer_id) {
+      matchedCustomer = loadedCustomers.find((c) => c.id === sourceQuote.customer_id) || null
+    }
+    if (!matchedCustomer && sourceQuote.customer_name) {
+      matchedCustomer = loadedCustomers.find(
+        (c) => c.full_name.toLowerCase().trim() === sourceQuote.customer_name?.toLowerCase().trim()
+      ) || null
+    }
+
+    if (matchedCustomer) {
+      setSelectedCustomer(matchedCustomer)
+      setCustomCustomerName('')
+      setCustomCustomerPhone('')
+      setCustomCustomerIdDigits('')
+    } else {
+      setSelectedCustomer(null)
+      setCustomCustomerName(sourceQuote.customer_name || '')
+      setCustomCustomerPhone(sourceQuote.customer_phone || '')
+      const idNum = sourceQuote.customer_id_number || ''
+      if (idNum.startsWith('J-') || idNum.startsWith('V-') || idNum.startsWith('E-') || idNum.startsWith('G-')) {
+        setCustomCustomerIdPrefix(idNum.slice(0, 2) as any)
+        setCustomCustomerIdDigits(idNum.slice(2))
+      } else {
+        setCustomCustomerIdPrefix('V-')
+        setCustomCustomerIdDigits(idNum.replace(/\D/g, ''))
+      }
+    }
+
+    // Reconstruir carrito de la cotización
+    const rawItems = Array.isArray(sourceQuote.items) ? sourceQuote.items : []
+    const quoteCart: QuoteCartItem[] = rawItems.map((it: any, idx: number) => {
+      const foundProduct = loadedProducts.find((p) => p.id === it.product_id)
+      return {
+        product: foundProduct || {
+          id: it.product_id || `quote-item-${idx}`,
+          tenant_id: tenant.id,
+          name: it.name || 'Producto',
+          sku: it.sku || '',
+          base_price_usd: Number(it.unit_price_usd) || 0,
+          cost_usd: 0,
+          stock: 999,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        quantity: Number(it.quantity) || 1,
+        unit_price_usd: Number(it.unit_price_usd) || 0,
+        discount_percent: Number(it.discount_percent) || 0,
+      }
+    })
+    setCart(quoteCart)
+
+    // Extraer notas limpias (eliminando tags y UUIDs residuales)
+    const cleanNotes = (sourceQuote.notes || '')
+      .replace(/<!--SHOW_VES:[^>]+-->/gi, '')
+      .replace(/<!--[^>]+-->/g, '')
+      .replace(/\(?Cliente Ref:\s*[a-f0-9-]+\)?/gi, '')
+      .trim()
+    setNotes(cleanNotes)
+    setShowVesPrices(!sourceQuote.notes?.includes('SHOW_VES:false'))
+    setValidDays(15)
   }
 
   function addProductToQuote(product: Product) {
@@ -205,6 +295,7 @@ export default function QuotationsPage() {
       }
 
       setIsCreating(false)
+      setEditingSourceQuote(null)
       setCart([])
       setSelectedCustomer(null)
       setCustomerSearch('')
@@ -421,6 +512,13 @@ export default function QuotationsPage() {
                           <FileDown className="w-3.5 h-3.5" />
                         </button>
                         <button
+                          onClick={() => handleEditQuotation(q)}
+                          className="p-1 rounded-md text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition cursor-pointer"
+                          title={`Modificar presupuesto ${q.quotation_number} (al guardar se creará con un nuevo correlativo)`}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleLoadQuoteIntoPos(q)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition cursor-pointer shadow-2xs"
                           title="Cargar productos de esta cotización directamente al Punto de Venta"
@@ -444,416 +542,498 @@ export default function QuotationsPage() {
         )}
       </div>
 
-      {/* Modal de Creación Minimalista */}
+      {/* Modal de Creación / Modificación Adaptado a la Pantalla */}
       {isCreating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setIsCreating(false)} />
-          <div className="relative z-10 w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 my-6 transition-all space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Generar Nuevo Presupuesto</h2>
-              <button onClick={() => setIsCreating(false)} className="text-slate-400 hover:text-slate-600">
-                ✕
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs"
+            onClick={() => {
+              setIsCreating(false)
+              setEditingSourceQuote(null)
+            }}
+          />
+
+          <div className="relative z-10 w-full max-w-5xl h-[92vh] max-h-[920px] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header Fijo Superior (Siempre visible) */}
+            <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 shrink-0">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-sm ${
+                    editingSourceQuote
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                      : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  }`}
+                >
+                  {editingSourceQuote ? <Copy className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                      {editingSourceQuote
+                        ? `Modificar Cotización ${editingSourceQuote.quotation_number}`
+                        : 'Generar Nuevo Presupuesto'}
+                    </h2>
+                    {editingSourceQuote && (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] uppercase font-extrabold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300">
+                        Nueva Versión
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    {editingSourceQuote
+                      ? 'Al guardar se emitirá como un nuevo presupuesto con el correlativo secuencial siguiente de la tienda.'
+                      : 'Propuesta comercial formal para clientes B2B con validez y cálculo dual de montos.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreating(false)
+                  setEditingSourceQuote(null)
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {modalError && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{modalError}</span>
-              </div>
-            )}
-
-            {/* Buscador de Cliente y Validez */}
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs items-start">
-                <div className="sm:col-span-2 relative">
-                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 flex items-center justify-between">
-                    <span>Buscar Cliente Registrado</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Nombre, Cédula o Teléfono</span>
-                  </label>
-
-                  {selectedCustomer ? (
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-blue-900 dark:text-blue-200 text-xs">
-                            {selectedCustomer.full_name}
-                          </span>
-                          <span className="px-1.5 py-0.2 rounded bg-blue-200 dark:bg-blue-900 text-[10px] font-bold text-blue-800 dark:text-blue-300">
-                            Cliente Registrado
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                          {selectedCustomer.id_number && <span>CI/RIF: <strong>{selectedCustomer.id_number}</strong></span>}
-                          {selectedCustomer.phone && <span>Tlf: <strong>{selectedCustomer.phone}</strong></span>}
-                          {selectedCustomer.email && <span>{selectedCustomer.email}</span>}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCustomer(null)}
-                        className="px-2.5 py-1 text-xs font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition"
-                      >
-                        Cambiar
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          placeholder="Escribe para buscar cliente (ej: Carlos, V-12345, 0412...)"
-                          value={customerSearch}
-                          onChange={(e) => {
-                            setCustomerSearch(e.target.value)
-                            setIsCustomerDropdownOpen(true)
-                          }}
-                          onFocus={() => setIsCustomerDropdownOpen(true)}
-                          className="w-full pl-9 pr-8 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/40"
-                        />
-                        {customerSearch && (
-                          <button
-                            type="button"
-                            onClick={() => setCustomerSearch('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Dropdown Lista de Clientes */}
-                      {isCustomerDropdownOpen && (
-                        <div className="absolute left-0 right-0 top-full mt-1.5 z-30 max-h-48 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl divide-y divide-slate-100 dark:divide-slate-700/60">
-                          {filteredCustomers.length === 0 ? (
-                            <div className="p-3 text-center text-xs text-slate-400">
-                              No se encontraron clientes con "{customerSearch}". Puedes ingresar los datos manualmente abajo.
-                            </div>
-                          ) : (
-                            filteredCustomers.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCustomer(c)
-                                  setIsCustomerDropdownOpen(false)
-                                  setCustomerSearch('')
-                                }}
-                                className="w-full p-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center justify-between transition cursor-pointer"
-                              >
-                                <div>
-                                  <p className="font-bold text-xs text-slate-900 dark:text-white">{c.full_name}</p>
-                                  <div className="flex items-center gap-2.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                                    {c.id_number && <span>CI/RIF: <strong>{c.id_number}</strong></span>}
-                                    {c.phone && <span>Tlf: <strong>{c.phone}</strong></span>}
-                                  </div>
-                                </div>
-                                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md">
-                                  Seleccionar
-                                </span>
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Días de Validez */}
-                <div>
-                  <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Días de Validez</label>
-                  <select
-                    value={validDays}
-                    onChange={(e) => setValidDays(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/40"
-                  >
-                    <option value={7}>7 Días</option>
-                    <option value={15}>15 Días</option>
-                    <option value={30}>30 Días</option>
-                    <option value={60}>60 Días</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Datos del Cliente no registrado si aplica */}
-              {!selectedCustomer && (
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <label className="block text-slate-500 font-semibold mb-1">Nombre / Empresa</label>
-                    <input
-                      type="text"
-                      value={customCustomerName}
-                      onChange={(e) => setCustomCustomerName(e.target.value)}
-                      placeholder="ej. Inversiones Caracas C.A."
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-500 font-semibold mb-1">Cédula / RIF</label>
-                    <div className="flex gap-1">
-                      <select
-                        value={customCustomerIdPrefix}
-                        onChange={(e) => setCustomCustomerIdPrefix(e.target.value as any)}
-                        className="px-1.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none font-bold text-xs cursor-pointer"
-                        title="Tipo de documento (V, J, E, G)"
-                      >
-                        <option value="V-">V-</option>
-                        <option value="J-">J-</option>
-                        <option value="E-">E-</option>
-                        <option value="G-">G-</option>
-                      </select>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={customCustomerIdDigits}
-                        onChange={(e) => setCustomCustomerIdDigits(e.target.value.replace(/\D/g, ''))}
-                        placeholder="12345678"
-                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none font-mono text-xs"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-slate-500 font-semibold mb-1">Teléfono</label>
-                    <input
-                      type="text"
-                      value={customCustomerPhone}
-                      onChange={(e) => setCustomCustomerPhone(e.target.value)}
-                      placeholder="ej. 0414-1234567"
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none"
-                    />
-                  </div>
+            {/* Cuerpo con Scroll Interno y Distribución de 2 Columnas */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+              {modalError && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{modalError}</span>
                 </div>
               )}
-            </div>
 
-            {/* Añadir Productos del Catálogo con Buscador */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs text-slate-700 dark:text-slate-300 font-bold">
-                  Añadir Productos del Catálogo ({products.length})
-                </label>
-                <span className="text-[10px] text-slate-400">Puedes editar el precio y aplicar descuentos abajo</span>
-              </div>
-              <div className="relative mb-2">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Filtrar productos por nombre o SKU..."
-                  value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500/40"
-                />
-              </div>
-              <div className="max-h-36 overflow-y-auto border border-slate-200/60 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {filteredCatalog.length === 0 ? (
-                  <p className="p-3 text-center text-xs text-slate-400">No se encontraron productos coincidentes.</p>
-                ) : (
-                  filteredCatalog.map((p) => (
-                    <div key={p.id} className="p-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                      <div>
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">{p.name}</p>
-                        <p className="text-[11px] text-slate-400">${p.base_price_usd.toFixed(2)} USD {p.sku && `• SKU: ${p.sku}`}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => addProductToQuote(p)}
-                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 rounded-lg font-bold text-xs transition cursor-pointer"
-                      >
-                        + Añadir
-                      </button>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* ─── Columna Izquierda: Cliente, Validez y Catálogo (5 cols) ─── */}
+                <div className="lg:col-span-5 space-y-4">
+                  {/* Datos del Cliente y Validez */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        Cliente y Validez
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">Identificación</span>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
 
-            {/* Artículos en el Presupuesto con Edición de Precio y Descuento */}
-            <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Artículos en el Presupuesto ({cart.length})
-                </h3>
-                <span className="text-[10px] text-slate-400">Edita el precio unitario o asigna % de descuento por ítem</span>
-              </div>
-              {cart.length === 0 ? (
-                <p className="text-xs text-slate-400 py-3 text-center bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                  Selecciona productos arriba para armar la propuesta.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                  {cart.map((item) => {
-                    const discountedUnit = item.unit_price_usd * (1 - (item.discount_percent || 0) / 100)
-                    const lineTotal = discountedUnit * item.quantity
-                    return (
-                      <div
-                        key={item.product.id}
-                        className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 space-y-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-slate-900 dark:text-white text-xs truncate">
-                              {item.product.name}
-                            </p>
-                            {item.product.sku && (
-                              <p className="text-[10px] text-slate-400 font-mono">SKU: {item.product.sku}</p>
-                            )}
+                    {selectedCustomer ? (
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs">
+                        <div className="min-w-0 flex-1 mr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-blue-900 dark:text-blue-200 text-xs truncate">
+                              {selectedCustomer.full_name}
+                            </span>
+                            <span className="shrink-0 px-1.5 py-0.2 rounded bg-blue-200 dark:bg-blue-900 text-[9px] font-bold text-blue-800 dark:text-blue-300">
+                              Registrado
+                            </span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setCart((prev) => prev.filter((i) => i.product.id !== item.product.id))}
-                            className="text-rose-500 hover:text-rose-700 p-1 rounded-md transition"
-                            title="Eliminar ítem"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                            {selectedCustomer.id_number && <span>CI/RIF: <strong>{selectedCustomer.id_number}</strong></span>}
+                            {selectedCustomer.phone && <span>Tlf: <strong>{selectedCustomer.phone}</strong></span>}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomer(null)}
+                          className="shrink-0 px-2 py-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition"
+                        >
+                          Cambiar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {/* Buscador de Clientes */}
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Buscar cliente registrado..."
+                            value={customerSearch}
+                            onChange={(e) => {
+                              setCustomerSearch(e.target.value)
+                              setIsCustomerDropdownOpen(true)
+                            }}
+                            onFocus={() => setIsCustomerDropdownOpen(true)}
+                            className="w-full pl-9 pr-8 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/40"
+                          />
+                          {customerSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setCustomerSearch('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Dropdown Lista de Clientes */}
+                          {isCustomerDropdownOpen && (
+                            <div className="absolute left-0 right-0 top-full mt-1 z-30 max-h-44 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl divide-y divide-slate-100 dark:divide-slate-700/60">
+                              {filteredCustomers.length === 0 ? (
+                                <div className="p-3 text-center text-[11px] text-slate-400">
+                                  Sin coincidencias. Rellena los datos abajo.
+                                </div>
+                              ) : (
+                                filteredCustomers.map((c) => (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCustomer(c)
+                                      setIsCustomerDropdownOpen(false)
+                                      setCustomerSearch('')
+                                    }}
+                                    className="w-full p-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center justify-between transition cursor-pointer"
+                                  >
+                                    <div>
+                                      <p className="font-bold text-xs text-slate-900 dark:text-white">{c.full_name}</p>
+                                      <p className="text-[10px] text-slate-400">
+                                        {c.id_number || ''} {c.phone ? `• ${c.phone}` : ''}
+                                      </p>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md">
+                                      Elegir
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center text-xs">
-                          {/* Control Cantidad */}
+                        {/* Datos Manuales */}
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-2 text-xs">
                           <div>
-                            <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Cantidad</span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => updateItemQuantity(item.product.id, item.quantity - 1)}
-                                className="w-6 h-6 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100"
-                              >
-                                -
-                              </button>
-                              <span className="font-bold text-slate-900 dark:text-white w-6 text-center text-xs">
-                                {item.quantity}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => updateItemQuantity(item.product.id, item.quantity + 1)}
-                                className="w-6 h-6 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100"
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Precio Unitario Editable */}
-                          <div>
-                            <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Precio Unit. ($)</span>
+                            <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Nombre / Razón Social</span>
                             <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={item.unit_price_usd}
-                              onChange={(e) => updateItemPrice(item.product.id, parseFloat(e.target.value) || 0)}
-                              className="w-full px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                              type="text"
+                              value={customCustomerName}
+                              onChange={(e) => setCustomCustomerName(e.target.value)}
+                              placeholder="ej. Inversiones Caracas C.A."
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none text-xs"
                             />
                           </div>
 
-                          {/* Descuento % */}
-                          <div>
-                            <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Descuento (%)</span>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="1"
-                                placeholder="0"
-                                value={item.discount_percent || ''}
-                                onChange={(e) => updateItemDiscount(item.product.id, parseFloat(e.target.value) || 0)}
-                                className="w-full pl-2 pr-5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">%</span>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Cédula / RIF</span>
+                              <div className="flex gap-1">
+                                <select
+                                  value={customCustomerIdPrefix}
+                                  onChange={(e) => setCustomCustomerIdPrefix(e.target.value as any)}
+                                  className="px-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none font-bold text-[11px]"
+                                >
+                                  <option value="V-">V-</option>
+                                  <option value="J-">J-</option>
+                                  <option value="E-">E-</option>
+                                  <option value="G-">G-</option>
+                                </select>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={customCustomerIdDigits}
+                                  onChange={(e) => setCustomCustomerIdDigits(e.target.value.replace(/\D/g, ''))}
+                                  placeholder="12345678"
+                                  className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none font-mono text-[11px]"
+                                />
+                              </div>
                             </div>
-                          </div>
-
-                          {/* Total Línea */}
-                          <div className="text-right">
-                            <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Total Línea</span>
-                            <div className="flex flex-col items-end">
-                              {item.discount_percent > 0 && (
-                                <span className="text-[10px] text-slate-400 line-through">
-                                  ${(item.unit_price_usd * item.quantity).toFixed(2)}
-                                </span>
-                              )}
-                              <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                                ${lineTotal.toFixed(2)}
-                              </span>
+                            <div>
+                              <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Teléfono</span>
+                              <input
+                                type="text"
+                                value={customCustomerPhone}
+                                onChange={(e) => setCustomCustomerPhone(e.target.value)}
+                                placeholder="0414-1234567"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none text-xs"
+                              />
                             </div>
                           </div>
                         </div>
                       </div>
-                    )
-                  })}
+                    )}
+
+                    {/* Días de Validez */}
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700 flex items-center justify-between text-xs">
+                      <label className="text-slate-600 dark:text-slate-400 font-semibold flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        Validez del Presupuesto:
+                      </label>
+                      <select
+                        value={validDays}
+                        onChange={(e) => setValidDays(Number(e.target.value))}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold outline-none text-xs"
+                      >
+                        <option value={7}>7 Días</option>
+                        <option value={15}>15 Días</option>
+                        <option value={30}>30 Días</option>
+                        <option value={60}>60 Días</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Catálogo de Productos para Añadir Rápido */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        Catálogo de Productos
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-semibold">{products.length} disponibles</span>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por nombre o SKU..."
+                        value={catalogSearch}
+                        onChange={(e) => setCatalogSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500/40"
+                      />
+                    </div>
+
+                    <div className="max-h-52 overflow-y-auto border border-slate-200/70 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 text-xs">
+                      {filteredCatalog.length === 0 ? (
+                        <p className="p-4 text-center text-xs text-slate-400">No se encontraron productos.</p>
+                      ) : (
+                        filteredCatalog.map((p) => (
+                          <div key={p.id} className="p-2.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                            <div className="min-w-0 flex-1 mr-2">
+                              <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">{p.name}</p>
+                              <p className="text-[10px] text-slate-400">
+                                ${p.base_price_usd.toFixed(2)} USD {p.sku && `• SKU: ${p.sku}`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addProductToQuote(p)}
+                              className="shrink-0 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                            >
+                              + Añadir
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                {/* ─── Columna Derecha: Artículos en Presupuesto y Opciones (7 cols) ─── */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Artículos en la Cotización */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        Artículos en el Presupuesto ({cart.length})
+                      </h3>
+                      <span className="text-[10px] text-slate-400 font-medium">Precios y descuentos editables</span>
+                    </div>
+
+                    {cart.length === 0 ? (
+                      <div className="py-12 text-center bg-slate-50/60 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700/80">
+                        <Tag className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-1.5" />
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          Aún no has agregado productos a esta cotización.
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Usa el catálogo a la izquierda para seleccionar artículos.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                        {cart.map((item) => {
+                          const discountedUnit = item.unit_price_usd * (1 - (item.discount_percent || 0) / 100)
+                          const lineTotal = discountedUnit * item.quantity
+                          return (
+                            <div
+                              key={item.product.id}
+                              className="p-3 rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2 transition"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-bold text-slate-900 dark:text-white text-xs truncate">
+                                    {item.product.name}
+                                  </p>
+                                  {item.product.sku && (
+                                    <p className="text-[10px] text-slate-400 font-mono">SKU: {item.product.sku}</p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCart((prev) => prev.filter((i) => i.product.id !== item.product.id))}
+                                  className="text-rose-500 hover:text-rose-700 p-1 rounded-md transition cursor-pointer"
+                                  title="Eliminar producto"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center text-xs">
+                                {/* Cantidad */}
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Cantidad</span>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateItemQuantity(item.product.id, item.quantity - 1)}
+                                      className="w-6 h-6 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="font-bold text-slate-900 dark:text-white w-6 text-center text-xs">
+                                      {item.quantity}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateItemQuantity(item.product.id, item.quantity + 1)}
+                                      className="w-6 h-6 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Precio Unitario */}
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Precio Unit. ($)</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={item.unit_price_usd}
+                                    onChange={(e) => updateItemPrice(item.product.id, parseFloat(e.target.value) || 0)}
+                                    className="w-full px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+
+                                {/* Descuento % */}
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Descuento (%)</span>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="1"
+                                      placeholder="0"
+                                      value={item.discount_percent || ''}
+                                      onChange={(e) => updateItemDiscount(item.product.id, parseFloat(e.target.value) || 0)}
+                                      className="w-full pl-2 pr-5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">%</span>
+                                  </div>
+                                </div>
+
+                                {/* Total Línea */}
+                                <div className="text-right">
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-0.5">Total Línea</span>
+                                  <div className="flex flex-col items-end">
+                                    {item.discount_percent > 0 && (
+                                      <span className="text-[10px] text-slate-400 line-through">
+                                        ${(item.unit_price_usd * item.quantity).toFixed(2)}
+                                      </span>
+                                    )}
+                                    <span className="font-extrabold text-slate-900 dark:text-white text-xs">
+                                      ${lineTotal.toFixed(2)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Opciones Adicionales: Precios en Bs. y Observaciones */}
+                  <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label htmlFor="quote-show-ves" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                          Mostrar Precios en Bolívares (Bs. BCV)
+                        </label>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Si se desactiva, la cotización y el PDF se emitirán únicamente en Dólares ($ USD).
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          id="quote-show-ves"
+                          type="checkbox"
+                          checked={showVesPrices}
+                          onChange={(e) => setShowVesPrices(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Notas / Términos del Presupuesto (Opcional)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="ej. Precios válidos por 15 días continuos. Entrega inmediata tras confirmación de pago."
+                        className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500/40 resize-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Opciones Adicionales: Precios en Bs. y Observaciones */}
-            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800">
+            {/* Footer Fijo Inferior (Siempre visible en pantalla) */}
+            <div className="shrink-0 px-5 sm:px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/95 backdrop-blur-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
                 <div>
-                  <label htmlFor="quote-show-ves" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
-                    Mostrar Precios en Bolívares (Bs. BCV)
-                  </label>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Si se desactiva, la cotización y el PDF se emitirán únicamente en Dólares ($ USD).
-                  </p>
+                  <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Estimado</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white">${quoteTotalUsd.toFixed(2)} USD</span>
+                    {showVesPrices ? (
+                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                        • Bs. {quoteTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 font-medium">(Solo en USD)</span>
+                    )}
+                  </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    id="quote-show-ves"
-                    type="checkbox"
-                    checked={showVesPrices}
-                    onChange={(e) => setShowVesPrices(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
-                </label>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200/80 dark:border-slate-700 font-semibold">
+                  {cart.length} productos ({cart.reduce((s, i) => s + i.quantity, 0)} uds)
+                </span>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Notas / Términos del Presupuesto (Opcional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="ej. Precios válidos por 15 días continuos. Entrega inmediata tras confirmación de pago."
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500/40 resize-none"
-                />
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreating(false)
+                    setEditingSourceQuote(null)
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuotation}
+                  disabled={saving || cart.length === 0}
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-xs transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {editingSourceQuote ? 'Guardar como Nueva Cotización' : 'Guardar Presupuesto'}
+                </button>
               </div>
-            </div>
-
-            {/* Totales */}
-            <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl text-xs font-semibold">
-              <span className="text-slate-600 dark:text-slate-400">Total Cotizado:</span>
-              <div className="text-right">
-                <p className="text-sm font-extrabold text-slate-900 dark:text-white">${quoteTotalUsd.toFixed(2)} USD</p>
-                {showVesPrices ? (
-                  <p className="text-[11px] text-blue-600 dark:text-blue-400">Bs. {quoteTotalVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
-                ) : (
-                  <p className="text-[10px] text-slate-400">Solo en Dólares ($)</p>
-                )}
-              </div>
-            </div>
-
-            {/* Acciones */}
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                onClick={() => setIsCreating(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveQuotation}
-                disabled={saving || cart.length === 0}
-                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-xs transition disabled:opacity-50 flex items-center gap-2"
-              >
-                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Guardar Presupuesto
-              </button>
             </div>
           </div>
         </div>
