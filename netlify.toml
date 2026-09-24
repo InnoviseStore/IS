@@ -1,8 +1,6 @@
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
 [build]
   command = "npm run build"
+  publish = ".netlify/static"
 
 [build.environment]
   NODE_VERSION = "20"

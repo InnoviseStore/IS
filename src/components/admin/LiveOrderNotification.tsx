@@ -253,7 +253,7 @@ export function LiveOrderNotification() {
               .from('cash_closings')
               .select('id')
               .eq('tenant_id', tenant.id)
-              .gte('closing_date', todayStr)
+              .gte('created_at', todayStr)
               .limit(1)
 
             if (!closing || closing.length === 0) {
