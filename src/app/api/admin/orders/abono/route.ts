@@ -116,6 +116,7 @@ export async function POST(req: Request) {
       : nowIso
 
     const newPaymentEntry = {
+      id: 'abono_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       method: appliedMethod,
       amount_usd: numericAmountUsd,
       amount_ves: Number(amount_ves) || numericAmountUsd * (Number(exchange_rate) || 91.5),
@@ -278,3 +279,353 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT: Modificar un abono existente con autorización de Clave Admin
+// ─────────────────────────────────────────────────────────────────────────────
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json()
+    const {
+      tenant_id,
+      order_id,
+      abono_id,
+      abono_index,
+      pin,
+      amount_usd,
+      amount_ves,
+      method,
+      payment_method,
+      reference,
+      notes,
+      payment_date,
+      exchange_rate,
+    } = body
+
+    if (!order_id) {
+      return NextResponse.json({ error: 'order_id es requerido.' }, { status: 400 })
+    }
+
+    if (!pin) {
+      return NextResponse.json({ error: 'La Clave de Administrador es requerida para editar un abono.' }, { status: 400 })
+    }
+
+    const supabase = getAdminClient()
+
+    // 1. Obtener la orden existente
+    const { data: order, error: orderErr } = await supabase
+      .from('orders')
+      .select('*, customer:customers(*)')
+      .eq('id', order_id)
+      .single()
+
+    if (orderErr || !order) {
+      return NextResponse.json({ error: 'Orden no encontrada.' }, { status: 404 })
+    }
+
+    const effectiveTenantId = tenant_id || order.tenant_id
+
+    // 2. Validar autenticación de sesión
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero'],
+      targetTenantId: effectiveTenantId,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
+    // 3. Validar Clave Admin de seguridad de la tienda
+    const { data: tenantData } = await supabase
+      .from('tenants')
+      .select('settings')
+      .eq('id', effectiveTenantId)
+      .single()
+
+    const configuredPin = String((tenantData?.settings as any)?.admin_security_pin || '1234').trim()
+    if (String(pin).trim() !== configuredPin) {
+      return NextResponse.json({ error: 'Clave de Administrador incorrecta.' }, { status: 401 })
+    }
+
+    // 4. Ubicar el abono en payment_breakdown
+    const currentPayments = Array.isArray(order.payment_breakdown) ? [...order.payment_breakdown] : []
+    let targetIndex = -1
+
+    if (abono_id) {
+      targetIndex = currentPayments.findIndex((p: any) => p.id === abono_id)
+    }
+
+    if (targetIndex === -1 && typeof abono_index === 'number' && abono_index >= 0 && abono_index < currentPayments.length) {
+      targetIndex = abono_index
+    }
+
+    if (targetIndex === -1) {
+      return NextResponse.json({ error: 'Abono no encontrado en el desglose de la orden.' }, { status: 404 })
+    }
+
+    const oldAbono = currentPayments[targetIndex]
+    const oldAmountUsd = Number(oldAbono.amount_usd) || 0
+    const newAmountUsd = Number(amount_usd) > 0 ? Number(amount_usd) : oldAmountUsd
+    const diffUsd = newAmountUsd - oldAmountUsd
+    const appliedMethod = payment_method || method || oldAbono.method || 'pago_movil'
+    const safeRate = Number(exchange_rate) || Number(oldAbono.exchange_rate_applied) || 91.5
+    const computedVes = Number(amount_ves) || (newAmountUsd * safeRate)
+
+    // Actualizar el abono
+    currentPayments[targetIndex] = {
+      ...oldAbono,
+      id: oldAbono.id || ('abono_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+      method: appliedMethod,
+      amount_usd: newAmountUsd,
+      amount_ves: computedVes,
+      reference: reference !== undefined ? String(reference).trim() : oldAbono.reference,
+      notes: notes !== undefined ? String(notes).trim() : oldAbono.notes,
+      exchange_rate_applied: safeRate,
+      date: payment_date ? new Date(payment_date + 'T12:00:00').toISOString() : (oldAbono.date || new Date().toISOString()),
+      is_abono: true,
+      edited_at: new Date().toISOString(),
+      edited_by: auth.userId,
+    }
+
+    // 5. Recalcular saldo total pagado y remanente de la orden
+    const totalOrderUsd = Number(order.total_usd) || 0
+    const nonCreditPayments = currentPayments.filter((p: any) => p.method !== 'credit_7d')
+    const totalPaidUsd = nonCreditPayments.reduce((acc: number, p: any) => acc + (Number(p.amount_usd) || 0), 0)
+    const remainingUsd = Math.max(0, totalOrderUsd - totalPaidUsd)
+    const isFullyPaid = remainingUsd < 0.01
+
+    // Ajustar o remover la fila credit_7d
+    const creditRowIndex = currentPayments.findIndex((p: any) => p.method === 'credit_7d')
+    if (creditRowIndex > -1) {
+      if (isFullyPaid) {
+        currentPayments.splice(creditRowIndex, 1)
+      } else {
+        currentPayments[creditRowIndex] = {
+          ...currentPayments[creditRowIndex],
+          amount_usd: remainingUsd,
+          amount_ves: remainingUsd * safeRate,
+        }
+      }
+    } else if (!isFullyPaid) {
+      currentPayments.push({
+        method: 'credit_7d',
+        amount_usd: remainingUsd,
+        amount_ves: remainingUsd * safeRate,
+        reference: 'Saldo pendiente restante',
+      })
+    }
+
+    // 6. Actualizar orden
+    const updateOrderPayload: Record<string, any> = {
+      payment_breakdown: currentPayments,
+      status: isFullyPaid ? 'completed' : 'credit',
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data: updatedOrder, error: updateErr } = await supabase
+      .from('orders')
+      .update(updateOrderPayload)
+      .eq('id', order_id)
+      .select('*, customer:customers(*)')
+      .single()
+
+    if (updateErr) {
+      throw new Error(updateErr.message)
+    }
+
+    // 7. Ajustar deuda del cliente
+    let updatedCustomerDebt = 0
+    const effectiveCustomerId = order.customer_id
+    if (effectiveCustomerId) {
+      const { data: cust } = await supabase
+        .from('customers')
+        .select('current_debt_usd')
+        .eq('id', effectiveCustomerId)
+        .single()
+
+      if (cust) {
+        const currentDebt = Number(cust.current_debt_usd) || 0
+        updatedCustomerDebt = Math.max(0, currentDebt - diffUsd)
+        await supabase
+          .from('customers')
+          .update({ current_debt_usd: updatedCustomerDebt })
+          .eq('id', effectiveCustomerId)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Abono modificado exitosamente.',
+      order: updatedOrder,
+      abono: currentPayments[targetIndex],
+      remainingUsd,
+      isFullyPaid,
+      updatedCustomerDebt,
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al modificar el abono.'
+    console.error('Error in PUT /api/admin/orders/abono:', err)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE: Eliminar un abono erróneo con autorización de Clave Admin
+// ─────────────────────────────────────────────────────────────────────────────
+export async function DELETE(req: Request) {
+  try {
+    const body = await req.json()
+    const {
+      tenant_id,
+      order_id,
+      abono_id,
+      abono_index,
+      pin,
+    } = body
+
+    if (!order_id) {
+      return NextResponse.json({ error: 'order_id es requerido.' }, { status: 400 })
+    }
+
+    if (!pin) {
+      return NextResponse.json({ error: 'La Clave de Administrador es requerida para eliminar un abono.' }, { status: 400 })
+    }
+
+    const supabase = getAdminClient()
+
+    // 1. Obtener orden existente
+    const { data: order, error: orderErr } = await supabase
+      .from('orders')
+      .select('*, customer:customers(*)')
+      .eq('id', order_id)
+      .single()
+
+    if (orderErr || !order) {
+      return NextResponse.json({ error: 'Orden no encontrada.' }, { status: 404 })
+    }
+
+    const effectiveTenantId = tenant_id || order.tenant_id
+
+    // 2. Validar autenticación de sesión
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero'],
+      targetTenantId: effectiveTenantId,
+    })
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
+    // 3. Validar Clave Admin de seguridad de la tienda
+    const { data: tenantData } = await supabase
+      .from('tenants')
+      .select('settings')
+      .eq('id', effectiveTenantId)
+      .single()
+
+    const configuredPin = String((tenantData?.settings as any)?.admin_security_pin || '1234').trim()
+    if (String(pin).trim() !== configuredPin) {
+      return NextResponse.json({ error: 'Clave de Administrador incorrecta.' }, { status: 401 })
+    }
+
+    // 4. Ubicar y extraer el abono a eliminar
+    const currentPayments = Array.isArray(order.payment_breakdown) ? [...order.payment_breakdown] : []
+    let targetIndex = -1
+
+    if (abono_id) {
+      targetIndex = currentPayments.findIndex((p: any) => p.id === abono_id)
+    }
+
+    if (targetIndex === -1 && typeof abono_index === 'number' && abono_index >= 0 && abono_index < currentPayments.length) {
+      targetIndex = abono_index
+    }
+
+    if (targetIndex === -1) {
+      return NextResponse.json({ error: 'Abono no encontrado en la orden.' }, { status: 404 })
+    }
+
+    const [removedAbono] = currentPayments.splice(targetIndex, 1)
+    const removedAmountUsd = Number(removedAbono.amount_usd) || 0
+
+    // 5. Recalcular balance de la orden
+    const totalOrderUsd = Number(order.total_usd) || 0
+    const nonCreditPayments = currentPayments.filter((p: any) => p.method !== 'credit_7d')
+    const totalPaidUsd = nonCreditPayments.reduce((acc: number, p: any) => acc + (Number(p.amount_usd) || 0), 0)
+    const remainingUsd = Math.max(0, totalOrderUsd - totalPaidUsd)
+    const isFullyPaid = remainingUsd < 0.01
+
+    const safeRate = Number(order.exchange_rate_at_sale) || 91.5
+
+    // Ajustar o crear fila credit_7d
+    const creditRowIndex = currentPayments.findIndex((p: any) => p.method === 'credit_7d')
+    if (creditRowIndex > -1) {
+      if (isFullyPaid) {
+        currentPayments.splice(creditRowIndex, 1)
+      } else {
+        currentPayments[creditRowIndex] = {
+          ...currentPayments[creditRowIndex],
+          amount_usd: remainingUsd,
+          amount_ves: remainingUsd * safeRate,
+        }
+      }
+    } else if (!isFullyPaid) {
+      currentPayments.push({
+        method: 'credit_7d',
+        amount_usd: remainingUsd,
+        amount_ves: remainingUsd * safeRate,
+        reference: 'Saldo pendiente restaurado por eliminación de abono',
+      })
+    }
+
+    // 6. Actualizar orden (vuelve a 'credit' si queda saldo pendiente)
+    const updateOrderPayload: Record<string, any> = {
+      payment_breakdown: currentPayments,
+      status: isFullyPaid ? 'completed' : 'credit',
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data: updatedOrder, error: updateErr } = await supabase
+      .from('orders')
+      .update(updateOrderPayload)
+      .eq('id', order_id)
+      .select('*, customer:customers(*)')
+      .single()
+
+    if (updateErr) {
+      throw new Error(updateErr.message)
+    }
+
+    // 7. Revertir la deuda del cliente (se le suma de vuelta el monto eliminado)
+    let updatedCustomerDebt = 0
+    const effectiveCustomerId = order.customer_id
+    if (effectiveCustomerId) {
+      const { data: cust } = await supabase
+        .from('customers')
+        .select('current_debt_usd')
+        .eq('id', effectiveCustomerId)
+        .single()
+
+      if (cust) {
+        const currentDebt = Number(cust.current_debt_usd) || 0
+        updatedCustomerDebt = currentDebt + removedAmountUsd
+        await supabase
+          .from('customers')
+          .update({ current_debt_usd: updatedCustomerDebt })
+          .eq('id', effectiveCustomerId)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Abono eliminado exitosamente y saldo restaurado.',
+      order: updatedOrder,
+      removedAbono,
+      remainingUsd,
+      isFullyPaid,
+      updatedCustomerDebt,
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al eliminar el abono.'
+    console.error('Error in DELETE /api/admin/orders/abono:', err)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+

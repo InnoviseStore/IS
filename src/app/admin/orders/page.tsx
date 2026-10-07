@@ -29,6 +29,7 @@ import {
   Calendar,
   Truck,
   Palette,
+  History,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateOrderPdf, INVOICE_PDF_THEMES } from '@/lib/pdfGenerator'
@@ -869,17 +870,33 @@ export default function AdminOrdersPage() {
 
                     {/* Botones de acción rápida */}
                     <div className="flex flex-col sm:flex-row items-center gap-2">
-                      {canAbonar && (
+                      {/* Botón Abonar / Ver Abonos */}
+                      {canAbonar ? (
                         <button
                           type="button"
                           onClick={() => setAbonoOrder(order)}
                           className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md shadow-emerald-500/25 active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
-                          title="Registrar abono a esta factura"
+                          title="Registrar o gestionar abonos de esta factura"
                         >
                           <DollarSign className="w-4 h-4" />
-                          <span>Abonar</span>
+                          <span>
+                            Abonar
+                            {order.payment_breakdown?.some((p: any) => p.is_abono)
+                              ? ` (${order.payment_breakdown.filter((p: any) => p.is_abono).length})`
+                              : ''}
+                          </span>
                         </button>
-                      )}
+                      ) : order.payment_breakdown?.some((p: any) => p.is_abono) ? (
+                        <button
+                          type="button"
+                          onClick={() => setAbonoOrder(order)}
+                          className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 text-xs font-bold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 hover:border-emerald-300"
+                          title="Ver, modificar o eliminar abonos registrados por error (Requiere Clave Admin)"
+                        >
+                          <History className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>Abonos ({order.payment_breakdown.filter((p: any) => p.is_abono).length})</span>
+                        </button>
+                      ) : null}
 
                       {(order.status === 'completed' || order.status === 'credit') && (
                         <button

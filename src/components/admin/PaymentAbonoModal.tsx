@@ -11,7 +11,13 @@ import {
   Monitor,
   Smartphone,
   Copy,
-  Check
+  Check,
+  History,
+  Pencil,
+  Trash2,
+  ArrowLeft,
+  ShieldCheck,
+  Loader2,
 } from 'lucide-react'
 import {
   COUNTRY_CODES,
@@ -20,6 +26,7 @@ import {
   createWhatsAppUrl
 } from '@/lib/whatsapp'
 import { useTenant } from '@/contexts/TenantContext'
+import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
 
 export interface AbonoOrderTarget {
   id: string
@@ -104,15 +111,45 @@ export default function PaymentAbonoModal({
     orderNumber: string
   } | null>(null)
 
+  const [currentOrder, setCurrentOrder] = useState<AbonoOrderTarget>(order)
+  const [activeTab, setActiveTab] = useState<'create' | 'history'>('create')
+
+  // Estados para Edición y Eliminación de Abono con Clave Admin
+  const [editingAbono, setEditingAbono] = useState<any | null>(null)
+  const [editAmountInput, setEditAmountInput] = useState('')
+  const [editCurrency, setEditCurrency] = useState<'USD' | 'VES'>('USD')
+  const [editMethod, setEditMethod] = useState('pago_movil')
+  const [editReference, setEditReference] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editRate, setEditRate] = useState<number>(Number(exchangeRate) || 91.5)
+  const [deletingAbono, setDeletingAbono] = useState<any | null>(null)
+  const [pinModalOpen, setPinModalOpen] = useState(false)
+  const [pinAction, setPinAction] = useState<'edit' | 'delete' | null>(null)
+  const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null)
+
   const [countryCode, setCountryCode] = useState('58')
   const [localPhone, setLocalPhone] = useState('')
   const [copiedReceipt, setCopiedReceipt] = useState(false)
 
+  // Sincronizar currentOrder si la prop order cambia
+  useEffect(() => {
+    if (order) {
+      setCurrentOrder(order)
+    }
+  }, [order])
+
   // Inicializar o resetear estado al abrir o cambiar de orden
   useEffect(() => {
     if (isOpen && order) {
+      setCurrentOrder(order)
       setSuccessResult(null)
       setError(null)
+      setActionSuccessMsg(null)
+      setEditingAbono(null)
+      setDeletingAbono(null)
+      setPinModalOpen(false)
+      setPinAction(null)
       setAmountInput('')
       setReference('')
       setNotes('')
@@ -178,16 +215,145 @@ export default function PaymentAbonoModal({
   }
 
   // Calcular lo pagado acumulado hasta ahora
-  const breakdown = Array.isArray(order?.payment_breakdown) ? order.payment_breakdown : []
+  const breakdown = Array.isArray(currentOrder?.payment_breakdown) ? currentOrder.payment_breakdown : []
   const pagadoPrevioUsd = breakdown.reduce((acc: number, item: any) => {
     if (item.method === 'credit_7d') return acc
     return acc + (Number(item.amount_usd) || 0)
   }, 0)
 
-  const totalUsd = Number(order?.total_usd) || 0
+  const totalUsd = Number(currentOrder?.total_usd) || 0
   const saldoPendienteUsd = Math.max(0, totalUsd - pagadoPrevioUsd)
   const safeAppliedRate = appliedRate > 0 ? appliedRate : (Number(exchangeRate) || 91.5)
   const saldoPendienteVes = saldoPendienteUsd * safeAppliedRate
+
+  // Lista de abonos registrados en la orden
+  const existingAbonos = useMemo(() => {
+    return breakdown.filter((item: any) => item.is_abono)
+  }, [breakdown])
+
+  // Iniciar edición de un abono existente
+  const handleStartEdit = (abono: any) => {
+    setError(null)
+    setActionSuccessMsg(null)
+    setEditingAbono(abono)
+    setEditAmountInput(abono.amount_usd ? String(abono.amount_usd) : '')
+    setEditCurrency('USD')
+    setEditMethod(abono.method || 'pago_movil')
+    setEditReference(abono.reference || '')
+    setEditNotes(abono.notes || '')
+    setEditDate(abono.date ? abono.date.split('T')[0] : todayStr)
+    setEditRate(Number(abono.exchange_rate_applied) || safeAppliedRate)
+  }
+
+  // Iniciar eliminación de un abono
+  const handleStartDelete = (abono: any) => {
+    setError(null)
+    setActionSuccessMsg(null)
+    setDeletingAbono(abono)
+    setPinAction('delete')
+    setPinModalOpen(true)
+  }
+
+  // Confirmar edición enviando a la API con PIN Admin
+  const handleConfirmEdit = async (pin: string) => {
+    if (!editingAbono || !currentOrder) return
+    setError(null)
+    setActionSuccessMsg(null)
+
+    const numVal = parseFloat(editAmountInput) || 0
+    if (numVal <= 0) {
+      setError('El monto del abono debe ser mayor a 0.')
+      return
+    }
+
+    const editAmountUsd = editCurrency === 'USD' ? numVal : numVal / editRate
+    const editAmountVes = editCurrency === 'VES' ? numVal : numVal * editRate
+
+    try {
+      setLoading(true)
+      const effectiveTenantId = currentOrder.tenant_id || tenant?.id
+
+      const res = await fetch('/api/admin/orders/abono', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: effectiveTenantId,
+          order_id: currentOrder.id,
+          abono_id: editingAbono.id,
+          pin,
+          amount_usd: editAmountUsd,
+          amount_ves: editAmountVes,
+          method: editMethod,
+          payment_method: editMethod,
+          reference: editReference,
+          notes: editNotes,
+          payment_date: editDate,
+          exchange_rate: editRate,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al modificar el abono.')
+      }
+
+      if (data.order) {
+        setCurrentOrder(data.order)
+      }
+      setEditingAbono(null)
+      setPinAction(null)
+      setActionSuccessMsg('✓ Abono modificado exitosamente con clave admin.')
+      if (onAbonoSuccess) {
+        onAbonoSuccess()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error al modificar el abono.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Confirmar eliminación enviando a la API con PIN Admin
+  const handleConfirmDelete = async (pin: string) => {
+    if (!deletingAbono || !currentOrder) return
+    setError(null)
+    setActionSuccessMsg(null)
+
+    try {
+      setLoading(true)
+      const effectiveTenantId = currentOrder.tenant_id || tenant?.id
+
+      const res = await fetch('/api/admin/orders/abono', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: effectiveTenantId,
+          order_id: currentOrder.id,
+          abono_id: deletingAbono.id,
+          pin,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al eliminar el abono.')
+      }
+
+      if (data.order) {
+        setCurrentOrder(data.order)
+      }
+      setDeletingAbono(null)
+      setPinAction(null)
+      setActionSuccessMsg('✓ Abono eliminado y saldo pendiente restaurado con éxito.')
+      if (onAbonoSuccess) {
+        onAbonoSuccess()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error al eliminar el abono.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Calcular abono en USD y VES en base a lo que tipea el usuario
   const numericVal = parseFloat(amountInput) || 0
@@ -351,10 +517,10 @@ export default function PaymentAbonoModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                Registrar Abono a Factura
+                Gestión de Abonos a Factura
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Orden #{order.order_number} &bull; Cliente: {(order as any).customers?.full_name || 'Cliente'}
+                Orden #{currentOrder?.order_number} &bull; Cliente: {(currentOrder as any)?.customers?.full_name || 'Cliente'}
               </p>
             </div>
           </div>
@@ -366,9 +532,54 @@ export default function PaymentAbonoModal({
           </button>
         </div>
 
+        {/* Selector de Pestañas: Registrar Abono vs Historial */}
+        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-800/50 px-6 pt-2 gap-2">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('create'); setEditingAbono(null); setDeletingAbono(null); }}
+            className={`pb-2.5 px-3 text-xs font-bold transition border-b-2 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'create'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Registrar Abono</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('history'); }}
+            className={`pb-2.5 px-3 text-xs font-bold transition border-b-2 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'history'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Historial y Modificación ({existingAbonos.length})</span>
+          </button>
+        </div>
+
         {/* Contenido / Estado de Éxito o Formulario */}
         <div className="p-6 overflow-y-auto space-y-5">
-          {successResult ? (
+          {actionSuccessMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{actionSuccessMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionSuccessMsg(null)}
+                className="text-emerald-600 dark:text-emerald-400 hover:underline text-[11px]"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'create' ? (
+            successResult ? (
             <div className="text-center py-2 space-y-4">
               <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-2">
                 <CheckCircle2 className="w-10 h-10" />
@@ -747,8 +958,285 @@ export default function PaymentAbonoModal({
                 </button>
               </div>
             </form>
+          )
+        ) : (
+            /* ─── Pestaña: Historial y Modificación de Abonos ─── */
+            <div className="space-y-4">
+              {/* Vista 1: Modo Edición de Abono */}
+              {editingAbono ? (
+                <div className="space-y-4 bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAbono(null)}
+                      className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Volver al listado</span>
+                    </button>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center gap-1">
+                      <Pencil className="w-3 h-3" />
+                      Editando Abono
+                    </span>
+                  </div>
+
+                  <div className="space-y-3.5">
+                    {/* Monto y Moneda */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Monto Corregido
+                      </label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+                            {editCurrency === 'USD' ? '$' : 'Bs.'}
+                          </span>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0.01"
+                            value={editAmountInput}
+                            onChange={(e) => setEditAmountInput(e.target.value)}
+                            placeholder="0.00"
+                            className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono font-bold text-base focus:ring-2 focus:ring-amber-500 outline-none"
+                          />
+                        </div>
+                        <div className="flex rounded-xl p-1 bg-slate-200 dark:bg-slate-800 text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setEditCurrency('USD')}
+                            className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${editCurrency === 'USD' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500'}`}
+                          >
+                            USD ($)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditCurrency('VES')}
+                            className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${editCurrency === 'VES' ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500'}`}
+                          >
+                            VES (Bs.)
+                          </button>
+                        </div>
+                      </div>
+                      {editAmountInput && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                          {editCurrency === 'USD'
+                            ? `Equivalente en Bs.: Bs. ${(parseFloat(editAmountInput) * editRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Tasa: Bs. ${editRate.toFixed(2)})`
+                            : `Equivalente en USD: $${(parseFloat(editAmountInput) / editRate).toFixed(2)} USD (Tasa: Bs. ${editRate.toFixed(2)})`
+                          }
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Método de Pago */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Método de Pago
+                      </label>
+                      <select
+                        value={editMethod}
+                        onChange={(e) => setEditMethod(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+                      >
+                        {PAYMENT_METHODS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Referencia y Fecha */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          N° Referencia
+                        </label>
+                        <input
+                          type="text"
+                          value={editReference}
+                          onChange={(e) => setEditReference(e.target.value)}
+                          placeholder="Ej: 123456"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Fecha del Pago
+                        </label>
+                        <input
+                          type="date"
+                          value={editDate}
+                          onChange={(e) => setEditDate(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Notas */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Observaciones / Notas
+                      </label>
+                      <input
+                        type="text"
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        placeholder="Motivo de corrección o nota del abono…"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                      />
+                    </div>
+
+                    {error && (
+                      <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingAbono(null)}
+                        className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const numVal = parseFloat(editAmountInput) || 0
+                          if (numVal <= 0) {
+                            setError('Ingresa un monto válido para guardar.')
+                            return
+                          }
+                          setPinAction('edit')
+                          setPinModalOpen(true)
+                        }}
+                        disabled={loading || !editAmountInput}
+                        className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Guardar con Clave Admin</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Vista de Lista de Abonos */
+                <div className="space-y-3">
+                  {existingAbonos.length === 0 ? (
+                    <div className="text-center py-10 px-4 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+                      <History className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                        No hay abonos registrados para esta factura.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Puedes registrar un nuevo abono desde la pestaña "Registrar Abono".
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between pb-1">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Abonos Realizados ({existingAbonos.length})
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Total abonado: <strong className="text-emerald-600 dark:text-emerald-400 font-extrabold">${pagadoPrevioUsd.toFixed(2)} USD</strong>
+                        </span>
+                      </div>
+
+                      {existingAbonos.map((abono: any, idx: number) => {
+                        const methodObj = PAYMENT_METHODS.find((m) => m.id === abono.method)
+                        const methodLabel = methodObj?.label || abono.method || 'Abono'
+                        const abonoDateStr = abono.date ? new Date(abono.date).toLocaleDateString('es-VE') : 'Fecha n/d'
+
+                        return (
+                          <div
+                            key={abono.id || idx}
+                            className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-extrabold uppercase">
+                                    {methodLabel}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 font-medium">
+                                    {abonoDateStr}
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex items-baseline gap-2">
+                                  <span className="text-base font-extrabold text-slate-900 dark:text-white">
+                                    ${Number(abono.amount_usd || 0).toFixed(2)} USD
+                                  </span>
+                                  <span className="text-xs text-slate-500 font-mono">
+                                    (Bs. {Number(abono.amount_ves || (Number(abono.amount_usd || 0) * (Number(abono.exchange_rate_applied) || 1))).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                  </span>
+                                </div>
+                                {abono.reference && (
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                                    Ref: <span className="font-bold text-slate-700 dark:text-slate-300">{abono.reference}</span>
+                                  </p>
+                                )}
+                                {abono.notes && (
+                                  <p className="text-[11px] text-slate-400 italic mt-0.5">
+                                    "{abono.notes}"
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Botones de Editar y Eliminar con PIN Admin */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEdit(abono)}
+                                  className="px-2.5 py-1.5 rounded-xl border border-amber-200 dark:border-amber-800/80 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                  title="Modificar este abono por error (Requiere Clave Admin)"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartDelete(abono)}
+                                  className="px-2.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/80 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                  title="Eliminar este abono por error (Requiere Clave Admin)"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Eliminar</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
+
+        {/* Modal de Seguridad de Clave Admin para Autorizar Cambios */}
+        <AdminAuthPinModal
+          isOpen={pinModalOpen}
+          onClose={() => {
+            setPinModalOpen(false)
+            setPinAction(null)
+          }}
+          onSuccess={(pin) => {
+            if (pinAction === 'edit') handleConfirmEdit(pin)
+            if (pinAction === 'delete') handleConfirmDelete(pin)
+          }}
+          title={pinAction === 'edit' ? 'Autorizar Edición de Abono' : 'Autorizar Eliminación de Abono'}
+          description={
+            pinAction === 'edit'
+              ? 'Ingresa la Clave de Administrador de la tienda para guardar las modificaciones y recalcular la deuda.'
+              : 'Ingresa la Clave de Administrador de la tienda para anular este abono y restaurar la deuda del cliente.'
+          }
+        />
       </div>
     </div>
   )
