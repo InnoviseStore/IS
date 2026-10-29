@@ -38,37 +38,16 @@ import {
 import { getProductBarcode, injectBarcodeIntoDescription } from '@/lib/barcodeUtils'
 
 import { parseColorVariants, type ColorVariantItem } from '@/lib/colorVariants'
-
-export interface ApparelAttributes {
-  garmentType?: string
-  gender?: string
-  sizes: string[]
-}
-
-function parseApparelAttributes(desc?: string | null): { cleanDescription: string; apparel: ApparelAttributes } {
-  if (!desc) return { cleanDescription: '', apparel: { sizes: [] } }
-  const match = desc.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
-  if (!match) {
-    return { cleanDescription: desc, apparel: { sizes: [] } }
-  }
-  try {
-    const apparel = JSON.parse(match[1]) as ApparelAttributes
-    const cleanDescription = desc
-      .replace(/<!--APPAREL_ATTRIBUTES:(.*?)-->/, '')
-      .replace(/^🏷️[^\n]+\n\n?/, '')
-      .trim()
-    return {
-      cleanDescription,
-      apparel: {
-        garmentType: apparel.garmentType || '',
-        gender: apparel.gender || '',
-        sizes: Array.isArray(apparel.sizes) ? apparel.sizes : [],
-      },
-    }
-  } catch {
-    return { cleanDescription: desc, apparel: { sizes: [] } }
-  }
-}
+import {
+  parseApparelAttributes,
+  serializeApparelAttributes,
+  type ApparelAttributes,
+  type SizeStockItem,
+} from '@/lib/apparelAttributes'
+import {
+  GuidedProductWizard,
+  type GuidedProductWizardPayload,
+} from './inventory/GuidedProductWizard'
 
 interface Props {
   product: Product | null
@@ -185,7 +164,11 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [apparelGarmentType, setApparelGarmentType] = useState(isFashionRubro ? (parsedApparel.apparel.garmentType || '') : '')
   const [apparelGender, setApparelGender] = useState(isFashionRubro ? (parsedApparel.apparel.gender || '') : '')
   const [apparelSizes, setApparelSizes] = useState<string[]>(isFashionRubro ? (parsedApparel.apparel.sizes || []) : [])
+  const [apparelSizeStock, setApparelSizeStock] = useState<SizeStockItem[]>(isFashionRubro ? (parsedApparel.apparel.sizeStock || []) : [])
   const [customSizeInput, setCustomSizeInput] = useState('')
+
+  // Modo de creación: 'wizard' (Asistente Guiado Inteligente) o 'traditional' (Formulario Directo)
+  const [modalMode, setModalMode] = useState<'wizard' | 'traditional'>(() => (!product ? 'wizard' : 'traditional'))
 
   // Variantes de color
   const [colors, setColors] = useState<ColorVariantItem[]>(parsedInitial.colors)
@@ -661,19 +644,14 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     }
 
     // Si tiene atributos de ropa/calzado y la tienda es del rubro moda
-    if (isFashionRubro && (apparelGarmentType || apparelGender || apparelSizes.length > 0)) {
+    if (isFashionRubro && (apparelGarmentType || apparelGender || apparelSizes.length > 0 || apparelSizeStock.length > 0)) {
       const apparelData: ApparelAttributes = {
         garmentType: apparelGarmentType || undefined,
         gender: apparelGender || undefined,
         sizes: apparelSizes,
+        sizeStock: apparelSizeStock.length > 0 ? apparelSizeStock : undefined,
       }
-      const badgeParts = []
-      if (apparelGarmentType) badgeParts.push(apparelGarmentType)
-      if (apparelGender) badgeParts.push(apparelGender)
-      if (apparelSizes.length > 0) badgeParts.push(`Tallas: ${apparelSizes.join(', ')}`)
-
-      const badgeLine = badgeParts.length > 0 ? `🏷️ ${badgeParts.join(' | ')}\n\n` : ''
-      baseDesc = `<!--APPAREL_ATTRIBUTES:${JSON.stringify(apparelData)}-->\n${badgeLine}${baseDesc}`
+      baseDesc = serializeApparelAttributes(baseDesc, apparelData)
     }
 
     const finalDescription = colors.length > 0
@@ -722,6 +700,123 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     }
   }
 
+  async function handleSaveFromWizard(payload: GuidedProductWizardPayload) {
+    if (!tenant) {
+      setError('No hay una tienda activa seleccionada.')
+      return
+    }
+
+    const features = getTenantFeatures(tenant)
+    if (!product && features.maxProducts !== Infinity) {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { count } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant.id)
+          .eq('is_active', true)
+        if ((count ?? 0) >= features.maxProducts) {
+          setError(`Has alcanzado el límite de ${features.maxProducts} productos del ${features.name}. Para agregar más productos solicita la actualización a Plan Pro al administrador.`)
+          return
+        }
+      } catch (err) {
+        console.warn('Could not check product limit:', err)
+      }
+    }
+
+    setLoading(true)
+    setError(null)
+
+    const allImages = [...payload.images]
+    payload.colors.forEach((c) => {
+      if (c.image_url && !allImages.includes(c.image_url)) {
+        allImages.push(c.image_url)
+      }
+    })
+    const primaryImage = allImages[0] || null
+
+    let baseDesc = cleanProductDescription(payload.description || '')
+    if (payload.brand.trim()) {
+      baseDesc = injectBrandIntoDescription(baseDesc, payload.brand.trim())
+    }
+    if (payload.subcategory.trim()) {
+      baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(payload.subcategory)}-->\n${baseDesc}`
+    }
+    if (payload.category.trim()) {
+      baseDesc = `<!--CATEGORY:${cleanCategoryName(payload.category)}-->\n${baseDesc}`
+    }
+
+    if (payload.apparel && (payload.apparel.garmentType || payload.apparel.gender || (payload.apparel.sizes && payload.apparel.sizes.length > 0) || (payload.apparel.sizeStock && payload.apparel.sizeStock.length > 0))) {
+      baseDesc = serializeApparelAttributes(baseDesc, payload.apparel)
+    }
+
+    const finalDescription = payload.colors.length > 0
+      ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(payload.colors)}-->`
+      : baseDesc
+
+    const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, payload.barcode)
+
+    const apiPayload = {
+      tenant_id: tenant.id,
+      name: payload.name.trim(),
+      description: finalDescriptionWithBarcode || null,
+      sku: payload.sku.trim() || null,
+      barcode: payload.barcode.trim() || null,
+      base_price_usd: payload.priceUsd,
+      cost_usd: payload.costUsd || null,
+      stock: payload.stock,
+      is_active: payload.isActive,
+      image_url: primaryImage,
+      images: allImages,
+    }
+
+    try {
+      const response = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...apiPayload,
+          id: isEditing ? product!.id : undefined,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || result.error) {
+        setError(result.error || 'Error al guardar el producto.')
+        setLoading(false)
+        return
+      }
+
+      onSaved()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error de red o conexión'
+      setError(`Error inesperado: ${msg}`)
+      setLoading(false)
+    }
+  }
+
+  function handleSwitchToTraditional(draftData: Partial<GuidedProductWizardPayload>) {
+    if (draftData.name) setName(draftData.name)
+    if (draftData.category) setCategory(cleanCategoryName(draftData.category))
+    if (draftData.subcategory) setSubcategory(cleanSubcategoryName(draftData.subcategory))
+    if (draftData.brand) setBrand(draftData.brand)
+    if (draftData.sku) setSku(draftData.sku)
+    if (draftData.barcode) setBarcode(draftData.barcode)
+    if (draftData.priceUsd !== undefined) setPriceUsd(draftData.priceUsd.toString())
+    if (draftData.costUsd !== undefined && draftData.costUsd !== null) setCostUsd(draftData.costUsd.toString())
+    if (draftData.stock !== undefined) setStock(draftData.stock.toString())
+    if (draftData.images) setImages(draftData.images)
+    if (draftData.colors) setColors(draftData.colors)
+    if (draftData.apparel) {
+      if (draftData.apparel.garmentType) setApparelGarmentType(draftData.apparel.garmentType)
+      if (draftData.apparel.gender) setApparelGender(draftData.apparel.gender)
+      if (draftData.apparel.sizes) setApparelSizes(draftData.apparel.sizes)
+      if (draftData.apparel.sizeStock) setApparelSizeStock(draftData.apparel.sizeStock)
+    }
+    setModalMode('traditional')
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       {/* Backdrop con confirmación si está dirty */}
@@ -767,28 +862,84 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
         </div>
       )}
 
-      <div 
-        style={{ width: '100%', maxWidth: '820px', maxHeight: '92vh' }}
-        className="relative z-10 flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden transition-all my-auto"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
-          <div>
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
-              {isEditing ? 'Editar Producto' : 'Nuevo Producto'}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Tienda: <span className="font-semibold text-blue-600 dark:text-blue-400">{tenant?.name}</span>
-            </p>
-          </div>
-          <button 
-            type="button"
-            onClick={handleRequestClose} 
-            className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      {/* Si está en modo Asistente Guiado Inteligente */}
+      {modalMode === 'wizard' ? (
+        <div
+          style={{ width: '100%', maxWidth: '820px', maxHeight: '92vh' }}
+          className="relative z-10 flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden transition-all my-auto"
+        >
+          <GuidedProductWizard
+            tenantName={tenant?.name}
+            exchangeRate={exchangeRate}
+            currencyType={currencyType}
+            currencySymbol={currencySymbol}
+            initialData={{
+              name,
+              category,
+              subcategory,
+              brand,
+              sku,
+              barcode,
+              priceUsd: parseFloat(priceUsd) || 0,
+              costUsd: parseFloat(costUsd) || null,
+              stock: parseInt(stock) || 0,
+              isActive,
+              images,
+              colors,
+              apparel: {
+                garmentType: apparelGarmentType,
+                gender: apparelGender,
+                sizes: apparelSizes,
+                sizeStock: apparelSizeStock,
+              },
+            }}
+            onSave={handleSaveFromWizard}
+            onSwitchToTraditional={handleSwitchToTraditional}
+            onCancel={handleRequestClose}
+            isSubmitting={loading}
+          />
         </div>
+      ) : (
+        <div 
+          style={{ width: '100%', maxWidth: '820px', maxHeight: '92vh' }}
+          className="relative z-10 flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden transition-all my-auto"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                  {isEditing ? 'Editar Producto' : 'Nuevo Producto'}
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  Modo Tradicional ⚡
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Tienda: <span className="font-semibold text-blue-600 dark:text-blue-400">{tenant?.name}</span>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setModalMode('wizard')}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition cursor-pointer"
+                title="Cambiar al Asistente Guiado Inteligente"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                <span>Asistente Guiado ✨</span>
+              </button>
+
+              <button 
+                type="button"
+                onClick={handleRequestClose} 
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs font-medium">
@@ -1798,6 +1949,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
           </div>
         </form>
       </div>
+      )}
 
       {/* Modal de confirmación para eliminar producto desde el modal */}
       {showDeleteConfirm && (
