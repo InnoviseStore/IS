@@ -74,21 +74,30 @@ export async function GET(req: Request) {
     const startDateOnly = startIso.split('T')[0]
     const endDateOnly = endIso.split('T')[0]
 
-    // 3. Consultas paralelas: Órdenes del período, Gastos del período, Inventario actual y Cuentas por cobrar
+    // 3. Consultas paralelas: Órdenes del período, Órdenes anteriores para abonos, Gastos del período, Inventario y Cuentas por cobrar
     const [
       { data: ordersData },
+      { data: olderOrdersData },
       { data: expensesData },
       { data: productsData },
       { data: customersData },
     ] = await Promise.all([
-      // Órdenes facturadas en el rango con sus order_items
+      // Órdenes facturadas en el rango con sus order_items y payment_breakdown
       supabase
         .from('orders')
-        .select('id, total_usd, total_ves, subtotal_usd, notes, status, created_at, order_items(product_id, quantity, unit_price_usd, subtotal_usd)')
+        .select('id, order_number, total_usd, total_ves, subtotal_usd, notes, status, created_at, payment_breakdown, order_items(product_id, quantity, unit_price_usd, subtotal_usd)')
         .eq('tenant_id', tenantId)
         .in('status', ['completed', 'credit'])
         .gte('created_at', startIso)
         .lte('created_at', endIso),
+
+      // Órdenes emitidas ANTES del período para capturar abonos cobrados en este período
+      supabase
+        .from('orders')
+        .select('id, order_number, total_usd, payment_breakdown, created_at')
+        .eq('tenant_id', tenantId)
+        .lt('created_at', startIso)
+        .or('status.eq.credit,status.eq.completed'),
 
       // Gastos en el rango
       supabase
@@ -105,7 +114,7 @@ export async function GET(req: Request) {
         .eq('tenant_id', tenantId)
         .eq('is_active', true),
 
-      // Clientes para cuentas por cobrar
+      // Clientes para cuentas por cobrar acumuladas
       supabase
         .from('customers')
         .select('id, full_name, phone, current_debt_usd')
@@ -132,9 +141,9 @@ export async function GET(req: Request) {
       }
     }
 
-    // 4. Calcular métricas de P&L de órdenes
-    let totalSalesUsd = 0
-    let cogsUsd = 0 // Costo de los productos vendidos
+    // 4. Calcular Facturación (Ventas Facturadas - Criterio Devengado) y Costo de Mercancía
+    let totalBilledUsd = 0
+    let cogsUsd = 0
     const ordersList = ordersData || []
 
     for (const ord of ordersList) {
@@ -142,7 +151,7 @@ export async function GET(req: Request) {
       const merchandiseUsd = (ord.subtotal_usd !== undefined && Number(ord.subtotal_usd) > 0)
         ? Number(ord.subtotal_usd)
         : Math.max(0, (Number(ord.total_usd) || 0) - del.amountUsd)
-      totalSalesUsd += merchandiseUsd
+      totalBilledUsd += merchandiseUsd
       const items = ord.order_items || []
       for (const it of items) {
         const pId = it.product_id
@@ -152,10 +161,95 @@ export async function GET(req: Request) {
       }
     }
 
-    const grossProfitUsd = Math.max(0, totalSalesUsd - cogsUsd)
-    const grossMarginPercent = totalSalesUsd > 0 ? (grossProfitUsd / totalSalesUsd) * 100 : 0
+    const grossProfitUsd = Math.max(0, totalBilledUsd - cogsUsd)
+    const grossMarginPercent = totalBilledUsd > 0 ? (grossProfitUsd / totalBilledUsd) * 100 : 0
 
-    // 5. Separar gastos operativos de reinversión en inventario
+    // 5. CÁLCULO DE INGRESOS REALES COBRADOS (Criterio de Caja / Flujo de Efectivo) Y MÉTODOS DE PAGO
+    // Mapa para consolidar ingresos por tipo de pago
+    const methodsMap: Record<string, { total_usd: number; total_ves: number; count: number; label: string; currency: 'USD' | 'VES' }> = {
+      pago_movil: { total_usd: 0, total_ves: 0, count: 0, label: 'Pago Móvil (VES)', currency: 'VES' },
+      cash_usd: { total_usd: 0, total_ves: 0, count: 0, label: 'Efectivo Divisas (USD)', currency: 'USD' },
+      cash_ves: { total_usd: 0, total_ves: 0, count: 0, label: 'Efectivo Bolívares (VES)', currency: 'VES' },
+      zelle: { total_usd: 0, total_ves: 0, count: 0, label: 'Zelle (USD)', currency: 'USD' },
+      binance_pay: { total_usd: 0, total_ves: 0, count: 0, label: 'Binance Pay (USDT)', currency: 'USD' },
+      transfer_ves: { total_usd: 0, total_ves: 0, count: 0, label: 'Transferencia Bancaria (VES)', currency: 'VES' },
+      debit_ves: { total_usd: 0, total_ves: 0, count: 0, label: 'Punto de Venta / Débito (VES)', currency: 'VES' },
+      other: { total_usd: 0, total_ves: 0, count: 0, label: 'Otros Métodos', currency: 'USD' },
+    }
+
+    let directCollectedUsd = 0
+    let abonosCollectedUsd = 0
+    let creditPendingGeneratedUsd = 0
+
+    // A. Procesar pagos de órdenes emitidas en el período
+    for (const ord of ordersList) {
+      const breakdown = Array.isArray(ord.payment_breakdown) ? ord.payment_breakdown : []
+      for (const p of breakdown) {
+        const amtUsd = Number(p.amount_usd) || 0
+        const amtVes = Number(p.amount_ves) || (amtUsd * (Number(p.exchange_rate_applied) || exchangeRate))
+
+        if (p.method === 'credit_7d') {
+          // Ventas a crédito que quedaron pendientes (NO son ingresos en caja aún)
+          creditPendingGeneratedUsd += amtUsd
+        } else if (p.is_abono) {
+          // Verificar si la fecha del abono cae en el rango del período
+          const abonoDateStr = p.date || ord.created_at
+          if (abonoDateStr >= startIso && abonoDateStr <= endIso) {
+            abonosCollectedUsd += amtUsd
+            const methodKey = methodsMap[p.method] ? p.method : 'other'
+            methodsMap[methodKey].total_usd += amtUsd
+            methodsMap[methodKey].total_ves += amtVes
+            methodsMap[methodKey].count += 1
+          }
+        } else {
+          // Pago inmediato cobrado en el momento de la venta
+          directCollectedUsd += amtUsd
+          const methodKey = methodsMap[p.method] ? p.method : 'other'
+          methodsMap[methodKey].total_usd += amtUsd
+          methodsMap[methodKey].total_ves += amtVes
+          methodsMap[methodKey].count += 1
+        }
+      }
+    }
+
+    // B. Procesar abonos cobrados en este período correspondientes a órdenes anteriores
+    for (const ord of olderOrdersData || []) {
+      const breakdown = Array.isArray(ord.payment_breakdown) ? ord.payment_breakdown : []
+      for (const p of breakdown) {
+        if (p.is_abono) {
+          const abonoDateStr = p.date
+          if (abonoDateStr && abonoDateStr >= startIso && abonoDateStr <= endIso) {
+            const amtUsd = Number(p.amount_usd) || 0
+            const amtVes = Number(p.amount_ves) || (amtUsd * (Number(p.exchange_rate_applied) || exchangeRate))
+            abonosCollectedUsd += amtUsd
+            const methodKey = methodsMap[p.method] ? p.method : 'other'
+            methodsMap[methodKey].total_usd += amtUsd
+            methodsMap[methodKey].total_ves += amtVes
+            methodsMap[methodKey].count += 1
+          }
+        }
+      }
+    }
+
+    // Total Ingresos Reales Cobrados (Caja)
+    const totalCollectedUsd = directCollectedUsd + abonosCollectedUsd
+    const totalCollectedVes = totalCollectedUsd * exchangeRate
+
+    // Armar lista de métodos con porcentajes
+    const paymentMethodsBreakdown = Object.entries(methodsMap)
+      .map(([key, val]) => ({
+        method: key,
+        label: val.label,
+        currency: val.currency,
+        total_usd: parseFloat(val.total_usd.toFixed(2)),
+        total_ves: parseFloat(val.total_ves.toFixed(2)),
+        count: val.count,
+        percentage: totalCollectedUsd > 0 ? parseFloat(((val.total_usd / totalCollectedUsd) * 100).toFixed(1)) : 0,
+      }))
+      .filter((m) => m.count > 0 || m.total_usd > 0)
+      .sort((a, b) => b.total_usd - a.total_usd)
+
+    // 6. Separar gastos operativos de reinversión en inventario
     const allExpenses = expensesData || []
     let operatingExpensesUsd = 0
     let reinvestmentUsd = 0
@@ -171,37 +265,55 @@ export async function GET(req: Request) {
       }
     }
 
-    // Utilidad Neta Real = Utilidad Bruta - Gastos Operativos
+    // Flujo de Caja Neto Real = Dinero Real Cobrado - Gastos Operativos
+    const netCashFlowUsd = totalCollectedUsd - operatingExpensesUsd
+    // Utilidad Neta Devengada = Utilidad Bruta Facturada - Gastos Operativos
     const netProfitUsd = grossProfitUsd - operatingExpensesUsd
-    const netMarginPercent = totalSalesUsd > 0 ? (netProfitUsd / totalSalesUsd) * 100 : 0
+    const netMarginPercent = totalBilledUsd > 0 ? (netProfitUsd / totalBilledUsd) * 100 : 0
 
-    // 6. Cuentas por Cobrar
+    // 7. Cuentas por Cobrar Totales Acumuladas
     const accountsReceivableUsd = (customersData || []).reduce(
       (acc, c) => acc + (Number(c.current_debt_usd) || 0),
       0
     )
 
-    // 7. Balance Patrimonial Estimado de la Tienda
-    // Activos = Inventario (a costo) + Cuentas por cobrar + Ganancia líquida disponible
+    // 8. Balance Patrimonial Estimado de la Tienda
     const inventoryPotentialProfitUsd = Math.max(0, inventoryTotalSaleUsd - inventoryTotalCostUsd)
-    const totalAssetsUsd = inventoryTotalCostUsd + accountsReceivableUsd + Math.max(0, netProfitUsd)
+    const totalAssetsUsd = inventoryTotalCostUsd + accountsReceivableUsd + Math.max(0, netCashFlowUsd)
 
     return NextResponse.json({
       success: true,
       period,
       exchange_rate: exchangeRate,
       pnl: {
-        total_sales_usd: parseFloat(totalSalesUsd.toFixed(2)),
-        total_sales_ves: parseFloat((totalSalesUsd * exchangeRate).toFixed(2)),
+        // Facturación
+        total_billed_usd: parseFloat(totalBilledUsd.toFixed(2)),
+        total_billed_ves: parseFloat((totalBilledUsd * exchangeRate).toFixed(2)),
+        total_sales_usd: parseFloat(totalBilledUsd.toFixed(2)), // retrocompatibilidad
+        total_sales_ves: parseFloat((totalBilledUsd * exchangeRate).toFixed(2)),
         cogs_usd: parseFloat(cogsUsd.toFixed(2)),
         gross_profit_usd: parseFloat(grossProfitUsd.toFixed(2)),
         gross_margin_percent: parseFloat(grossMarginPercent.toFixed(1)),
+
+        // Ventas a Crédito No Cobradas en el período
+        credit_pending_usd: parseFloat(creditPendingGeneratedUsd.toFixed(2)),
+        credit_pending_ves: parseFloat((creditPendingGeneratedUsd * exchangeRate).toFixed(2)),
+
+        // Ingresos Reales Cobrados (Caja)
+        total_collected_usd: parseFloat(totalCollectedUsd.toFixed(2)),
+        total_collected_ves: parseFloat(totalCollectedVes.toFixed(2)),
+        direct_sales_collected_usd: parseFloat(directCollectedUsd.toFixed(2)),
+        abonos_collected_usd: parseFloat(abonosCollectedUsd.toFixed(2)),
+
+        // Flujo y Utilidad
         operating_expenses_usd: parseFloat(operatingExpensesUsd.toFixed(2)),
+        net_cash_flow_usd: parseFloat(netCashFlowUsd.toFixed(2)),
         net_profit_usd: parseFloat(netProfitUsd.toFixed(2)),
         net_margin_percent: parseFloat(netMarginPercent.toFixed(1)),
         reinvestment_usd: parseFloat(reinvestmentUsd.toFixed(2)),
         orders_count: ordersList.length,
       },
+      payment_methods_breakdown: paymentMethodsBreakdown,
       balance: {
         inventory_cost_usd: parseFloat(inventoryTotalCostUsd.toFixed(2)),
         inventory_sale_usd: parseFloat(inventoryTotalSaleUsd.toFixed(2)),

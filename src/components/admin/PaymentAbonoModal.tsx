@@ -205,12 +205,26 @@ export default function PaymentAbonoModal({
     }
   }
 
-  const handlePaymentDateChange = (newDate: string) => {
+  const handlePaymentDateChange = async (newDate: string) => {
     setPaymentDate(newDate)
-    const found = bcvRatesHistory?.find((h) => h.date === newDate)
-    if (found && found.rate > 0) {
-      setAppliedRate(found.rate)
-      setCustomRateInput(String(found.rate))
+    // 1. Buscar en memoria (`fecha <= newDate` ordenado descendentemente)
+    const sortedHistory = [...(bcvRatesHistory || [])].sort((a, b) => b.date.localeCompare(a.date))
+    const foundLocal = sortedHistory.find((h) => h.date <= newDate)
+    if (foundLocal && foundLocal.rate > 0) {
+      setAppliedRate(foundLocal.rate)
+      setCustomRateInput(String(foundLocal.rate))
+    }
+
+    // 2. Consultar también en backend `tasa_bcv_historial` (`fecha <= newDate order by fecha desc limit 1`)
+    try {
+      const res = await fetch(`/api/exchange-rate?date=${encodeURIComponent(newDate)}`)
+      const data = await res.json()
+      if (res.ok && data.success && Number(data.tasa) > 0) {
+        setAppliedRate(Number(data.tasa))
+        setCustomRateInput(String(data.tasa))
+      }
+    } catch {
+      // Fallback silencioso a la lista en memoria
     }
   }
 
@@ -228,7 +242,13 @@ export default function PaymentAbonoModal({
 
   // Lista de abonos registrados en la orden
   const existingAbonos = useMemo(() => {
-    return breakdown.filter((item: any) => item.is_abono)
+    return breakdown
+      .map((item: any, idx: number) => ({
+        ...item,
+        _raw_index: idx,
+        id: item.id || `abono_${idx}_${item.date || ''}_${item.amount_usd || ''}`,
+      }))
+      .filter((item: any) => item.is_abono || (item.method !== 'credit_7d' && item.amount_usd > 0))
   }, [breakdown])
 
   // Iniciar edición de un abono existente
@@ -280,6 +300,9 @@ export default function PaymentAbonoModal({
           tenant_id: effectiveTenantId,
           order_id: currentOrder.id,
           abono_id: editingAbono.id,
+          abono_index: editingAbono._raw_index,
+          original_amount_usd: editingAbono.amount_usd,
+          original_reference: editingAbono.reference,
           pin,
           amount_usd: editAmountUsd,
           amount_ves: editAmountVes,
@@ -330,6 +353,9 @@ export default function PaymentAbonoModal({
           tenant_id: effectiveTenantId,
           order_id: currentOrder.id,
           abono_id: deletingAbono.id,
+          abono_index: deletingAbono._raw_index,
+          original_amount_usd: deletingAbono.amount_usd,
+          original_reference: deletingAbono.reference,
           pin,
         }),
       })

@@ -1,0 +1,2 @@
+[functions.sync-tasa-bcv]
+verify_jwt = false

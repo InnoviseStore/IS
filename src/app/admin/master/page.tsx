@@ -105,6 +105,10 @@ export default function SuperAdminMasterPage() {
   const [historyRateEurInput, setHistoryRateEurInput] = useState('')
   const [historySaving, setHistorySaving] = useState(false)
   const [historySyncLoading, setHistorySyncLoading] = useState(false)
+  const [bcvObservability, setBcvObservability] = useState<{
+    diasFallbackCount: number
+    cronStatus: { jobs?: any[]; recent_runs?: any[] } | null
+  } | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -156,6 +160,22 @@ export default function SuperAdminMasterPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    if (activeTab === 'bcv_history') {
+      fetch('/api/exchange-rate?observability=true')
+        .then((r) => r.json())
+        .then((d) => {
+          if (d && d.success) {
+            setBcvObservability({
+              diasFallbackCount: d.diasFallbackCount || 0,
+              cronStatus: d.cronStatus || null,
+            })
+          }
+        })
+        .catch(() => {})
+    }
+  }, [activeTab])
 
   async function handleToggleStatus(tenantId: string, currentStatus: boolean) {
     const next = !currentStatus
@@ -856,7 +876,33 @@ export default function SuperAdminMasterPage() {
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Registros Históricos Guardados</p>
                 <p className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">{allHistoricalRates.length}</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Retención anual de hasta 730 días (2 años)</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Retención en `tasa_bcv_historial`</p>
+              </div>
+            </div>
+
+            {/* Observabilidad del Cron Diario (pg_cron + pg_net) y Alerta de Fallbacks */}
+            <div className="p-4 rounded-2xl bg-slate-900/5 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Cron Diario Automático (`pg_cron` + `pg_net` &rarr; Edge Function `sync-tasa-bcv`)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Horario programado: <strong>1:00 PM VET (17:00 UTC)</strong> &bull; Expresión: <code className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">0 17 * * *</code> &bull; Conversión histórica: <code className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">fecha &lt;= pago ORDER BY fecha DESC LIMIT 1</code>
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold text-[11px]">
+                  {bcvObservability?.cronStatus?.jobs?.length
+                    ? `Job Activo (#${bcvObservability.cronStatus.jobs[0].jobid})`
+                    : 'Cron Configurado (0 17 * * *)'}
+                </span>
+                {(bcvObservability?.diasFallbackCount || 0) > 0 && (
+                  <span className="px-2.5 py-1 rounded-xl bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {bcvObservability?.diasFallbackCount} día(s) por Fallback
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -917,15 +963,29 @@ export default function SuperAdminMasterPage() {
                             : '—'}
                         </td>
                         <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              item.is_manual
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                            }`}
-                          >
-                            {item.is_manual ? 'Manual / Editada' : 'Oficial BCV'}
-                          </span>
+                          {(() => {
+                            const src = String(item.source || (item.is_manual ? 'manual' : 'scraping-bcv')).toLowerCase()
+                            const isFallback = src.includes('fallback') || src.includes('railway') || src.includes('dolarapi') || src.includes('mirror')
+                            const isManual = item.is_manual || src === 'manual'
+                            return (
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                                  isManual
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    : isFallback
+                                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                }`}
+                              >
+                                {isFallback && <AlertCircle className="w-3 h-3 text-rose-600" />}
+                                {isManual
+                                  ? 'Manual / Editada'
+                                  : isFallback
+                                    ? `⚠️ Fallback (${item.source})`
+                                    : 'scraping-bcv (Primaria)'}
+                              </span>
+                            )
+                          })()}
                         </td>
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1.5">
