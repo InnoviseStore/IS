@@ -159,13 +159,44 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [stock, setStock] = useState(product?.stock?.toString() ?? '0')
   const [isActive, setIsActive] = useState(product?.is_active ?? true)
 
-  // Rubro Ropa / Calzado (Especializado) - Exclusivo para tiendas de moda
-  const showApparelSection = isFashionRubro
-  const [apparelGarmentType, setApparelGarmentType] = useState(isFashionRubro ? (parsedApparel.apparel.garmentType || '') : '')
-  const [apparelGender, setApparelGender] = useState(isFashionRubro ? (parsedApparel.apparel.gender || '') : '')
-  const [apparelSizes, setApparelSizes] = useState<string[]>(isFashionRubro ? (parsedApparel.apparel.sizes || []) : [])
-  const [apparelSizeStock, setApparelSizeStock] = useState<SizeStockItem[]>(isFashionRubro ? (parsedApparel.apparel.sizeStock || []) : [])
+  // Rubro Ropa / Calzado (Especializado) - Disponible para tiendas de moda o cualquier producto con tallas
+  const [apparelGarmentType, setApparelGarmentType] = useState(parsedApparel.apparel.garmentType || '')
+  const [apparelGender, setApparelGender] = useState(parsedApparel.apparel.gender || '')
+  const [apparelSizes, setApparelSizes] = useState<string[]>(parsedApparel.apparel.sizes || [])
+  const [apparelSizeStock, setApparelSizeStock] = useState<SizeStockItem[]>(parsedApparel.apparel.sizeStock || [])
   const [customSizeInput, setCustomSizeInput] = useState('')
+  const showApparelSection =
+    isFashionRubro ||
+    Boolean(apparelGarmentType || apparelGender || apparelSizes.length > 0 || apparelSizeStock.length > 0)
+
+  const handleToggleTraditionalSize = (sz: string) => {
+    const exists = apparelSizes.includes(sz)
+    if (exists) {
+      const nextSizes = apparelSizes.filter((x) => x !== sz)
+      const nextSizeStock = apparelSizeStock.filter((x) => x.size !== sz)
+      setApparelSizes(nextSizes)
+      setApparelSizeStock(nextSizeStock)
+      if (nextSizeStock.length > 0) {
+        setStock(nextSizeStock.reduce((acc, s) => acc + (Number(s.stock) || 0), 0).toString())
+      }
+    } else {
+      const nextSizes = [...apparelSizes, sz]
+      const nextSizeStock = [...apparelSizeStock, { size: sz, stock: 1 }]
+      setApparelSizes(nextSizes)
+      setApparelSizeStock(nextSizeStock)
+      setStock(nextSizeStock.reduce((acc, s) => acc + (Number(s.stock) || 0), 0).toString())
+    }
+  }
+
+  const handleUpdateTraditionalSizeQty = (sz: string, qty: number) => {
+    const safeQty = Math.max(0, qty)
+    const exists = apparelSizeStock.some((x) => x.size === sz)
+    const nextSizeStock = exists
+      ? apparelSizeStock.map((x) => (x.size === sz ? { ...x, stock: safeQty } : x))
+      : [...apparelSizeStock, { size: sz, stock: safeQty }]
+    setApparelSizeStock(nextSizeStock)
+    setStock(nextSizeStock.reduce((acc, s) => acc + (Number(s.stock) || 0), 0).toString())
+  }
 
   // Modo de creación: 'wizard' (Asistente Guiado Inteligente) o 'traditional' (Formulario Directo)
   const [modalMode, setModalMode] = useState<'wizard' | 'traditional'>(() => (!product ? 'wizard' : 'traditional'))
@@ -643,8 +674,8 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
       baseDesc = `<!--CATEGORY:${cleanCategoryName(category)}-->\n${baseDesc}`
     }
 
-    // Si tiene atributos de ropa/calzado y la tienda es del rubro moda
-    if (isFashionRubro && (apparelGarmentType || apparelGender || apparelSizes.length > 0 || apparelSizeStock.length > 0)) {
+    // Si tiene atributos de ropa/calzado
+    if (apparelGarmentType || apparelGender || apparelSizes.length > 0 || apparelSizeStock.length > 0) {
       const apparelData: ApparelAttributes = {
         garmentType: apparelGarmentType || undefined,
         gender: apparelGender || undefined,
@@ -1424,7 +1455,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                   </div>
                 </div>
 
-                {/* 3. Tallas Disponibles (Multi-selección) */}
+                {/* 3. Tallas Disponibles (Multi-selección) y Stock por Talla */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
@@ -1433,7 +1464,10 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                     {apparelSizes.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => setApparelSizes([])}
+                        onClick={() => {
+                          setApparelSizes([])
+                          setApparelSizeStock([])
+                        }}
                         className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
                       >
                         Limpiar tallas
@@ -1451,11 +1485,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                           <button
                             key={s}
                             type="button"
-                            onClick={() => {
-                              setApparelSizes((prev) =>
-                                isSelected ? prev.filter((x) => x !== s) : [...prev, s]
-                              )
-                            }}
+                            onClick={() => handleToggleTraditionalSize(s)}
                             className={`min-w-8 h-7 px-2 rounded-lg text-xs font-bold transition cursor-pointer ${
                               isSelected
                                 ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
@@ -1477,11 +1507,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                           <button
                             key={sz}
                             type="button"
-                            onClick={() => {
-                              setApparelSizes((prev) =>
-                                isSelected ? prev.filter((x) => x !== sz) : [...prev, sz]
-                              )
-                            }}
+                            onClick={() => handleToggleTraditionalSize(sz)}
                             className={`w-7 h-7 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
                               isSelected
                                 ? 'bg-blue-600 text-white shadow-xs'
@@ -1505,7 +1531,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                           if (e.key === 'Enter') {
                             e.preventDefault()
                             if (customSizeInput.trim() && !apparelSizes.includes(customSizeInput.trim())) {
-                              setApparelSizes((p) => [...p, customSizeInput.trim()])
+                              handleToggleTraditionalSize(customSizeInput.trim())
                               setCustomSizeInput('')
                             }
                           }
@@ -1516,7 +1542,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                         type="button"
                         onClick={() => {
                           if (customSizeInput.trim() && !apparelSizes.includes(customSizeInput.trim())) {
-                            setApparelSizes((p) => [...p, customSizeInput.trim()])
+                            handleToggleTraditionalSize(customSizeInput.trim())
                             setCustomSizeInput('')
                           }
                         }}
@@ -1525,6 +1551,38 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                         + Añadir
                       </button>
                     </div>
+
+                    {/* Matriz de Existencia por cada Talla seleccionada */}
+                    {apparelSizes.length > 0 && (
+                      <div className="pt-2.5 border-t border-pink-200/60 dark:border-slate-700/60 space-y-2">
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                          Cantidad disponible por cada talla (suma automática al stock general):
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {apparelSizes.map((sz) => {
+                            const matched = apparelSizeStock.find((x) => x.size === sz)
+                            const qtyVal = matched ? matched.stock : 0
+                            return (
+                              <div
+                                key={sz}
+                                className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                              >
+                                <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
+                                  Talla {sz}
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={qtyVal}
+                                  onChange={(e) => handleUpdateTraditionalSizeQty(sz, parseInt(e.target.value) || 0)}
+                                  className="w-16 text-center py-1 px-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -5,6 +5,10 @@ import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 import { formatDate } from '@/lib/formatters'
 import { generateNextOrderNumber } from '@/lib/tenantDocSequence'
+import {
+  extractVariantFromProductName,
+  adjustProductVariantsInDescription,
+} from '@/lib/apparelAttributes'
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -210,14 +214,28 @@ export async function POST(req: Request) {
               const oldQty = parseInt(oldItem.quantity, 10) || 1
               const { data: prod } = await supabase
                 .from('products')
-                .select('stock')
+                .select('stock, description')
                 .eq('id', oldItem.product_id)
                 .single()
 
               if (prod) {
+                const { size: oldSize, color: oldColor } = extractVariantFromProductName(oldItem.product_name)
+                const { updatedDescription, variantAdjusted } = adjustProductVariantsInDescription(prod.description, {
+                  size: oldSize,
+                  color: oldColor,
+                  quantityDelta: oldQty,
+                })
+
+                const updateFields: Record<string, any> = {
+                  stock: (prod.stock || 0) + oldQty,
+                }
+                if (variantAdjusted && updatedDescription !== null) {
+                  updateFields.description = updatedDescription
+                }
+
                 await supabase
                   .from('products')
-                  .update({ stock: (prod.stock || 0) + oldQty })
+                  .update(updateFields)
                   .eq('id', oldItem.product_id)
 
                 await supabase.from('inventory_logs').insert({
@@ -226,7 +244,7 @@ export async function POST(req: Request) {
                   change_type: 'adjustment',
                   quantity: oldQty,
                   reference_id: previousOrder.id,
-                  notes: `Reversión por edición de factura #${previousOrder.order_number}`,
+                  notes: `Reversión por edición de factura #${previousOrder.order_number}${oldSize ? ` (Talla: ${oldSize})` : ''}${oldColor ? ` (Color: ${oldColor})` : ''}`,
                   created_by: created_by || null,
                 })
               }
@@ -353,16 +371,49 @@ export async function POST(req: Request) {
       await supabase.from('order_items').insert(orderItemsPayload)
     }
 
-    // 2. Decrementar stock y registrar en inventario
+    // 2. Decrementar stock (general y por talla/color) y registrar en inventario
     for (const item of items) {
       if (item.product_id) {
+        const qty = parseInt(item.quantity, 10) || 1
+        const parsedVariant = extractVariantFromProductName(item.name || item.product_name)
+        const itemSize = item.selected_size || parsedVariant.size
+        const itemColor = item.selected_color || parsedVariant.color
+
         try {
           await supabase.rpc('decrement_stock', {
             p_product_id: item.product_id,
-            p_quantity: parseInt(item.quantity, 10) || 1,
+            p_quantity: qty,
           })
         } catch (e) {
           console.warn('decrement_stock error:', e)
+        }
+
+        // Si el ítem tiene talla y/o color seleccionados, descontar del desglose interno en description
+        if (itemSize || itemColor) {
+          try {
+            const { data: prodData } = await supabase
+              .from('products')
+              .select('description')
+              .eq('id', item.product_id)
+              .single()
+
+            if (prodData?.description) {
+              const { updatedDescription, variantAdjusted } = adjustProductVariantsInDescription(prodData.description, {
+                size: itemSize,
+                color: itemColor,
+                quantityDelta: -qty,
+              })
+
+              if (variantAdjusted && updatedDescription !== null) {
+                await supabase
+                  .from('products')
+                  .update({ description: updatedDescription })
+                  .eq('id', item.product_id)
+              }
+            }
+          } catch (e) {
+            console.warn('variant stock decrement error:', e)
+          }
         }
 
         try {
@@ -370,8 +421,9 @@ export async function POST(req: Request) {
             tenant_id,
             product_id: item.product_id,
             change_type: 'sale',
-            quantity: -(parseInt(item.quantity, 10) || 1),
+            quantity: -qty,
             reference_id: order.id,
+            notes: `Venta #${order.order_number}${itemSize ? ` (Talla: ${itemSize})` : ''}${itemColor ? ` (Color: ${itemColor})` : ''}`,
             created_by: created_by || null,
           })
         } catch (e) {
@@ -640,29 +692,42 @@ export async function DELETE(req: Request) {
       }
     }
 
-    if (order.status === 'completed' && Array.isArray(order.order_items)) {
+    if ((order.status === 'completed' || order.status === 'credit') && Array.isArray(order.order_items)) {
       for (const item of order.order_items) {
         if (item.product_id) {
           const { data: prod } = await supabase
             .from('products')
-            .select('stock')
+            .select('stock, description')
             .eq('id', item.product_id)
             .single()
           if (prod) {
-            const restoredStock = (prod.stock || 0) + (item.quantity || 0)
+            const qtyToRestore = item.quantity || 0
+            const restoredStock = (prod.stock || 0) + qtyToRestore
+            const { size: itemSize, color: itemColor } = extractVariantFromProductName(item.product_name)
+            const { updatedDescription, variantAdjusted } = adjustProductVariantsInDescription(prod.description, {
+              size: itemSize,
+              color: itemColor,
+              quantityDelta: qtyToRestore,
+            })
+
+            const updateFields: Record<string, any> = { stock: restoredStock }
+            if (variantAdjusted && updatedDescription !== null) {
+              updateFields.description = updatedDescription
+            }
+
             await supabase
               .from('products')
-              .update({ stock: restoredStock })
+              .update(updateFields)
               .eq('id', item.product_id)
             await supabase.from('inventory_logs').insert({
               tenant_id: order.tenant_id,
               product_id: item.product_id,
               change_type: 'adjustment',
-              quantity: item.quantity,
+              quantity: qtyToRestore,
               previous_stock: prod.stock,
               new_stock: restoredStock,
               reference_id: order.id,
-              notes: 'Anulación de orden ' + order.order_number + ' por administrador',
+              notes: `Anulación de orden ${order.order_number} por administrador${itemSize ? ` (Talla: ${itemSize})` : ''}${itemColor ? ` (Color: ${itemColor})` : ''}`,
             })
           }
         }

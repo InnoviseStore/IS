@@ -237,6 +237,7 @@ export interface OrderItem {
 
 // ─── Cart ─────────────────────────────────────────────────────────────────────
 export interface CartItem {
+  cart_key?: string
   product_id: string
   name: string
   sku: string | null
@@ -245,6 +246,9 @@ export interface CartItem {
   image_url: string | null
   discount_percent?: number
   discount_usd?: number
+  selected_size?: string
+  selected_color?: string
+  max_stock?: number
 }
 
 // ─── Supabase Database Types ───────────────────────────────────────────────────

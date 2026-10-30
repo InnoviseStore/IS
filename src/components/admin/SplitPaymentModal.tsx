@@ -598,6 +598,8 @@ export function SplitPaymentModal({
             discount_usd: itemDisc,
             subtotal_usd: netSubtotal,
             quantity: item.quantity,
+            selected_size: item.selected_size || undefined,
+            selected_color: item.selected_color || undefined,
           }
         }),
         isCredit,
