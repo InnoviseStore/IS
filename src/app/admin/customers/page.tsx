@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -41,6 +41,19 @@ export default function CustomersPage() {
   const load = useCallback(async () => {
     if (!tenant) return
     setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/customers?tenant_id=${tenant.id}`)
+      if (res.ok) {
+        const json = await res.json()
+        if (Array.isArray(json.customers)) {
+          setCustomers(json.customers)
+          setLoading(false)
+          return
+        }
+      }
+    } catch {
+      // Fallback
+    }
     const supabase = createClient()
     const { data } = await supabase
       .from('customers')

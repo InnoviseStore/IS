@@ -11,9 +11,10 @@ export function InactivityGuard() {
   const router = useRouter()
   const lastActivityRef = useRef<number>(Date.now())
   const sessionIdRef = useRef<string>('')
+  const sessionStartedAtRef = useRef<number>(Date.now())
 
   useEffect(() => {
-    // 1. Obtener o generar identificador único de sesión para este dispositivo/pestaña
+    // 1. Obtener o generar identificador único de sesión y hora de inicio para este dispositivo/pestaña
     if (typeof window !== 'undefined') {
       let storedSessionId = sessionStorage.getItem('is_device_session_id')
       if (!storedSessionId) {
@@ -23,6 +24,15 @@ export function InactivityGuard() {
         sessionStorage.setItem('is_device_session_id', storedSessionId)
       }
       sessionIdRef.current = storedSessionId
+
+      const storedStart = Number(sessionStorage.getItem('is_session_started_at') || '0')
+      if (storedStart > 0 && storedStart <= Date.now()) {
+        sessionStartedAtRef.current = storedStart
+      } else {
+        const nowStart = Date.now()
+        sessionStorage.setItem('is_session_started_at', String(nowStart))
+        sessionStartedAtRef.current = nowStart
+      }
     }
 
     // 2. Escuchar eventos de interacción del usuario
@@ -38,17 +48,26 @@ export function InactivityGuard() {
     // 3. Heartbeat periódico y verificación de sesión única concurrente
     const sendHeartbeat = async () => {
       try {
+        const activeTenantId =
+          typeof window !== 'undefined' ? localStorage.getItem('is_active_tenant_id') : null
+
         const res = await fetch('/api/admin/presence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'heartbeat',
             sessionId: sessionIdRef.current,
+            sessionStartedAt: sessionStartedAtRef.current,
+            activeTenantId: activeTenantId || undefined,
           }),
         })
 
         if (res.ok) {
           const data = await res.json()
+          if (data.connectedAt && typeof window !== 'undefined') {
+            sessionStartedAtRef.current = data.connectedAt
+            sessionStorage.setItem('is_session_started_at', String(data.connectedAt))
+          }
           if (data.forcedLogout && data.reason === 'concurrent_session') {
             // Desconectar inmediatamente: otro dispositivo abrió sesión
             const supabase = createClient()

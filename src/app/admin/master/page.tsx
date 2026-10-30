@@ -37,8 +37,10 @@ import {
   AlertCircle,
   Coins,
   FileSpreadsheet,
+  Timer,
 } from 'lucide-react'
 import { formatDate, formatDateTime, getPlanLabel } from '@/lib/formatters'
+import { formatConnectionDuration } from '@/components/admin/LivePresenceHeader'
 
 export default function SuperAdminMasterPage() {
   const {
@@ -69,6 +71,7 @@ export default function SuperAdminMasterPage() {
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [liveActiveUsers, setLiveActiveUsers] = useState<any[]>([])
+  const [nowTick, setNowTick] = useState<number>(Date.now())
 
   // Edit user email modal state
   const [editEmailUser, setEditEmailUser] = useState<Profile | null>(null)
@@ -112,6 +115,8 @@ export default function SuperAdminMasterPage() {
 
   useEffect(() => {
     setMounted(true)
+    const tick = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(tick)
   }, [])
 
   useEffect(() => {
@@ -125,7 +130,7 @@ export default function SuperAdminMasterPage() {
       } catch {}
     }
     fetchPresence()
-    const interval = setInterval(fetchPresence, 30000)
+    const interval = setInterval(fetchPresence, 20000)
     return () => clearInterval(interval)
   }, [])
 
@@ -546,6 +551,21 @@ export default function SuperAdminMasterPage() {
               <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
                 {liveActiveUsers.length === 1 ? '1 dispositivo en red' : `${liveActiveUsers.length} dispositivos en red`}
               </p>
+              {liveActiveUsers.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60 space-y-1 max-h-20 overflow-y-auto">
+                  {liveActiveUsers.map((u) => (
+                    <div key={u.userId} className="flex items-center justify-between text-[10px] gap-1">
+                      <span className="font-bold text-emerald-900 dark:text-emerald-200 truncate">
+                        {u.fullName}
+                      </span>
+                      <span className="font-mono font-extrabold text-emerald-700 dark:text-emerald-300 shrink-0 inline-flex items-center gap-0.5">
+                        <Timer className="w-2.5 h-2.5" />
+                        {formatConnectionDuration(u.connectedAt || u.lastActive, nowTick)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between gap-2.5">
@@ -1052,12 +1072,14 @@ export default function SuperAdminMasterPage() {
                     <th className="py-3 px-4">Correo Afiliado (Editable)</th>
                     <th className="py-3 px-4">Rol</th>
                     <th className="py-3 px-4">Tienda Asignada</th>
+                    <th className="py-3 px-4">Conexión En Vivo</th>
                     <th className="py-3 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {filteredProfiles.map((p) => {
                     const assignedTenant = tenants.find((t) => t.id === p.tenant_id)
+                    const liveRecord = liveActiveUsers.find((u) => u.userId === p.id)
                     return (
                       <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                         <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
@@ -1086,6 +1108,17 @@ export default function SuperAdminMasterPage() {
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
                           {assignedTenant ? assignedTenant.name : 'Global / Sin Tienda'}
+                        </td>
+                        <td className="py-3 px-4">
+                          {liveRecord ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              <Timer className="w-3 h-3" />
+                              {formatConnectionDuration(liveRecord.connectedAt || liveRecord.lastActive, nowTick)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Desconectado</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-2">

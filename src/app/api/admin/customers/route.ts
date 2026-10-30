@@ -20,6 +20,44 @@ function getAdminClient() {
   })
 }
 
+// GET: Consultar clientes del comercio (soporta cambio de tienda por SuperAdmin)
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const requestedTenantId = searchParams.get('tenant_id')
+
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'cashier', 'cajero', 'vendedor', 'almacen'],
+      targetTenantId: requestedTenantId || null,
+    })
+
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
+    const effectiveTenantId =
+      auth.isSuperAdmin && requestedTenantId ? requestedTenantId : auth.tenantId
+
+    const supabase = getAdminClient()
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('tenant_id', effectiveTenantId)
+      .neq('is_active', false)
+      .order('full_name')
+
+    if (error) throw new Error(error.message)
+
+    return NextResponse.json({
+      success: true,
+      customers: data || [],
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al consultar clientes.'
+    return NextResponse.json({ error: message, customers: [] }, { status: 500 })
+  }
+}
+
 // POST: Crear o actualizar cliente con normalización segura y hash de contraseña en servidor
 export async function POST(req: Request) {
   try {

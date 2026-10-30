@@ -28,7 +28,9 @@ import {
   Barcode,
   Palette,
   Footprints,
-  Shirt
+  Shirt,
+  Store,
+  Globe
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/formatters'
 import { getProductBarcode } from '@/lib/barcodeUtils'
@@ -46,8 +48,10 @@ function InventoryContent() {
   const searchParams = useSearchParams()
   const isRegisterParam = searchParams.get('mode') === 'register' || searchParams.get('tab') === 'register'
 
-  const { tenant, exchangeRate } = useTenant()
-  const [products, setProducts] = useState<Product[]>([])
+  const { tenant, exchangeRate, profile, allTenants, switchTenantById } = useTenant()
+  const isSuperAdmin = profile?.role === 'superadmin'
+  const [viewAllStores, setViewAllStores] = useState(false)
+  const [products, setProducts] = useState<(Product & { tenant_name?: string | null })[]>([])
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
   const [selectedCategory, setSelectedCategory] = useState('all')
@@ -74,17 +78,34 @@ function InventoryContent() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    if (!tenant) return
+    if (!tenant && !viewAllStores) return
     setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('products')
-      .select('*')
-      .eq('tenant_id', tenant.id)
-      .order('created_at', { ascending: false })
-    setProducts(data ?? [])
+    try {
+      const targetParam = viewAllStores && isSuperAdmin ? 'all' : tenant?.id
+      const res = await fetch(`/api/admin/products?tenant_id=${targetParam}`)
+      if (res.ok) {
+        const json = await res.json()
+        if (Array.isArray(json.products)) {
+          setProducts(json.products)
+          setLoading(false)
+          return
+        }
+      }
+    } catch {
+      // Fallback a cliente directo si hay fallo de red temporal
+    }
+
+    if (tenant) {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('created_at', { ascending: false })
+      setProducts(data ?? [])
+    }
     setLoading(false)
-  }, [tenant])
+  }, [tenant, viewAllStores, isSuperAdmin])
 
   useEffect(() => { load() }, [load])
 
@@ -129,7 +150,13 @@ function InventoryContent() {
   }, [products, deferredSearch, selectedCategory, selectedSubcategory])
 
   function openCreate() { setEditingProduct(null); setModalOpen(true) }
-  function openEdit(p: Product) { setEditingProduct(p); setModalOpen(true) }
+  function openEdit(p: Product) {
+    if (isSuperAdmin && p.tenant_id && tenant?.id && p.tenant_id !== tenant.id) {
+      switchTenantById(p.tenant_id)
+    }
+    setEditingProduct(p)
+    setModalOpen(true)
+  }
 
   async function handleDeleteConfirm() {
     if (!productToDelete) return
@@ -162,7 +189,15 @@ function InventoryContent() {
       {/* Header Unificado y Limpio */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">Inventario</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">Inventario</h1>
+            {isSuperAdmin && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <Store className="w-3 h-3" />
+                {viewAllStores ? 'Todas las Tiendas' : (tenant?.name || 'Tienda Activa')}
+              </span>
+            )}
+          </div>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
             {products.length} productos registrados {products.filter(p => p.stock < 5).length > 0 && (
               <span className="text-amber-600 dark:text-amber-400 font-bold">
@@ -174,6 +209,37 @@ function InventoryContent() {
 
         {/* Botones de Acción Clave */}
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* Selector de Tienda Directo para SuperAdmin */}
+          {isSuperAdmin && allTenants.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/40 shadow-xs shrink-0">
+              {viewAllStores ? (
+                <Globe className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              ) : (
+                <Store className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              )}
+              <select
+                value={viewAllStores ? '__ALL__' : (tenant?.id || '')}
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (val === '__ALL__') {
+                    setViewAllStores(true)
+                  } else if (val) {
+                    setViewAllStores(false)
+                    switchTenantById(val)
+                  }
+                }}
+                className="bg-transparent text-xs font-extrabold text-slate-800 dark:text-slate-100 outline-none cursor-pointer max-w-[180px] truncate"
+                title="Seleccionar tienda para ver y gestionar su inventario"
+              >
+                <option value="__ALL__">🌐 Todas las Tiendas ({allTenants.length})</option>
+                {allTenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    🏪 {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* Botón Auditoría / Toma con Cámara & IA */}
           <button
             type="button"
@@ -348,6 +414,12 @@ function InventoryContent() {
                         )}
                       </div>
                       <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate mt-0.5">{p.name}</p>
+                      {viewAllStores && p.tenant_name && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 mt-0.5">
+                          <Store className="w-2.5 h-2.5" />
+                          {p.tenant_name}
+                        </span>
+                      )}
                       {extractBrand(p.description) && (
                         <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 block truncate">
                           Marca: {extractBrand(p.description)}
@@ -460,6 +532,12 @@ function InventoryContent() {
                             </div>
                             <div className="flex flex-col min-w-0">
                               <span className="max-w-[200px] truncate">{p.name}</span>
+                              {viewAllStores && p.tenant_name && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 dark:text-amber-300 truncate">
+                                  <Store className="w-2.5 h-2.5 shrink-0" />
+                                  Tienda: {p.tenant_name}
+                                </span>
+                              )}
                               {extractBrand(p.description) && (
                                 <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 truncate">
                                   Marca: {extractBrand(p.description)}

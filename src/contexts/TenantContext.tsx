@@ -199,7 +199,6 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setBcvRatesHistory(data.rates_history)
       }
 
-      // Si la fecha guardada es hoy, actualizar también la tasa activa
       const todayDate = new Date().toISOString().split('T')[0]
       if (entry.date === todayDate && (entry.rate || entry.rate_usd)) {
         setExchangeRateState(entry.rate || entry.rate_usd!)
@@ -264,7 +263,6 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setExchangeRateState(data.effective_rate)
       }
 
-      // Actualizar tenant en estado local si aplica
       const targetId = params.tenantId || tenant?.id
       if (tenant && tenant.id === targetId) {
         setTenant((prev) => {
@@ -316,7 +314,12 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         .single()
 
       if (profileData) {
-        const effectiveRole = ((user.user_metadata?.role as UserRole) || profileData.role) as UserRole
+        const isSuper =
+          (user.user_metadata?.role as UserRole) === 'superadmin' ||
+          profileData.role === 'superadmin'
+        const effectiveRole = (
+          isSuper ? 'superadmin' : (profileData.role || (user.user_metadata?.role as UserRole) || 'cajero')
+        ) as UserRole
         setProfile({
           ...profileData,
           role: effectiveRole,
@@ -325,10 +328,22 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         // Si es superadmin o tiene acceso, cargar todas las tiendas disponibles
         let loadedAllTenants: Tenant[] = []
         try {
-          const { data: list } = await supabase.from('tenants').select('*').order('name', { ascending: true })
-          if (list && list.length > 0) {
-            loadedAllTenants = list as Tenant[]
-            setAllTenants(loadedAllTenants)
+          if (isSuper) {
+            const masterRes = await fetch('/api/admin/master')
+            if (masterRes.ok) {
+              const masterJson = await masterRes.json()
+              if (Array.isArray(masterJson.tenants) && masterJson.tenants.length > 0) {
+                loadedAllTenants = masterJson.tenants as Tenant[]
+                setAllTenants(loadedAllTenants)
+              }
+            }
+          }
+          if (loadedAllTenants.length === 0) {
+            const { data: list } = await supabase.from('tenants').select('*').order('name', { ascending: true })
+            if (list && list.length > 0) {
+              loadedAllTenants = list as Tenant[]
+              setAllTenants(loadedAllTenants)
+            }
           }
         } catch (e) {
           console.warn('Error loading tenants list:', e)
@@ -336,7 +351,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
         // Determinar tienda activa (usar localStorage si es superadmin y seleccionó previamente)
         let activeTenantId = profileData.tenant_id
-        if (profileData.role === 'superadmin' && typeof window !== 'undefined') {
+        if (isSuper && typeof window !== 'undefined') {
           const savedTenantId = localStorage.getItem('is_active_tenant_id')
           if (savedTenantId && loadedAllTenants.some(t => t.id === savedTenantId)) {
             activeTenantId = savedTenantId
@@ -363,7 +378,6 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           if (settings.bcv_fecha_valor) {
             setBcvFechaValor(settings.bcv_fecha_valor as string)
           } else {
-            // Trigger background sync if never synced
             fetch('/api/exchange-rate?sync=true&tenant=' + tenantData.slug)
               .then((r) => r.json())
               .then((d) => {

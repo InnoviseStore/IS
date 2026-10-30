@@ -76,15 +76,31 @@ export default function StorefrontBuilderPage() {
         })
       }
 
-      // 2. Cargar productos activos
-      const { data: prods } = await supabase
-        .from('products')
-        .select('*')
-        .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
-        .order('name')
+      // 2. Cargar productos activos (vía API server-side para soportar cambio de tienda por SuperAdmin)
+      let loadedProds: Product[] | null = null
+      try {
+        const res = await fetch(`/api/admin/products?tenant_id=${tenant.id}&active_only=true`)
+        if (res.ok) {
+          const json = await res.json()
+          if (Array.isArray(json.products)) {
+            loadedProds = json.products
+          }
+        }
+      } catch {
+        // Fallback
+      }
 
-      setProducts(prods ?? [])
+      if (!loadedProds) {
+        const { data: prods } = await supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', tenant.id)
+          .eq('is_active', true)
+          .order('name')
+        loadedProds = prods ?? []
+      }
+
+      setProducts(loadedProds)
       setLoading(false)
     }
 

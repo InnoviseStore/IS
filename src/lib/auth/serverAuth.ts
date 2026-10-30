@@ -74,13 +74,22 @@ export async function authenticateApiRequest(
     }
 
     const metaRole = (user.user_metadata?.role as UserRole) || undefined
-    const role = (metaRole || profile.role || 'cajero') as UserRole
-    const isSuperAdmin = role === 'superadmin' || profile.role === 'superadmin'
+    const isSuperAdmin = metaRole === 'superadmin' || profile.role === 'superadmin'
+    const role = (isSuperAdmin ? 'superadmin' : (profile.role || metaRole || 'cajero')) as UserRole
     const userTenantId = profile.tenant_id
+
+    // Auto-sincronizar rol superadmin en profiles si estaba solo en user_metadata
+    if (isSuperAdmin && profile.role !== 'superadmin') {
+      try {
+        await adminSupabase.from('profiles').update({ role: 'superadmin' }).eq('id', user.id)
+      } catch {
+        // Ignorar si hay restricción de check antigua
+      }
+    }
 
     // 1. Verificación de Roles requeridos
     if (options.requiredRoles && options.requiredRoles.length > 0) {
-      if (!options.requiredRoles.includes(role)) {
+      if (!isSuperAdmin && !options.requiredRoles.includes(role)) {
         return {
           auth: null,
           errorResponse: NextResponse.json(

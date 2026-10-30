@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth/serverAuth'
 
+export const dynamic = 'force-dynamic'
+
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -11,6 +13,89 @@ function getAdminClient() {
       persistSession: false,
     },
   })
+}
+
+// GET: Consultar inventario de productos (soporta cambio de tienda por SuperAdmin y vista global)
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const requestedTenantId = searchParams.get('tenant_id')
+    const allStores = searchParams.get('all_stores') === 'true' || requestedTenantId === 'all'
+    const activeOnly = searchParams.get('active_only') === 'true'
+    const inStockOnly = searchParams.get('in_stock_only') === 'true'
+
+    const { auth, errorResponse } = await authenticateApiRequest({
+      requiredRoles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor', 'cajero', 'cashier'],
+      targetTenantId: allStores ? null : (requestedTenantId || null),
+    })
+
+    if (errorResponse || !auth) {
+      return errorResponse!
+    }
+
+    const supabase = getAdminClient()
+
+    // Modo SuperAdmin viendo el inventario de TODAS las tiendas a la vez
+    if (allStores && auth.isSuperAdmin) {
+      let query = supabase
+        .from('products')
+        .select('*, tenants(id, name, slug)')
+        .order('created_at', { ascending: false })
+
+      if (activeOnly) query = query.eq('is_active', true)
+      if (inStockOnly) query = query.gt('stock', 0)
+
+      const { data, error } = await query
+      if (error) throw new Error(error.message)
+
+      const products = (data || []).map((p: any) => ({
+        ...p,
+        tenant_name: p.tenants?.name || null,
+        tenant_slug: p.tenants?.slug || null,
+      }))
+
+      return NextResponse.json({
+        success: true,
+        products,
+      })
+    }
+
+    const effectiveTenantId =
+      auth.isSuperAdmin && requestedTenantId && requestedTenantId !== 'all'
+        ? requestedTenantId
+        : auth.tenantId
+
+    if (!effectiveTenantId) {
+      return NextResponse.json({ error: 'tenant_id es requerido.' }, { status: 400 })
+    }
+
+    let query = supabase
+      .from('products')
+      .select('*, tenants(id, name, slug)')
+      .eq('tenant_id', effectiveTenantId)
+      .order('created_at', { ascending: false })
+
+    if (activeOnly) query = query.eq('is_active', true)
+    if (inStockOnly) query = query.gt('stock', 0)
+
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+
+    const products = (data || []).map((p: any) => ({
+      ...p,
+      tenant_name: p.tenants?.name || null,
+      tenant_slug: p.tenants?.slug || null,
+    }))
+
+    return NextResponse.json({
+      success: true,
+      products,
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al consultar productos.'
+    console.error('Error in GET /api/admin/products:', message)
+    return NextResponse.json({ error: message, products: [] }, { status: 500 })
+  }
 }
 
 export async function POST(req: Request) {

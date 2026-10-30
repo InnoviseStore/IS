@@ -27,8 +27,10 @@ import {
   DollarSign,
   Receipt,
   X,
+  Timer,
 } from 'lucide-react'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
+import { formatConnectionDuration } from '@/components/admin/LivePresenceHeader'
 import { getRoleLabel } from '@/types/database'
 import type { UserRole, Profile } from '@/types/database'
 
@@ -108,6 +110,31 @@ export default function AdminUsersPage() {
   const [activityLoading, setActivityLoading] = useState<boolean>(false)
   const [activityData, setActivityData] = useState<any | null>(null)
   const [activityTab, setActivityTab] = useState<'orders' | 'inventory'>('orders')
+  const [liveUsers, setLiveUsers] = useState<any[]>([])
+  const [nowTick, setNowTick] = useState<number>(Date.now())
+
+  useEffect(() => {
+    const tick = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(tick)
+  }, [])
+
+  useEffect(() => {
+    const loadPresence = async () => {
+      try {
+        const params = new URLSearchParams()
+        params.set('all', 'false')
+        if (tenant?.id) params.set('tenant_id', tenant.id)
+        const res = await fetch(`/api/admin/presence?${params.toString()}`)
+        const data = await res.json()
+        if (data.success && Array.isArray(data.users)) {
+          setLiveUsers(data.users)
+        }
+      } catch {}
+    }
+    loadPresence()
+    const timer = setInterval(loadPresence, 20000)
+    return () => clearInterval(timer)
+  }, [tenant?.id])
 
   const isCurrentAdmin =
     currentProfile?.role === 'superadmin' ||
@@ -519,6 +546,7 @@ export default function AdminUsersPage() {
                   <th className="py-3 px-5">Colaborador</th>
                   <th className="py-3 px-4">Correo Electrónico</th>
                   <th className="py-3 px-4">Rol Asignado</th>
+                  <th className="py-3 px-4">Estado / Tiempo de Conexión</th>
                   <th className="py-3 px-4">Fecha Registro</th>
                   <th className="py-3 px-5 text-right">Acciones</th>
                 </tr>
@@ -528,6 +556,7 @@ export default function AdminUsersPage() {
                   const isOwner = user.role === 'owner'
                   const isSelf = user.id === currentProfile?.id
                   const userRole = (user.role || 'cajero') as UserRole
+                  const liveRec = liveUsers.find((u) => u.userId === user.id)
 
                   return (
                     <tr
@@ -574,6 +603,22 @@ export default function AdminUsersPage() {
                         >
                           {getRoleLabel(userRole)}
                         </span>
+                      </td>
+
+                      {/* Live Connection Status & Duration */}
+                      <td className="py-3.5 px-4">
+                        {liveRec ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono font-extrabold text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <Timer className="w-3 h-3" />
+                            <span>Conectado ({formatConnectionDuration(liveRec.connectedAt || liveRec.lastActive, nowTick)})</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" />
+                            <span>Desconectado</span>
+                          </span>
+                        )}
                       </td>
 
                       {/* Created Date */}

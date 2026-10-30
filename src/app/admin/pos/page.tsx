@@ -177,6 +177,20 @@ function POSContent() {
   const load = useCallback(async () => {
     if (!tenant) return
     setLoadingProducts(true)
+    try {
+      const res = await fetch(`/api/admin/products?tenant_id=${tenant.id}&active_only=true&in_stock_only=true`)
+      if (res.ok) {
+        const json = await res.json()
+        if (Array.isArray(json.products)) {
+          const sorted = [...json.products].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+          setProducts(sorted)
+          setLoadingProducts(false)
+          return
+        }
+      }
+    } catch {
+      // Fallback
+    }
     const supabase = createClient()
     const { data } = await supabase
       .from('products')
