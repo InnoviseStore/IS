@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Tenant, Order, Quotation, Customer } from '@/types/database'
-import { extractDeliveryInfo, cleanNotesFromDeliveryTag } from '@/lib/delivery'
+import { extractDeliveryInfo, cleanNotesFromDeliveryTag, extractManualInvoiceNumber } from '@/lib/delivery'
 import { cleanProductDescription } from '@/lib/categories'
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -289,6 +289,7 @@ export async function buildOrderJsPdfDoc({
 
   const chosenColor = pdfColor || order.pdfColor || (tenant?.settings as any)?.invoice_pdf_color || (tenant?.settings as any)?.invoice_color || 'blue'
   const primaryTheme = resolvePdfTheme(chosenColor)
+  const manualInvoiceNumber = extractManualInvoiceNumber(order.notes, order.payment_breakdown)
 
   // Document Title & Number Badge (Right Side)
   doc.setFont('helvetica', 'bold')
@@ -301,13 +302,22 @@ export async function buildOrderJsPdfDoc({
   doc.setTextColor(15, 23, 42) // slate-900
   doc.text(orderNumber, 196, currentY + 9.5, { align: 'right' })
 
+  let metaStartY = currentY + 14.5
+  if (manualInvoiceNumber) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
+    doc.text(`N° Factura Manual / Fiscal: #${manualInvoiceNumber.replace(/^#/, '')}`, 196, metaStartY, { align: 'right' })
+    metaStartY += 4.5
+  }
+
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(100, 116, 139)
-  doc.text(`Fecha: ${formatDate(order.created_at)}`, 196, currentY + 14.5, { align: 'right' })
-  doc.text(`Tasa Oficial BCV: ${formatVes(exchangeRate)}/USD`, 196, currentY + 18.5, { align: 'right' })
+  doc.text(`Fecha: ${formatDate(order.created_at)}`, 196, metaStartY, { align: 'right' })
+  doc.text(`Tasa Oficial BCV: ${formatVes(exchangeRate)}/USD`, 196, metaStartY + 4, { align: 'right' })
 
-  const rightBlockHeight = 22
+  const rightBlockHeight = manualInvoiceNumber ? 26.5 : 22
   currentY += Math.max(leftBlockHeight, rightBlockHeight) + 5
 
   // Divider line
@@ -564,8 +574,10 @@ export async function buildOrderJsPdfDoc({
     doc.text(formatVes(totalVes), 190, finalY + 23, { align: 'right' })
   }
 
-  // Payment Breakdown (Bottom Left Box if available)
+  // Payment Breakdown & Installments Schedule (Bottom Left Box if available)
   const payments = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
+  let leftAfterPaymentsY = finalY + 6
+
   if (payments.length > 0) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8.5)
@@ -575,7 +587,7 @@ export async function buildOrderJsPdfDoc({
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(100, 116, 139)
-    let pY = finalY + 12
+    let pY = finalY + 11.5
 
     payments.forEach((p: any) => {
       const methodLabel =
@@ -591,13 +603,85 @@ export async function buildOrderJsPdfDoc({
           ? 'Efectivo (VES)'
           : p.method === 'transfer_ves'
           ? 'Transferencia Bancaria'
+          : p.method === 'debit_ves'
+          ? 'Punto / Débito'
           : p.method === 'credit_7d'
-          ? 'Crédito Otorgado'
+          ? 'Saldo Financiado a Crédito'
           : p.method || 'Pago'
-      const refStr = p.reference ? ` [Ref: ${p.reference}]` : ''
-      const amountStr = p.amount_ves ? `Bs. ${Number(p.amount_ves).toFixed(2)}` : `$${Number(p.amount_usd).toFixed(2)} USD`
+      const refStr = p.reference ? ` [${p.reference}]` : ''
+      const usdVal = Number(p.amount_usd) || 0
+      const vesVal = Number(p.amount_ves) || 0
+      const amountStr = usdVal > 0
+        ? `$${usdVal.toFixed(2)} USD${vesVal > 0 ? ` (Bs. ${vesVal.toFixed(2)})` : ''}`
+        : `Bs. ${vesVal.toFixed(2)}`
       doc.text(`• ${methodLabel}: ${amountStr}${refStr}`, 14, pY)
-      pY += 5
+      pY += 4.5
+    })
+    leftAfterPaymentsY = pY + 2
+  }
+
+  // Cronograma de Cuotas con Fecha y Monto en $ para el Cliente
+  const creditPaymentEntry = payments.find((p: any) => p.method === 'credit_7d')
+  const installmentsPlan = creditPaymentEntry?.installments_plan
+  if (installmentsPlan && Array.isArray(installmentsPlan.schedule) && installmentsPlan.schedule.length > 0) {
+    const scheduleStartY = Math.max(leftAfterPaymentsY + 3, finalY + summaryBoxHeight + 6)
+    const freqLabel =
+      installmentsPlan.frequency === 'semanal'
+        ? 'Semanales'
+        : installmentsPlan.frequency === 'quincenal'
+        ? 'Quincenales'
+        : installmentsPlan.frequency === 'mensual'
+        ? 'Mensuales'
+        : `Cada ${installmentsPlan.frequency_days || 15} días`
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(primaryTheme.rgb[0], primaryTheme.rgb[1], primaryTheme.rgb[2])
+    doc.text(
+      `CRONOGRAMA DE PAGO EN CUOTAS (${installmentsPlan.total_installments || installmentsPlan.schedule.length} CUOTAS ${freqLabel.toUpperCase()}):`,
+      14,
+      scheduleStartY
+    )
+
+    const instRows = installmentsPlan.schedule.map((inst: any, idx: number) => {
+      const num = inst.installment_number || idx + 1
+      const dueStr = formatCreditDueDate(inst.due_date)
+      const amtUsd = Number(inst.amount_usd) || 0
+      const statusStr = inst.status === 'paid' ? 'PAGADA' : 'PENDIENTE'
+      return [
+        `Cuota #${num}`,
+        dueStr,
+        formatUsd(amtUsd),
+        `${formatVes(amtUsd * exchangeRate)} (Ref. hoy)`,
+        statusStr,
+      ]
+    })
+
+    autoTable(doc, {
+      startY: scheduleStartY + 2.5,
+      head: [['N° de Cuota', 'Fecha de Pago', 'Monto en $ (USD)', 'Equivalente Bs. (Ref)', 'Estado']],
+      body: instRows,
+      margin: { left: 14, right: 14 },
+      theme: 'grid',
+      headStyles: {
+        fillColor: [109, 40, 217], // purple-700
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center',
+      },
+      bodyStyles: {
+        fontSize: 8,
+        textColor: [30, 41, 59],
+        halign: 'center',
+      },
+      columnStyles: {
+        0: { cellWidth: 28, fontStyle: 'bold' },
+        1: { cellWidth: 34, fontStyle: 'bold' },
+        2: { cellWidth: 38, fontStyle: 'bold', textColor: [15, 23, 42] },
+        3: { cellWidth: 'auto' },
+        4: { cellWidth: 28, fontStyle: 'bold' },
+      },
     })
   }
 

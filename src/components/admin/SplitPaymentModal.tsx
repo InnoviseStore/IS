@@ -16,7 +16,7 @@ import { formatDate, formatDateTime } from '@/lib/formatters'
 import { getTenantFeatures } from '@/lib/planLimits'
 import { generateOrderPdf, INVOICE_PDF_THEMES } from '@/lib/pdfGenerator'
 import { PdfLoadingModal } from '@/components/common/PdfLoadingModal'
-import { type DeliveryInfo, formatDeliveryTag, extractDeliveryInfo } from '@/lib/delivery'
+import { type DeliveryInfo, formatDeliveryTag, extractDeliveryInfo, formatManualInvoiceTag } from '@/lib/delivery'
 
 interface PaymentRow {
   id: string
@@ -61,6 +61,7 @@ interface Props {
   initialCreditDays?: number
   initialCreditAmount?: number
   initialDeliveryInfo?: DeliveryInfo | null
+  initialManualInvoiceNumber?: string | null
   onClose: () => void
   onSuccess: () => void
 }
@@ -79,10 +80,12 @@ export function SplitPaymentModal({
   initialCreditDays,
   initialCreditAmount,
   initialDeliveryInfo,
+  initialManualInvoiceNumber,
   onClose,
   onSuccess,
 }: Props) {
   const { tenant, profile, bcvRatesHistory } = useTenant()
+  const [manualInvoiceNumber, setManualInvoiceNumber] = useState<string>(initialManualInvoiceNumber || '')
 
   // Control de fecha de operación y tasa BCV (permite ventas de ayer o tasas históricas)
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
@@ -165,6 +168,9 @@ export function SplitPaymentModal({
   const [installmentFrequency, setInstallmentFrequency] = useState<CreditPlanFrequency>('quincenal')
   const [customFrequencyDays, setCustomFrequencyDays] = useState<number>(15)
   const [installmentsCount, setInstallmentsCount] = useState<number>(2)
+  const [customInstallmentOverrides, setCustomInstallmentOverrides] = useState<
+    Record<number, { due_date?: string; amount_usd?: number }>
+  >({})
 
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false)
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null)
@@ -180,9 +186,25 @@ export function SplitPaymentModal({
       setCreditDays(initialCreditDays)
     }
     if (initialPayments && Array.isArray(initialPayments) && initialPayments.length > 0) {
-      const hasCredit = initialPayments.some((p: any) => p.method === 'credit_7d')
-      if (hasCredit) {
+      const creditRow = initialPayments.find((p: any) => p.method === 'credit_7d')
+      if (creditRow) {
         setIsCredit(true)
+        if (creditRow.installments_plan && Array.isArray(creditRow.installments_plan.schedule)) {
+          setCreditPlanMode('installments')
+          if (creditRow.installments_plan.frequency) {
+            setInstallmentFrequency(creditRow.installments_plan.frequency)
+          }
+          setInstallmentsCount(creditRow.installments_plan.schedule.length || 2)
+          const overrides: Record<number, { due_date?: string; amount_usd?: number }> = {}
+          creditRow.installments_plan.schedule.forEach((inst: any, idx: number) => {
+            const num = inst.installment_number || idx + 1
+            overrides[num] = {
+              due_date: inst.due_date,
+              amount_usd: Number(inst.amount_usd) || undefined,
+            }
+          })
+          setCustomInstallmentOverrides(overrides)
+        }
       }
       const realRows: PaymentRow[] = initialPayments
         .filter((p: any) => p.method !== 'credit_7d')
@@ -435,11 +457,16 @@ export function SplitPaymentModal({
 
     for (let i = 1; i <= count; i++) {
       const isLast = i === count
-      const instUsd = isLast ? parseFloat((creditAmountUsd - acc).toFixed(2)) : baseUsd
+      const override = customInstallmentOverrides[i]
+      const defaultInstUsd = isLast ? Math.max(0, parseFloat((creditAmountUsd - acc).toFixed(2))) : baseUsd
+      const instUsd = override?.amount_usd !== undefined && override.amount_usd >= 0
+        ? parseFloat(override.amount_usd.toFixed(2))
+        : defaultInstUsd
       acc += instUsd
       const instVes = parseFloat((instUsd * appliedRate).toFixed(2))
       const dueTime = now + (i * effectiveFrequencyDays * 24 * 60 * 60 * 1000)
-      const dueDateStr = new Date(dueTime).toISOString().split('T')[0]
+      const defaultDueDateStr = new Date(dueTime).toISOString().split('T')[0]
+      const dueDateStr = override?.due_date || defaultDueDateStr
       items.push({
         installment_number: i,
         due_date: dueDateStr,
@@ -449,7 +476,7 @@ export function SplitPaymentModal({
       })
     }
     return items
-  }, [creditPlanMode, creditAmountUsd, installmentsCount, maxInstallments, effectiveFrequencyDays, appliedRate])
+  }, [creditPlanMode, creditAmountUsd, installmentsCount, maxInstallments, effectiveFrequencyDays, appliedRate, customInstallmentOverrides])
 
   const dueDateObj = useMemo(() => {
     if (creditPlanMode === 'installments' && installmentsSchedule.length > 0) {
@@ -509,9 +536,10 @@ export function SplitPaymentModal({
     setError(null)
 
     const supabase = createClient()
+    const cleanManualInv = manualInvoiceNumber.trim()
 
     const validPayments = payments.filter((row) => (parseFloat(row.amountUsd) || 0) > 0 || (parseFloat(row.amountVes) || 0) > 0)
-    const paymentBreakdown: any[] = validPayments.map((row) => {
+    const paymentBreakdown: any[] = validPayments.map((row, idx) => {
       const usdVal = parseFloat(row.amountUsd) || (parseFloat(row.amountVes) || 0) / appliedRate
       const vesVal = parseFloat(row.amountVes) || usdVal * appliedRate
       const isUsd = USD_METHODS.includes(row.method)
@@ -522,6 +550,7 @@ export function SplitPaymentModal({
         amount_ves: parseFloat(vesVal.toFixed(2)),
         reference: row.reference || undefined,
         igtf_amount: rowIgtf || undefined,
+        ...(idx === 0 && cleanManualInv ? { manual_invoice_number: cleanManualInv } : {}),
       }
     })
 
@@ -537,6 +566,7 @@ export function SplitPaymentModal({
           : `Crédito a ${creditDays} días (Vence: ${dueDate})`,
         igtf_amount: undefined,
         installments_plan: installmentsPlanData,
+        ...(cleanManualInv ? { manual_invoice_number: cleanManualInv } : {}),
       })
     }
 
@@ -547,6 +577,10 @@ export function SplitPaymentModal({
         amountVes: deliveryVes,
         address: deliveryAddress.trim(),
       })
+      const manualInvoiceTag = formatManualInvoiceTag(cleanManualInv)
+      const manualInvoiceText = cleanManualInv
+        ? `[Factura Fiscal / Manual N°: #${cleanManualInv.replace(/^#/, '')}]`
+        : ''
 
         const baseNotes = (operationDate !== todayStr || Math.abs(appliedRate - exchangeRate) > 0.001)
           ? `[Venta registrada con fecha ${operationDate} | Tasa BCV: Bs. ${appliedRate.toFixed(2)}]`
@@ -555,7 +589,7 @@ export function SplitPaymentModal({
           ? `🛵 Delivery: $${deliveryUsd.toFixed(2)} USD (Bs. ${deliveryVes.toFixed(2)})${deliveryAddress.trim() ? ` | Dir: ${deliveryAddress.trim()}` : ''}`
           : ''
 
-        const finalNotes = [baseNotes, deliveryCleanText, deliveryTag].filter(Boolean).join('\n') || undefined
+        const finalNotes = [manualInvoiceText, baseNotes, deliveryCleanText, deliveryTag, manualInvoiceTag].filter(Boolean).join('\n') || undefined
 
         const payload = {
           tenant_id: tenant.id,
@@ -575,6 +609,7 @@ export function SplitPaymentModal({
           created_at: operationDate !== todayStr ? new Date(operationDate + 'T12:00:00').toISOString() : undefined,
           sale_date: operationDate !== todayStr ? operationDate : undefined,
           notes: finalNotes,
+          manual_invoice_number: cleanManualInv || undefined,
           delivery_amount_usd: deliveryUsd,
           delivery_amount_ves: deliveryVes,
           delivery_address: deliveryAddress.trim() || undefined,
@@ -656,6 +691,46 @@ export function SplitPaymentModal({
     if (!tenant || !success) return
     setGeneratingPdf(true)
     try {
+      const cleanManualInv = manualInvoiceNumber.trim()
+      const pdfPaymentBreakdown: any[] = payments
+        .filter((p) => (parseFloat(p.amountUsd) || 0) > 0 || (parseFloat(p.amountVes) || 0) > 0)
+        .map((p, idx) => {
+          const usdVal = parseFloat(p.amountUsd) || (parseFloat(p.amountVes) || 0) / appliedRate
+          const vesVal = parseFloat(p.amountVes) || usdVal * appliedRate
+          return {
+            method: p.method,
+            amount_usd: parseFloat(usdVal.toFixed(2)),
+            amount_ves: parseFloat(vesVal.toFixed(2)),
+            reference: p.reference,
+            ...(idx === 0 && cleanManualInv ? { manual_invoice_number: cleanManualInv } : {}),
+          }
+        })
+
+      if (isCredit && creditAmountUsd > 0) {
+        pdfPaymentBreakdown.push({
+          method: 'credit_7d',
+          amount_usd: parseFloat(creditAmountUsd.toFixed(2)),
+          amount_ves: parseFloat((creditAmountUsd * appliedRate).toFixed(2)),
+          reference: creditPlanMode === 'installments'
+            ? `Plan de ${installmentsSchedule.length} cuotas (${installmentFrequency})`
+            : `Crédito a ${creditDays} días (Vence: ${dueDate})`,
+          installments_plan: currentInstallmentsPlan,
+          ...(cleanManualInv ? { manual_invoice_number: cleanManualInv } : {}),
+        })
+      }
+
+      const pdfNotesParts = [
+        (hasDelivery && (deliveryUsd > 0 || deliveryAddress.trim()))
+          ? formatDeliveryTag({
+              hasDelivery: true,
+              amountUsd: deliveryUsd,
+              amountVes: deliveryVes,
+              address: deliveryAddress.trim(),
+            })
+          : '',
+        formatManualInvoiceTag(cleanManualInv),
+      ].filter(Boolean)
+
       await generateOrderPdf({
         tenant,
         action,
@@ -665,30 +740,15 @@ export function SplitPaymentModal({
           order_number: success,
           tenant_id: tenant.id,
           customer_id: selectedCustomer?.id || null,
-          status: 'completed',
+          status: isCredit ? 'credit' : 'completed',
           payment_condition: isCredit ? 'credit_7d' : 'immediate',
-          exchange_rate_at_sale: exchangeRate,
+          due_date: isCredit ? dueDateObj.toISOString() : null,
+          exchange_rate_at_sale: appliedRate,
           subtotal_usd: totalUsd,
           total_usd: grandTotalUsd,
           total_ves: grandTotalVes,
-          notes: (hasDelivery && (deliveryUsd > 0 || deliveryAddress.trim()))
-            ? formatDeliveryTag({
-                hasDelivery: true,
-                amountUsd: deliveryUsd,
-                amountVes: deliveryVes,
-                address: deliveryAddress.trim(),
-              })
-            : null,
-          payment_breakdown: payments.map((p) => {
-            const usdVal = parseFloat(p.amountUsd) || (parseFloat(p.amountVes) || 0) / appliedRate
-            const vesVal = parseFloat(p.amountVes) || usdVal * appliedRate
-            return {
-              method: p.method,
-              amount_usd: parseFloat(usdVal.toFixed(2)),
-              amount_ves: parseFloat(vesVal.toFixed(2)),
-              reference: p.reference,
-            }
-          }),
+          notes: pdfNotesParts.length > 0 ? pdfNotesParts.join('\n') : null,
+          payment_breakdown: pdfPaymentBreakdown,
           created_at: new Date().toISOString(),
           customer: selectedCustomer
             ? {
@@ -743,6 +803,11 @@ export function SplitPaymentModal({
           <p className="text-sm text-slate-600 dark:text-slate-300 mb-1 font-medium">
             Orden: <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{success}</span>
           </p>
+          {manualInvoiceNumber.trim() && (
+            <p className="text-xs text-slate-600 dark:text-slate-300 mb-1 font-semibold">
+              Factura Manual / Fiscal: <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400">#{manualInvoiceNumber.trim().replace(/^#/, '')}</span>
+            </p>
+          )}
           <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
             Subtotal: <span className="font-extrabold text-slate-900 dark:text-white">${totalUsd.toFixed(2)} USD</span>
           </p>
@@ -812,8 +877,9 @@ export function SplitPaymentModal({
             isOpen={showInvoiceWhatsAppModal}
             onClose={() => setShowInvoiceWhatsAppModal(false)}
             orderNumber={success}
+            manualInvoiceNumber={manualInvoiceNumber.trim() || undefined}
             tenantName={tenant?.name || 'Innovise Store'}
-            exchangeRate={exchangeRate}
+            exchangeRate={appliedRate}
             customerName={selectedCustomer?.full_name || 'Consumidor Final'}
             customerPhone={selectedCustomer?.phone || null}
             customerIdNumber={selectedCustomer?.id_number || null}
@@ -1230,31 +1296,78 @@ export function SplitPaymentModal({
                         </div>
                       </div>
 
-                      {/* Cronograma de Cuotas Preview */}
+                      {/* Cronograma de Cuotas Preview (Editable en Fecha y Monto $) */}
                       {installmentsSchedule.length > 0 && (
                         <div>
-                          <div className="flex items-center gap-1.5 mb-1.5 text-slate-700 dark:text-slate-300 font-bold">
-                            <CalendarDays className="w-3.5 h-3.5 text-purple-600" />
-                            <span>Cronograma de Cuotas ({installmentsSchedule.length}):</span>
+                          <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
+                              <CalendarDays className="w-3.5 h-3.5 text-purple-600" />
+                              <span>Cronograma de Cuotas ({installmentsSchedule.length}) — Fecha y Monto ($):</span>
+                            </div>
+                            {Object.keys(customInstallmentOverrides).length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setCustomInstallmentOverrides({})}
+                                className="text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                              >
+                                Restablecer automático
+                              </button>
+                            )}
                           </div>
-                          <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                          <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
                             {installmentsSchedule.map((inst) => (
                               <div
                                 key={inst.installment_number}
-                                className="flex items-center justify-between p-2 rounded-lg bg-white/70 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 text-[11px]"
+                                className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2 rounded-xl bg-white/90 dark:bg-slate-800/90 border border-purple-200/80 dark:border-purple-800/60 text-[11px]"
                               >
-                                <span className="font-bold text-purple-700 dark:text-purple-400">
+                                <span className="font-extrabold text-purple-700 dark:text-purple-300 shrink-0">
                                   Cuota #{inst.installment_number}
                                 </span>
-                                <span className="text-slate-500 dark:text-slate-400 font-mono">
-                                  {formatDate(inst.due_date)}
-                                </span>
-                                <div className="text-right">
-                                  <span className="font-bold text-slate-900 dark:text-white">
-                                    ${inst.amount_usd.toFixed(2)}
-                                  </span>
-                                  <span className="text-[10px] text-slate-400 block">
-                                    Bs. {inst.amount_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-slate-400 font-semibold">Fecha:</span>
+                                  <input
+                                    type="date"
+                                    value={inst.due_date}
+                                    onChange={(e) => {
+                                      const newDate = e.target.value
+                                      setCustomInstallmentOverrides((prev) => ({
+                                        ...prev,
+                                        [inst.installment_number]: {
+                                          ...prev[inst.installment_number],
+                                          due_date: newDate,
+                                        },
+                                      }))
+                                    }}
+                                    className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono text-[11px] font-bold outline-none focus:ring-1 focus:ring-purple-500"
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <div className="relative w-24">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                                      $
+                                    </span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={inst.amount_usd}
+                                      onChange={(e) => {
+                                        const num = parseFloat(e.target.value)
+                                        setCustomInstallmentOverrides((prev) => ({
+                                          ...prev,
+                                          [inst.installment_number]: {
+                                            ...prev[inst.installment_number],
+                                            amount_usd: isNaN(num) ? 0 : num,
+                                          },
+                                        }))
+                                      }}
+                                      className="w-full pl-5 pr-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-right font-extrabold text-slate-900 dark:text-white text-[11px] outline-none focus:ring-1 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                                    (Bs. {inst.amount_ves.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                                   </span>
                                 </div>
                               </div>
@@ -1262,7 +1375,7 @@ export function SplitPaymentModal({
                           </div>
                           <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1.5 flex items-center gap-1">
                             <span>⚡</span>
-                            <span>Sincronizado con cobranza y recordatorios automáticos de WhatsApp en cada fecha.</span>
+                            <span>Las fechas y montos en $ saldrán impresos en la Factura PDF, en el mensaje al cliente y en Pedidos Web.</span>
                           </p>
                         </div>
                       )}
@@ -1613,6 +1726,23 @@ export function SplitPaymentModal({
               <span className="text-[11px] font-mono font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
                 Tasa: Bs. {appliedRate.toFixed(2)}
               </span>
+            </div>
+
+            {/* Enlace con Número de Factura Manual / Fiscal de la Tienda */}
+            <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200/80 dark:border-indigo-900/60 space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                🧾 N° de Factura Manual / Fiscal (Opcional):
+              </label>
+              <input
+                type="text"
+                value={manualInvoiceNumber}
+                onChange={(e) => setManualInvoiceNumber(e.target.value)}
+                placeholder="Ej. 000145, FAC-204, Serie A-0089..."
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
+                Enlaza esta venta con el talonario manual o factura fiscal física de la tienda (aparecerá en el PDF, WhatsApp y Pedidos Web).
+              </p>
             </div>
 
             {/* Selector de Tasa y Fecha de Operación (Ventas de ayer / pagos retroactivos) */}

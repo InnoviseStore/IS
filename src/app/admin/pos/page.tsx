@@ -31,7 +31,7 @@ import {
   Palette,
   Check,
 } from 'lucide-react'
-import { type DeliveryInfo, extractDeliveryInfo } from '@/lib/delivery'
+import { type DeliveryInfo, extractDeliveryInfo, extractManualInvoiceNumber } from '@/lib/delivery'
 
 function getCartItemKey(item: {
   cart_key?: string
@@ -145,6 +145,7 @@ interface WebOrderInfo {
   creditDays?: number
   initialCreditAmount?: number
   deliveryInfo?: DeliveryInfo
+  manualInvoiceNumber?: string | null
 }
 
 function POSContent() {
@@ -301,6 +302,7 @@ function POSContent() {
           }
 
           const delInfo = extractDeliveryInfo(order.notes, Number(order.exchange_rate_at_sale) || exchangeRate)
+          const manualInvNum = extractManualInvoiceNumber(order.notes, order.payment_breakdown)
 
           setWebOrderInfo({
             orderId: order.id,
@@ -314,6 +316,7 @@ function POSContent() {
             creditDays: days,
             initialCreditAmount: prevCredit,
             deliveryInfo: delInfo.hasDelivery ? delInfo : undefined,
+            manualInvoiceNumber: manualInvNum,
           })
         }
       } catch (err) {
@@ -1600,6 +1603,7 @@ function POSContent() {
           initialCreditDays={webOrderInfo?.creditDays}
           initialCreditAmount={webOrderInfo?.initialCreditAmount}
           initialDeliveryInfo={webOrderInfo?.deliveryInfo}
+          initialManualInvoiceNumber={webOrderInfo?.manualInvoiceNumber}
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             setShowPayment(false)

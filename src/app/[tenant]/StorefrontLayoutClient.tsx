@@ -41,6 +41,7 @@ export interface StoreData {
   slogan?: string | null
   primary_color?: string | null
   accent_color?: string | null
+  text_color?: string | null
   checkout_mode?: 'whatsapp_only' | 'direct_payment'
   customer_auth_mode?: 'optional' | 'customer_login_required' | 'guest_only' | string
 }
@@ -156,7 +157,10 @@ function StorefrontHeader({
                     <Store className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                   </div>
                 )}
-                <span className="font-bold text-sm sm:text-lg text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate max-w-[120px] xs:max-w-[160px] sm:max-w-xs">
+                <span
+                  className="font-bold text-sm sm:text-lg text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate max-w-[120px] xs:max-w-[160px] sm:max-w-xs"
+                  style={store.text_color ? { color: store.text_color } : undefined}
+                >
                   {store.name}
                 </span>
               </Link>

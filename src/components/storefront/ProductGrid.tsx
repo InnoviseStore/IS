@@ -93,7 +93,7 @@ interface ProductCardProps {
   cartItem: CartItem | undefined;
   onAdd: () => void;
   onIncrease: () => void;
-  onDecrease: () => void;
+  onDecrease: () => void; textColor?: string; primaryColor?: string;
 }
 
 const ProductCard = React.memo(function ProductCard({
@@ -103,7 +103,7 @@ const ProductCard = React.memo(function ProductCard({
   cartItem,
   onAdd,
   onIncrease,
-  onDecrease,
+  onDecrease, textColor,
 }: ProductCardProps) {
   const [justAdded, setJustAdded] = useState(false);
   const priceVes = product.unit_price_usd * exchangeRate;
@@ -161,7 +161,7 @@ const ProductCard = React.memo(function ProductCard({
             {detectCategory(product.name, product.description)}
           </span>
           <Link href={productHref} prefetch={true}>
-            <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-0.5">
+            <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-0.5" style={textColor ? { color: textColor } : undefined}>
               {product.name}
             </h3>
           </Link>
@@ -274,7 +274,7 @@ const LookbookCard = React.memo(function LookbookCard({
   cartItem,
   onAdd,
   onIncrease,
-  onDecrease,
+  onDecrease, textColor,
   primaryColor,
 }: ProductCardProps & { primaryColor?: string }) {
   const [justAdded, setJustAdded] = useState(false);
@@ -314,7 +314,7 @@ const LookbookCard = React.memo(function LookbookCard({
       <div className="flex flex-col space-y-1.5 pt-1">
         <div className="flex items-baseline justify-between gap-2">
           <Link href={productHref} prefetch={true}>
-            <h3 className="text-sm sm:text-base font-medium tracking-tight text-neutral-900 dark:text-neutral-100 group-hover:opacity-75 transition-opacity line-clamp-1">
+            <h3 className="text-sm sm:text-base font-medium tracking-tight text-neutral-900 dark:text-neutral-100 group-hover:opacity-75 transition-opacity line-clamp-1" style={textColor ? { color: textColor } : undefined}>
               {product.name}
             </h3>
           </Link>
@@ -359,7 +359,7 @@ const TechCard = React.memo(function TechCard({
   cartItem,
   onAdd,
   onIncrease,
-  onDecrease,
+  onDecrease, textColor,
   primaryColor = '#06b6d4',
 }: ProductCardProps & { primaryColor?: string }) {
   const [justAdded, setJustAdded] = useState(false);
@@ -403,7 +403,7 @@ const TechCard = React.memo(function TechCard({
             {product.sku && <span>SKU: {product.sku}</span>}
           </div>
           <Link href={productHref} prefetch={true}>
-            <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-2 hover:text-cyan-400 transition-colors">
+            <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-2 hover:text-cyan-400 transition-colors" style={textColor ? { color: textColor } : undefined}>
               {product.name}
             </h3>
           </Link>
@@ -455,7 +455,7 @@ const BoutiqueCard = React.memo(function BoutiqueCard({
   cartItem,
   onAdd,
   onIncrease,
-  onDecrease,
+  onDecrease, textColor,
   primaryColor = '#d97706',
 }: ProductCardProps & { primaryColor?: string }) {
   const [justAdded, setJustAdded] = useState(false);
@@ -498,7 +498,7 @@ const BoutiqueCard = React.memo(function BoutiqueCard({
             {detectCategory(product.name, product.description)}
           </span>
           <Link href={productHref} prefetch={true}>
-            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-2 hover:text-amber-700 transition-colors mt-0.5 leading-snug">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-2 hover:text-amber-700 transition-colors mt-0.5 leading-snug" style={textColor ? { color: textColor } : undefined}>
               {product.name}
             </h3>
           </Link>
@@ -547,7 +547,7 @@ const ExpressRow = React.memo(function ExpressRow({
   cartItem,
   onAdd,
   onIncrease,
-  onDecrease,
+  onDecrease, textColor,
   primaryColor = '#059669',
 }: ProductCardProps & { primaryColor?: string }) {
   const [justAdded, setJustAdded] = useState(false);
@@ -577,7 +577,7 @@ const ExpressRow = React.memo(function ExpressRow({
             {detectCategory(product.name, product.description)}
           </span>
           <Link href={productHref} prefetch={true}>
-            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate hover:underline mt-0.5">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate hover:underline mt-0.5" style={textColor ? { color: textColor } : undefined}>
               {product.name}
             </h3>
           </Link>
@@ -632,7 +632,7 @@ interface ProductGridProps {
   exchangeRate: number;
   tenantSlug: string;
   template?: StorefrontTemplate;
-  primaryColor?: string;
+  primaryColor?: string; textColor?: string;
   showViewToggle?: boolean;
   defaultViewMode?: 'grid' | 'list';
 }
@@ -643,7 +643,7 @@ export default function ProductGrid({
   tenantSlug,
   template = 'aurora',
   primaryColor,
-  showViewToggle = true,
+  showViewToggle = true, textColor,
   defaultViewMode,
 }: ProductGridProps) {
   const [query, setQuery] = useState('');
@@ -910,7 +910,7 @@ export default function ProductGrid({
                 onDecrease={() =>
                   cartItem && updateQuantity(product.id, cartItem.quantity - 1)
                 }
-                primaryColor={primaryColor}
+                primaryColor={primaryColor} textColor={textColor}
               />
             );
           })}
@@ -933,7 +933,7 @@ export default function ProductGrid({
                 onDecrease={() =>
                   cartItem && updateQuantity(product.id, cartItem.quantity - 1)
                 }
-                primaryColor={primaryColor}
+                primaryColor={primaryColor} textColor={textColor}
               />
             );
           })}
@@ -956,7 +956,7 @@ export default function ProductGrid({
                 onDecrease={() =>
                   cartItem && updateQuantity(product.id, cartItem.quantity - 1)
                 }
-                primaryColor={primaryColor}
+                primaryColor={primaryColor} textColor={textColor}
               />
             );
           })}
@@ -979,7 +979,7 @@ export default function ProductGrid({
                 onDecrease={() =>
                   cartItem && updateQuantity(product.id, cartItem.quantity - 1)
                 }
-                primaryColor={primaryColor}
+                primaryColor={primaryColor} textColor={textColor}
               />
             );
           })}
@@ -989,7 +989,7 @@ export default function ProductGrid({
           {filtered.map((product) => {
             const cartItem = items.find((i) => i.id === product.id || i.product_id === product.id);
             return (
-              <ProductCard
+              <ProductCard textColor={textColor}
                 key={product.id}
                 product={product}
                 exchangeRate={exchangeRate}

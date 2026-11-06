@@ -38,7 +38,7 @@ import PaymentAbonoModal from '@/components/admin/PaymentAbonoModal'
 import { AdminAuthPinModal } from '@/components/admin/AdminAuthPinModal'
 import { WhatsAppOrderContactModal } from '@/components/admin/WhatsAppOrderContactModal'
 import { WhatsAppInvoiceModal } from '@/components/admin/WhatsAppInvoiceModal'
-import { extractDeliveryInfo, cleanNotesFromDeliveryTag } from '@/lib/delivery'
+import { extractDeliveryInfo, cleanNotesFromDeliveryTag, extractManualInvoiceNumber } from '@/lib/delivery'
 
 import { getRoleLabel } from '@/types/database'
 
@@ -206,10 +206,11 @@ export default function AdminOrdersPage() {
 
     return result.filter((o) => {
       const numMatch = o.order_number?.toLowerCase().includes(q)
+      const manualNumMatch = extractManualInvoiceNumber(o.notes, o.payment_breakdown)?.toLowerCase().includes(q)
       const custMatch = o.customer?.full_name?.toLowerCase().includes(q) || o.customer?.phone?.includes(q)
       const notesMatch = o.notes?.toLowerCase().includes(q)
       const itemMatch = o.order_items?.some((i) => i.product_name?.toLowerCase().includes(q) || i.product_sku?.toLowerCase().includes(q))
-      return numMatch || custMatch || notesMatch || itemMatch
+      return numMatch || manualNumMatch || custMatch || notesMatch || itemMatch
     })
   }, [orders, searchQuery, startDate, endDate])
 
@@ -679,6 +680,7 @@ export default function AdminOrdersPage() {
 
             const creditBreakdownItem = breakdown.find((item: any) => item.method === 'credit_7d')
             const installmentsPlan = creditBreakdownItem?.installments_plan
+            const manualInvoiceNum = extractManualInvoiceNumber(order.notes, order.payment_breakdown)
 
             let creditDaysCount = 7
             if (order.due_date && order.created_at) {
@@ -699,10 +701,20 @@ export default function AdminOrdersPage() {
               >
                 {/* Cabecera del pedido */}
                 <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <span className="font-mono text-sm sm:text-base font-black text-blue-600 dark:text-blue-400">
                       #{order.order_number}
                     </span>
+
+                    {manualInvoiceNum && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60"
+                        title="Número de Factura Manual / Fiscal enlazado"
+                      >
+                        <span>🧾</span>
+                        <span>Factura Manual: #{manualInvoiceNum.replace(/^#/, '')}</span>
+                      </span>
+                    )}
 
                     {order.status === 'pending' && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
@@ -990,41 +1002,142 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
 
-                {/* Desglose de Productos Expandible */}
+                {/* Desglose de Productos, Factura Manual y Cuotas Expandible */}
                 {isExpanded && (
-                  <div className="p-4 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 space-y-2 animate-in fade-in duration-150">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                      Productos Solicitados ({order.order_items?.length || 0})
-                    </span>
-
-                    <div className="divide-y divide-slate-200/60 dark:divide-slate-700/60">
-                      {order.order_items && order.order_items.length > 0 ? (
-                        order.order_items.map((item) => (
-                          <div key={item.id} className="py-2 flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 text-[11px]">
-                                {item.quantity}x
+                  <div className="p-4 sm:p-5 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in fade-in duration-150">
+                    {/* Tarjeta de Enlace de Factura Manual / Fiscal (si aplica) */}
+                    {manualInvoiceNum && (
+                      <div className="p-3 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🧾</span>
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                              Factura Manual / Talonario Fiscal Enlazado
+                            </p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300">
+                              Orden del sistema <span className="font-mono font-bold">#{order.order_number}</span> vinculada con Factura Manual N°{' '}
+                              <span className="font-mono font-black text-indigo-700 dark:text-indigo-300">
+                                #{manualInvoiceNum.replace(/^#/, '')}
                               </span>
-                              <div>
-                                <span className="font-bold text-slate-800 dark:text-slate-200">
-                                  {item.product_name}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-3 py-1 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 font-mono text-xs font-black text-indigo-700 dark:text-indigo-300">
+                          #{manualInvoiceNum.replace(/^#/, '')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Cronograma de Cuotas con Fecha y Monto en $ (si es a crédito o tiene plan de cuotas) */}
+                    {(installmentsPlan?.schedule?.length > 0 || isCreditSale) && (
+                      <div className="p-3.5 rounded-2xl bg-purple-50/80 dark:bg-purple-950/30 border border-purple-200/80 dark:border-purple-800/60 space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                            <span className="text-xs font-black text-purple-900 dark:text-purple-200 uppercase tracking-wider">
+                              {installmentsPlan?.schedule?.length > 0
+                                ? `Cronograma de Cuotas del Cliente (${installmentsPlan.total_installments} Cuotas - ${installmentsPlan.frequency})`
+                                : 'Detalle de Crédito y Fecha de Pago'}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-purple-700 dark:text-purple-300">
+                            Saldo Pendiente: ${saldoPendienteUsd.toFixed(2)} USD
+                          </span>
+                        </div>
+
+                        {installmentsPlan?.schedule?.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                            {installmentsPlan.schedule.map((inst: any) => {
+                              const isInstPaid = inst.status === 'paid'
+                              const instUsd = Number(inst.amount_usd) || 0
+                              const instVes = instUsd * (Number(order.exchange_rate_at_sale) || exchangeRate)
+                              return (
+                                <div
+                                  key={inst.installment_number}
+                                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                                    isInstPaid
+                                      ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60'
+                                      : 'bg-white dark:bg-slate-900/90 border-purple-200/80 dark:border-purple-800/50'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                                        Cuota #{inst.installment_number}
+                                      </span>
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                          isInstPaid
+                                            ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+                                            : 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300'
+                                        }`}
+                                      >
+                                        {isInstPaid ? '✓ Pagada' : '⏳ Pendiente'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
+                                      📅 Fecha: <span className="font-bold text-slate-800 dark:text-slate-200">{inst.due_date ? formatDate(inst.due_date) : 'Por definir'}</span>
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-xs font-black text-purple-700 dark:text-purple-300">
+                                      ${instUsd.toFixed(2)} USD
+                                    </p>
+                                    <p className="text-[10px] text-slate-400">
+                                      Bs. {instVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/90 border border-purple-200/70 dark:border-purple-800/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">
+                              📅 Fecha Límite de Pago: <strong className="text-slate-900 dark:text-white">{order.due_date ? formatDate(order.due_date) : '7 días'}</strong>
+                            </span>
+                            <span className="font-black text-purple-700 dark:text-purple-300">
+                              Monto a Pagar: ${saldoPendienteUsd.toFixed(2)} USD
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                        Productos Solicitados ({order.order_items?.length || 0})
+                      </span>
+
+                      <div className="divide-y divide-slate-200/60 dark:divide-slate-700/60">
+                        {order.order_items && order.order_items.length > 0 ? (
+                          order.order_items.map((item) => (
+                            <div key={item.id} className="py-2 flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center shrink-0 text-[11px]">
+                                  {item.quantity}x
                                 </span>
-                                {item.product_sku && (
-                                  <span className="text-[10px] text-slate-400 font-mono ml-2">
-                                    SKU: {item.product_sku}
+                                <div>
+                                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                                    {item.product_name}
                                   </span>
-                                )}
+                                  {item.product_sku && (
+                                    <span className="text-[10px] text-slate-400 font-mono ml-2">
+                                      SKU: {item.product_sku}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="text-right font-semibold text-slate-700 dark:text-slate-300">
+                                <span>${(item.unit_price_usd * item.quantity).toFixed(2)} USD</span>
                               </div>
                             </div>
-
-                            <div className="text-right font-semibold text-slate-700 dark:text-slate-300">
-                              <span>${(item.unit_price_usd * item.quantity).toFixed(2)} USD</span>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-xs text-slate-400 py-1">Sin productos asociados.</p>
-                      )}
+                          ))
+                        ) : (
+                          <p className="text-xs text-slate-400 py-1">Sin productos asociados.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1125,6 +1238,7 @@ export default function AdminOrdersPage() {
           installmentsPlan={
             (invoiceWhatsAppOrder.payment_breakdown || []).find((p: any) => p.method === 'credit_7d')?.installments_plan ?? undefined
           }
+          manualInvoiceNumber={extractManualInvoiceNumber(invoiceWhatsAppOrder.notes, invoiceWhatsAppOrder.payment_breakdown)}
           payments={(invoiceWhatsAppOrder.payment_breakdown || [])
             .filter((p: any) => p.method !== 'credit_7d')
             .map((p: any) => ({

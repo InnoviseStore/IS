@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react'
 import { X, MessageCircle, Copy, Check, ExternalLink, Monitor, Smartphone, AlertCircle, Zap, Loader2 } from 'lucide-react'
 import { useTenant } from '@/contexts/TenantContext'
 import { COUNTRY_CODES, normalizeWhatsAppPhone, createWhatsAppWebUrl, createWhatsAppUrl } from '@/lib/whatsapp'
-import { extractDeliveryInfo } from '@/lib/delivery'
+import { extractDeliveryInfo, extractManualInvoiceNumber } from '@/lib/delivery'
+import { formatDate } from '@/lib/formatters'
 
 interface Props {
   isOpen: boolean
@@ -61,8 +62,9 @@ export function WhatsAppOrderContactModal({
 
     const delivery = extractDeliveryInfo(order.notes, exchangeRate)
     const deliveryAddress = delivery.address || order.customer?.address
+    const manualInv = extractManualInvoiceNumber(order.notes, order.payment_breakdown)
 
-    lines.push(`🛒 *¡Hola ${customerName}!* Te escribimos de *${tenantName}* referente a tu solicitud de pedido *#${order.order_number}*.`)
+    lines.push(`🛒 *¡Hola ${customerName}!* Te escribimos de *${tenantName}* referente a tu pedido *#${order.order_number}*${manualInv ? ` (Factura Manual N° #${manualInv.replace(/^#/, '')})` : ''}.`)
     lines.push('')
 
     if (deliveryAddress && deliveryAddress.trim()) {
@@ -91,6 +93,19 @@ export function WhatsAppOrderContactModal({
 
     lines.push(`💰 *Total a pagar: $${totalUsd.toFixed(2)} USD* | Bs. ${totalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
     lines.push(`📊 Tasa BCV aplicada: Bs. ${exchangeRate.toFixed(2)}/USD`)
+
+    const breakdown = Array.isArray(order.payment_breakdown) ? order.payment_breakdown : []
+    const creditItem = breakdown.find((p: any) => p.method === 'credit_7d')
+    const installmentsPlan = creditItem?.installments_plan
+    if (installmentsPlan?.schedule && installmentsPlan.schedule.length > 0) {
+      lines.push('')
+      lines.push(`🗓️ *Plan de Cuotas (${installmentsPlan.total_installments} Cuotas - ${installmentsPlan.frequency}):*`)
+      installmentsPlan.schedule.forEach((inst: any) => {
+        const stBadge = inst.status === 'paid' ? '✅ Pagada' : '⏳ Pendiente'
+        lines.push(`• *Cuota #${inst.installment_number}:* Fecha: *${inst.due_date ? formatDate(inst.due_date) : 'Por definir'}* — Monto: *$${Number(inst.amount_usd).toFixed(2)} USD* [${stBadge}]`)
+      })
+    }
+
     lines.push('')
     lines.push('Por favor confírmanos tu método de pago o comprobante de transferencia para despachar tu pedido. ¡Muchas gracias!')
 

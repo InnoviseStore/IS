@@ -11,7 +11,8 @@ import {
   createWhatsAppWebUrl,
   createWhatsAppUrl,
 } from '@/lib/whatsapp'
-import { formatDeliveryTag } from '@/lib/delivery'
+import { formatDeliveryTag, formatManualInvoiceTag } from '@/lib/delivery'
+import { formatDate } from '@/lib/formatters'
 
 export interface WhatsAppInvoiceItem {
   name: string
@@ -30,6 +31,7 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   orderNumber: string
+  manualInvoiceNumber?: string | null
   tenantName: string
   exchangeRate: number
   customerName: string
@@ -65,6 +67,7 @@ export function WhatsAppInvoiceModal({
   isOpen,
   onClose,
   orderNumber,
+  manualInvoiceNumber,
   tenantName,
   exchangeRate,
   customerName,
@@ -120,6 +123,9 @@ export function WhatsAppInvoiceModal({
     lines.push(`🧾 *COMPROBANTE DE VENTA / FACTURA*`)
     lines.push(`🏪 *${tenantName}*`)
     lines.push(`📄 *Factura N°:* #${orderNumber}`)
+    if (manualInvoiceNumber && manualInvoiceNumber.trim()) {
+      lines.push(`🧾 *Factura Manual / Fiscal N°:* #${manualInvoiceNumber.trim().replace(/^#/, '')}`)
+    }
     lines.push(`📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}`)
     lines.push('')
     lines.push(`👤 *Cliente:* ${customerName || 'Cliente'}`)
@@ -182,10 +188,11 @@ export function WhatsAppInvoiceModal({
           : `cada ${installmentsPlan.frequency_days} días`
 
         lines.push('')
-        lines.push(`🗓️ *Plan de Cobro Acordado (${installmentsPlan.total_installments} Cuotas ${freqLabel}):*`)
+        lines.push(`🗓️ *Plan de Cobro en Cuotas (${installmentsPlan.total_installments} Cuotas ${freqLabel}):*`)
         installmentsPlan.schedule.forEach((inst) => {
-          const stBadge = inst.status === 'paid' ? '✅ Cancelada' : '⏳ Pendiente'
-          lines.push(`• Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* — Vence: ${inst.due_date} [${stBadge}]`)
+          const stBadge = inst.status === 'paid' ? '✅ Pagada' : '⏳ Pendiente'
+          const formattedDueDate = inst.due_date ? formatDate(inst.due_date) : 'Por definir'
+          lines.push(`• *Cuota #${inst.installment_number}:* Fecha: *${formattedDueDate}* — Monto: *$${Number(inst.amount_usd).toFixed(2)} USD* [${stBadge}]`)
         })
         lines.push(`📌 *(En Bolívares: Se calcula a la tasa oficial BCV del día en que realices el pago)*`)
       }
@@ -218,6 +225,7 @@ export function WhatsAppInvoiceModal({
     creditRemainingUsd,
     payments,
     installmentsPlan,
+    manualInvoiceNumber,
   ])
 
   const { tenant } = useTenant()
@@ -292,6 +300,39 @@ export function WhatsAppInvoiceModal({
     setDirectError(null)
 
     try {
+      const notesParts: string[] = []
+      if (manualInvoiceNumber && manualInvoiceNumber.trim()) {
+        notesParts.push(formatManualInvoiceTag(manualInvoiceNumber.trim()))
+      }
+      if (deliveryAmountUsd > 0 || deliveryAddress) {
+        notesParts.push(
+          formatDeliveryTag({
+            hasDelivery: true,
+            amountUsd: deliveryAmountUsd,
+            amountVes: deliveryAmountVes > 0 ? deliveryAmountVes : deliveryAmountUsd * exchangeRate,
+            address: deliveryAddress,
+          })
+        )
+      }
+
+      const breakdownList: any[] = (payments || []).map((p) => ({
+        method: p.method,
+        amount_usd: p.amountUsd,
+        reference: p.reference,
+        ...(manualInvoiceNumber && manualInvoiceNumber.trim() ? { manual_invoice_number: manualInvoiceNumber.trim() } : {}),
+      }))
+
+      if (isCredit && creditRemainingUsd > 0.01) {
+        breakdownList.push({
+          method: 'credit_7d',
+          amount_usd: Number(creditRemainingUsd.toFixed(2)),
+          amount_ves: Number((creditRemainingUsd * exchangeRate).toFixed(2)),
+          due_date: creditDueDate || undefined,
+          installments_plan: installmentsPlan || undefined,
+          ...(manualInvoiceNumber && manualInvoiceNumber.trim() ? { manual_invoice_number: manualInvoiceNumber.trim() } : {}),
+        })
+      }
+
       const orderPayload: any = {
         id: 'ord-' + Date.now(),
         order_number: orderNumber,
@@ -303,14 +344,7 @@ export function WhatsAppInvoiceModal({
         status: isCredit ? 'credit' : 'completed',
         due_date: creditDueDate || null,
         created_at: new Date().toISOString(),
-        notes: (deliveryAmountUsd > 0 || deliveryAddress)
-          ? formatDeliveryTag({
-              hasDelivery: true,
-              amountUsd: deliveryAmountUsd,
-              amountVes: deliveryAmountVes > 0 ? deliveryAmountVes : deliveryAmountUsd * exchangeRate,
-              address: deliveryAddress,
-            })
-          : null,
+        notes: notesParts.length > 0 ? notesParts.join(' ') : null,
         customer: {
           full_name: customerName,
           id_number: customerIdNumber,
@@ -323,11 +357,7 @@ export function WhatsAppInvoiceModal({
           unit_price_usd: it.unitPriceUsd,
           subtotal_usd: it.subtotalUsd,
         })),
-        payment_breakdown: (payments || []).map((p) => ({
-          method: p.method,
-          amount_usd: p.amountUsd,
-          reference: p.reference,
-        })),
+        payment_breakdown: breakdownList,
       }
 
       const { base64, fileName } = await getOrderPdfBase64({

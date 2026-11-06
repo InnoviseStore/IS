@@ -89,9 +89,48 @@ export function formatDeliveryTag(info: DeliveryInfo): string {
 }
 
 /**
- * Limpia el tag de delivery de las notas para visualización legible por el usuario.
+ * Limpia el tag de delivery y otros metadatos internos de las notas para visualización legible por el usuario.
  */
 export function cleanNotesFromDeliveryTag(notes?: string | null): string {
   if (!notes) return ''
-  return notes.replace(/<!--DELIVERY:.*?-->/g, '').trim()
+  return notes
+    .replace(/<!--DELIVERY:[\s\S]*?-->/g, '')
+    .replace(/<!--MANUAL_INVOICE:[\s\S]*?-->/g, '')
+    .trim()
+}
+
+/**
+ * Genera el tag serializado para enlazar un Número de Factura Manual / Fiscal en orders.notes.
+ */
+export function formatManualInvoiceTag(manualInvoiceNumber?: string | null): string {
+  const clean = (manualInvoiceNumber || '').trim()
+  if (!clean) return ''
+  return `<!--MANUAL_INVOICE:${clean}-->`
+}
+
+/**
+ * Extrae el Número de Factura Manual / Fiscal desde orders.notes o payment_breakdown.
+ */
+export function extractManualInvoiceNumber(
+  notes?: string | null,
+  paymentBreakdown?: any[] | null
+): string | null {
+  if (notes) {
+    const tagMatch = notes.match(/<!--MANUAL_INVOICE:(.*?)-->/)
+    if (tagMatch && tagMatch[1] && tagMatch[1].trim()) {
+      return tagMatch[1].trim()
+    }
+    const textMatch = notes.match(/\[Factura\s+(?:Fiscal|Manual)(?:\s*\/\s*(?:Manual|Fiscal))?\s*N[°º]?:\s*#?([^\]]+)\]/i)
+    if (textMatch && textMatch[1] && textMatch[1].trim()) {
+      return textMatch[1].trim()
+    }
+  }
+  if (Array.isArray(paymentBreakdown)) {
+    for (const item of paymentBreakdown) {
+      if (item && typeof item.manual_invoice_number === 'string' && item.manual_invoice_number.trim()) {
+        return item.manual_invoice_number.trim()
+      }
+    }
+  }
+  return null
 }

@@ -5,6 +5,7 @@ import { getTenantFeatures } from '@/lib/planLimits'
 import { sendWhatsAppTextMessage } from '@/lib/whatsappGateway'
 import { formatDate } from '@/lib/formatters'
 import { generateNextOrderNumber } from '@/lib/tenantDocSequence'
+import { extractManualInvoiceNumber, formatManualInvoiceTag } from '@/lib/delivery'
 import {
   extractVariantFromProductName,
   adjustProductVariantsInDescription,
@@ -146,9 +147,15 @@ export async function POST(req: Request) {
       credit_days,
       discount_total_usd,
       notes: incomingNotes,
+      manual_invoice_number: incomingManualInvoiceNumber,
       created_at: incomingCreatedAt,
       sale_date: incomingSaleDate,
     } = body
+
+    const resolvedManualInvoice =
+      (incomingManualInvoiceNumber && String(incomingManualInvoiceNumber).trim()) ||
+      extractManualInvoiceNumber(incomingNotes, payment_breakdown) ||
+      null
 
     if (!tenant_id || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Faltan campos requeridos en la venta.' }, { status: 400 })
@@ -281,9 +288,14 @@ export async function POST(req: Request) {
         ? `[Factura editada por Admin el ${new Date().toLocaleDateString('es-VE')} a las ${new Date().toLocaleTimeString('es-VE')}]`
         : null
 
+      const baseNotes = incomingNotes || previousOrder?.notes || ''
+      const cleanedBaseNotes = baseNotes.replace(/<!--MANUAL_INVOICE:[\s\S]*?-->/g, '').trim()
+      const manualTag = resolvedManualInvoice ? formatManualInvoiceTag(resolvedManualInvoice) : ''
+      const combinedNotes = [manualTag, cleanedBaseNotes].filter(Boolean).join(' ')
+
       const finalNotes = auditNote
-        ? (previousOrder?.notes ? `${previousOrder.notes}\n${auditNote}` : auditNote)
-        : (incomingNotes || previousOrder?.notes || null)
+        ? (combinedNotes ? `${combinedNotes}\n${auditNote}` : auditNote)
+        : (combinedNotes || null)
 
       const { data: updatedOrder, error: updateError } = await supabase
         .from('orders')
@@ -513,7 +525,7 @@ export async function POST(req: Request) {
               : `cada ${plan.frequency_days} días`
 
             const schedLines = plan.schedule.map((inst: any) => {
-              return `  • Cuota #${inst.installment_number}: *$${Number(inst.amount_usd).toFixed(2)} USD* — Vence: ${formatDate(inst.due_date)}`
+              return `  • *Cuota #${inst.installment_number}:* Fecha: *${formatDate(inst.due_date)}* — Monto: *$${Number(inst.amount_usd).toFixed(2)} USD*`
             }).join('\n')
 
             installmentsSection = `🗓️ *Cronograma de Cobro (${plan.total_installments} Cuotas ${freqLabel}):*\n${schedLines}\n  📌 *(En Bolívares: Se calcula a la tasa oficial BCV del día en que realices el pago)*\n`
@@ -546,6 +558,7 @@ export async function POST(req: Request) {
             `🧾 *FACTURA / COMPROBANTE DE VENTA*`,
             `🏪 *${tenantData?.name || 'Comercio'}*`,
             `📄 *Factura:* #${order.order_number}`,
+            resolvedManualInvoice ? `🧾 *Factura Manual / Fiscal N°:* #${resolvedManualInvoice.replace(/^#/, '')}` : '',
             `📅 *Fecha:* ${new Date().toLocaleDateString('es-VE')}`,
             ``,
             `👤 *Cliente:* ${customerName}`,

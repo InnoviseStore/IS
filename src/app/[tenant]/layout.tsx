@@ -84,6 +84,7 @@ export default async function StorefrontLayout({
   const description = isOldDefault ? 'Tienda Oficial' : rawDesc
 
   const themeObj = (settings.theme || {}) as Record<string, string>
+  const storefrontThemeObj = (settings.storefront_theme || {}) as Record<string, any>
   const store: StoreData = {
     id: tenant.id,
     name: tenant.name,
@@ -95,8 +96,9 @@ export default async function StorefrontLayout({
     instagram_handle: (settings.instagram_handle as string) || 'innovise.ve',
     description,
     slogan: (settings.slogan as string) || null,
-    primary_color: themeObj.primaryColor || null,
-    accent_color: themeObj.accentColor || null,
+    primary_color: storefrontThemeObj.primaryColor || themeObj.primaryColor || null,
+    accent_color: storefrontThemeObj.accentColor || themeObj.accentColor || null,
+    text_color: storefrontThemeObj.textColor || null,
     checkout_mode: (settings.checkout_mode as 'whatsapp_only' | 'direct_payment') || 'direct_payment',
     customer_auth_mode: (settings.customer_auth_mode as string) || 'optional',
   }

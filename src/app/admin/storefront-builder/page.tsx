@@ -41,6 +41,18 @@ const COLOR_PRESETS = [
   { name: 'Negro Carbón', hex: '#0f172a' },
 ]
 
+const TEXT_COLOR_PRESETS = [
+  { name: 'Automático (Según Tema)', hex: '' },
+  { name: 'Negro Intenso', hex: '#0f172a' },
+  { name: 'Gris Carbón', hex: '#334155' },
+  { name: 'Azul Marino', hex: '#1e3a8a' },
+  { name: 'Verde Bosque', hex: '#064e3b' },
+  { name: 'Vino Elegante', hex: '#881337' },
+  { name: 'Marrón Expreso', hex: '#451a03' },
+  { name: 'Blanco Puro', hex: '#ffffff' },
+  { name: 'Dorado Suave', hex: '#fef08a' },
+]
+
 export default function StorefrontBuilderPage() {
   const { tenant, profile, exchangeRate, switchTenant } = useTenant()
   const [products, setProducts] = useState<Product[]>([])
@@ -358,16 +370,19 @@ export default function StorefrontBuilderPage() {
             </div>
           </div>
 
-          {/* 2. COLOR PRIMARIO / IDENTIDAD */}
+          {/* 2. COLOR PRIMARIO / IDENTIDAD Y COLOR DE LETRAS */}
           <div className="glass-card p-5 space-y-4 border border-slate-200/80 dark:border-slate-800/80">
             <div className="flex items-center gap-2">
               <Palette className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                2. Color de Marca y Acentos
+                2. Color de Marca, Acentos y Letras
               </h2>
             </div>
 
             <div className="space-y-3">
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Color Principal (Botones, Precios y Acentos):
+              </p>
               <div className="flex flex-wrap gap-2">
                 {COLOR_PRESETS.map((c) => (
                   <button
@@ -391,7 +406,7 @@ export default function StorefrontBuilderPage() {
 
               <div className="flex items-center gap-3 pt-1">
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                  Color personalizado:
+                  Color de marca personalizado:
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -407,6 +422,73 @@ export default function StorefrontBuilderPage() {
                     className="w-24 px-2.5 py-1 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                     placeholder="#2563eb"
                   />
+                </div>
+              </div>
+
+              {/* Selector de Color de Letras del Catálogo */}
+              <div className="pt-3 border-t border-slate-200/70 dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    🔤 Color de Letras / Títulos del Catálogo:
+                  </p>
+                  {config.textColor && (
+                    <button
+                      type="button"
+                      onClick={() => setConfig({ ...config, textColor: '' })}
+                      className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Restablecer automático
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {TEXT_COLOR_PRESETS.map((tc) => {
+                    const isSelected = (config.textColor || '').toLowerCase() === tc.hex.toLowerCase()
+                    return (
+                      <button
+                        key={tc.name}
+                        type="button"
+                        onClick={() => setConfig({ ...config, textColor: tc.hex })}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-slate-900 dark:text-white font-bold'
+                            : 'border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {tc.hex ? (
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-slate-300 dark:border-slate-600 shadow-xs flex-shrink-0"
+                            style={{ backgroundColor: tc.hex }}
+                          />
+                        ) : (
+                          <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-slate-900 to-slate-200 border border-slate-300 flex-shrink-0" />
+                        )}
+                        <span>{tc.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                    Color de letra personalizado:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={config.textColor || '#0f172a'}
+                      onChange={(e) => setConfig({ ...config, textColor: e.target.value })}
+                      className="w-8 h-8 rounded-lg border border-slate-300 dark:border-slate-700 cursor-pointer p-0.5 bg-transparent"
+                    />
+                    <input
+                      type="text"
+                      value={config.textColor || ''}
+                      onChange={(e) => setConfig({ ...config, textColor: e.target.value })}
+                      className="w-28 px-2.5 py-1 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                      placeholder="Automático"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -609,7 +691,10 @@ export default function StorefrontBuilderPage() {
                         <Store className="w-3.5 h-3.5" />
                       </div>
                     )}
-                    <span className="text-xs font-black text-slate-900 dark:text-white truncate">
+                    <span
+                      className="text-xs font-black text-slate-900 dark:text-white truncate"
+                      style={config.textColor ? { color: config.textColor } : undefined}
+                    >
                       {tenant?.name || 'Mi Comercio'}
                     </span>
                   </div>
@@ -659,7 +744,10 @@ export default function StorefrontBuilderPage() {
                             Plantilla {activeTemplateDef.name}
                           </span>
                         </div>
-                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white truncate mt-0.5">
+                        <h3
+                          className="text-sm font-extrabold text-slate-900 dark:text-white truncate mt-0.5"
+                          style={config.textColor ? { color: config.textColor } : undefined}
+                        >
                           {tenant?.name || 'Innovise Store'}
                         </h3>
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
@@ -700,7 +788,10 @@ export default function StorefrontBuilderPage() {
                               </div>
                             )}
                           </div>
-                          <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                          <p
+                            className="text-[11px] font-bold text-slate-900 dark:text-white truncate"
+                            style={config.textColor ? { color: config.textColor } : undefined}
+                          >
                             {p.name}
                           </p>
                           <p className="text-xs font-black mt-1" style={{ color: config.primaryColor }}>
@@ -714,14 +805,17 @@ export default function StorefrontBuilderPage() {
 
                 {/* 5. Cuadrícula de Productos Generales */}
                 <div className="px-4 pb-6">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                      Explora Todo el Catálogo
-                    </h4>
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      {products.length} disponibles
-                    </span>
-                  </div>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <h4
+                        className="text-xs font-bold text-slate-900 dark:text-white"
+                        style={config.textColor ? { color: config.textColor } : undefined}
+                      >
+                        Explora Todo el Catálogo
+                      </h4>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {products.length} disponibles
+                      </span>
+                    </div>
 
                   {config.template === 'express' ? (
                     /* Layout Express: Lista Horizontal de Alta Densidad (Mayorista / Distribuidora) */
@@ -797,7 +891,10 @@ export default function StorefrontBuilderPage() {
                             </span>
                           </div>
                           <div>
-                            <p className="text-[11px] font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                            <p
+                              className="text-[11px] font-medium text-neutral-900 dark:text-neutral-100 truncate"
+                              style={config.textColor ? { color: config.textColor } : undefined}
+                            >
                               {p.name}
                             </p>
                             <p className="text-xs font-semibold" style={{ color: config.primaryColor }}>
@@ -831,7 +928,10 @@ export default function StorefrontBuilderPage() {
                               ● Stock OK
                             </span>
                           </div>
-                          <p className="text-[11px] font-bold text-white truncate">
+                          <p
+                            className="text-[11px] font-bold text-white truncate"
+                            style={config.textColor ? { color: config.textColor } : undefined}
+                          >
                             {p.name}
                           </p>
                           <div className="flex items-baseline justify-between mt-1">
@@ -876,7 +976,10 @@ export default function StorefrontBuilderPage() {
                               Exclusivo
                             </span>
                           </div>
-                          <p className="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                          <p
+                            className="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate"
+                            style={config.textColor ? { color: config.textColor } : undefined}
+                          >
                             {p.name}
                           </p>
                           <div className="flex items-baseline justify-between mt-1">
@@ -915,7 +1018,10 @@ export default function StorefrontBuilderPage() {
                               <Store className="w-6 h-6 m-auto text-slate-400" />
                             )}
                           </div>
-                          <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">
+                          <p
+                            className="text-[11px] font-bold text-slate-900 dark:text-white truncate"
+                            style={config.textColor ? { color: config.textColor } : undefined}
+                          >
                             {p.name}
                           </p>
                           <div className="flex items-baseline justify-between mt-1">

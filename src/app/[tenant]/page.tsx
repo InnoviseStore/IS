@@ -199,7 +199,7 @@ export default async function StorefrontPage({ params }: PageProps) {
                 )}
               </div>
 
-              <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+              <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight" style={themeConfig.textColor ? { color: themeConfig.textColor } : undefined}>
                 {tenant.name}
               </h1>
 
@@ -222,14 +222,14 @@ export default async function StorefrontPage({ params }: PageProps) {
         <ProductCarousel
           products={carouselProducts}
           exchangeRate={exchangeRate}
-          tenantSlug={tenant.slug}
+          tenantSlug={tenant.slug} textColor={themeConfig.textColor}
         />
       </section>
 
       {/* Products Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="border-t border-slate-200/70 dark:border-slate-800/70 pt-6 mb-4">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight" style={themeConfig.textColor ? { color: themeConfig.textColor } : undefined}>
             Explora Todo el Catálogo
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -240,7 +240,7 @@ export default async function StorefrontPage({ params }: PageProps) {
         <ProductGrid
           products={products}
           exchangeRate={exchangeRate}
-          tenantSlug={tenant.slug}
+          tenantSlug={tenant.slug} textColor={themeConfig.textColor}
           template={templateId}
           primaryColor={themeConfig.primaryColor}
         />

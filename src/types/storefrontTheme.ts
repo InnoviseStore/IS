@@ -4,6 +4,7 @@ export interface StorefrontThemeConfig {
   template: StorefrontTemplate
   primaryColor: string
   accentColor?: string
+  textColor?: string
   bannerText: string
   showBanner: boolean
   featuredProductIds: string[]
@@ -15,6 +16,7 @@ export const DEFAULT_THEME_CONFIG: StorefrontThemeConfig = {
   template: 'aurora',
   primaryColor: '#2563eb',
   accentColor: '#4f46e5',
+  textColor: '',
   bannerText: '🚚 Envíos a todo el país · ⚡ Entregas el mismo día en Caracas · 🛡️ Garantía oficial',
   showBanner: true,
   featuredProductIds: [],

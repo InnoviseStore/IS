@@ -10,10 +10,10 @@ import { useCart } from '@/contexts/CartContext'
 interface Props {
   products: Product[]
   exchangeRate: number
-  tenantSlug: string
+  tenantSlug: string; textColor?: string
 }
 
-export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
+export function ProductCarousel({ products, exchangeRate, tenantSlug, textColor }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { addItem } = useCart()
   const [addedProductId, setAddedProductId] = useState<string | null>(null)
@@ -37,7 +37,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
             <Sparkles className="w-4 h-4 animate-pulse" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight" style={textColor ? { color: textColor } : undefined}>
               Productos Destacados & Novedades
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -106,7 +106,7 @@ export function ProductCarousel({ products, exchangeRate, tenantSlug }: Props) {
               <div className="p-3 sm:p-4 flex flex-col flex-1 justify-between gap-2.5 sm:gap-3">
                 <div>
                   <Link href={productHref} prefetch={true}>
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors leading-snug">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors leading-snug" style={textColor ? { color: textColor } : undefined}>
                       {p.name}
                     </h3>
                   </Link>

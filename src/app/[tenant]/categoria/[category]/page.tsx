@@ -141,6 +141,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
             tenantSlug={tenant.slug}
             template={((tenant.settings as any)?.storefront_theme?.template) || 'aurora'}
             primaryColor={((tenant.settings as any)?.storefront_theme?.primaryColor)}
+            textColor={((tenant.settings as any)?.storefront_theme?.textColor)}
             showViewToggle={true}
           />
         ) : (
