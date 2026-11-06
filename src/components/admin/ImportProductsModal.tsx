@@ -343,32 +343,30 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess, existingProduc
         const existingMatch = matchBySku || matchByName
 
         if (existingMatch) {
-          // Actualizar producto existente
-          const updatePayload: Record<string, any> = {
-            name: r.name,
-            sku: r.sku || existingMatch.sku,
-            barcode: r.barcode || existingMatch.barcode || null,
-            base_price_usd: r.base_price_usd,
-            cost_usd: r.cost_usd ?? existingMatch.cost_usd,
-            stock: r.stock,
-            description: finalDescWithBarcode || existingMatch.description,
-            updated_at: new Date().toISOString()
+          const res = await fetch('/api/admin/products', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: existingMatch.id,
+              tenant_id: tenant.id,
+              name: r.name,
+              sku: r.sku || existingMatch.sku,
+              barcode: r.barcode || null,
+              base_price_usd: r.base_price_usd,
+              cost_usd: r.cost_usd ?? existingMatch.cost_usd,
+              stock: r.stock,
+              is_active: existingMatch.is_active ?? true,
+              description: finalDescWithBarcode || existingMatch.description,
+              image_url: r.image_url || existingMatch.image_url || null,
+              images: r.image_url ? [r.image_url] : (existingMatch.images || (existingMatch.image_url ? [existingMatch.image_url] : [])),
+            }),
+          })
+          const json = await res.json()
+          if (!res.ok || json.error) {
+            throw new Error(json.error || `Error al actualizar ${r.name}`)
           }
-          if (r.image_url) {
-            updatePayload.image_url = r.image_url
-            updatePayload.images = [r.image_url]
-          }
-
-          const { error: updErr } = await supabase
-            .from('products')
-            .update(updatePayload)
-            .eq('id', existingMatch.id)
-            .eq('tenant_id', tenant.id)
-
-          if (updErr) throw updErr
           updatedCount++
         } else {
-          // Insertar nuevo producto
           rowsToInsert.push({
             tenant_id: tenant.id,
             name: r.name,
@@ -385,12 +383,21 @@ export function ImportProductsModal({ isOpen, onClose, onSuccess, existingProduc
         }
       }
 
-      if (rowsToInsert.length > 0) {
-        const { error: insErr } = await supabase.from('products').insert(rowsToInsert)
-        if (insErr) throw insErr
+      let insertedCount = 0
+      for (const item of rowsToInsert) {
+        const res = await fetch('/api/admin/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item),
+        })
+        const json = await res.json()
+        if (!res.ok || json.error) {
+          throw new Error(json.error || `Error al insertar ${item.name}`)
+        }
+        insertedCount++
       }
 
-      setResult({ updated: updatedCount, inserted: rowsToInsert.length })
+      setResult({ updated: updatedCount, inserted: insertedCount })
       onSuccess()
     } catch (err) {
       setError((err as Error).message || 'Error al procesar los productos')

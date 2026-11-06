@@ -111,8 +111,8 @@ export default function QuotationsPage() {
     setNotes('')
     const supabase = createClient()
     const [{ data: prodData }, { data: custData }] = await Promise.all([
-      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('customers').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('full_name'),
+      fetch(`/api/admin/products?tenant_id=${tenant.id}&active_only=true`).then((r) => r.json()).then((d) => ({ data: (d.products ?? []) as any[] })).catch(() => ({ data: [] as any[] })),
+      fetch(`/api/admin/customers?tenant_id=${tenant.id}&active_only=true`).then((r) => r.json()).then((d) => ({ data: (d.customers ?? []) as any[] })).catch(() => ({ data: [] as any[] })),
     ])
     setProducts(prodData ?? [])
     setCustomers(custData ?? [])
@@ -131,8 +131,8 @@ export default function QuotationsPage() {
     // Cargar productos y clientes frescos
     const supabase = createClient()
     const [{ data: prodData }, { data: custData }] = await Promise.all([
-      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('customers').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('full_name'),
+      fetch(`/api/admin/products?tenant_id=${tenant.id}&active_only=true`).then((r) => r.json()).then((d) => ({ data: (d.products ?? []) as any[] })).catch(() => ({ data: [] as any[] })),
+      fetch(`/api/admin/customers?tenant_id=${tenant.id}&active_only=true`).then((r) => r.json()).then((d) => ({ data: (d.customers ?? []) as any[] })).catch(() => ({ data: [] as any[] })),
     ])
     const loadedProducts = prodData ?? []
     const loadedCustomers = custData ?? []

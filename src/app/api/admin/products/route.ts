@@ -123,9 +123,9 @@ export async function POST(req: Request) {
       )
     }
 
-    // 1. Validar autenticación y pertenencia de tenant
+    // 1. Validar autenticación y pertenencia de tenant (permitir superadmin y usuarios de la tienda)
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor', 'cajero', 'cashier'],
       targetTenantId: tenant_id,
     })
     if (errorResponse || !auth) {
@@ -133,6 +133,29 @@ export async function POST(req: Request) {
     }
 
     const supabase = getAdminClient()
+
+    // Función auxiliar para subir imágenes Base64 pesadas al bucket público 'product-images'
+    async function uploadBase64ToStorage(rawImg: string, idx: number): Promise<string> {
+      if (!rawImg || !rawImg.startsWith('data:image/')) return rawImg
+      try {
+        const match = rawImg.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/)
+        if (!match) return rawImg
+        const mime = match[1]
+        const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
+        const buffer = Buffer.from(match[2], 'base64')
+        const fileName = `${tenant_id}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${idx}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('product-images')
+          .upload(fileName, buffer, { contentType: mime, upsert: true })
+        if (!upErr) {
+          const { data: pub } = supabase.storage.from('product-images').getPublicUrl(fileName)
+          if (pub?.publicUrl) return pub.publicUrl
+        }
+      } catch (e) {
+        console.warn('Fallback to inline image after storage upload notice:', e)
+      }
+      return rawImg
+    }
 
     // Validación de límite de productos para Plan Básico (150 productos máx)
     if (!id) {
@@ -157,25 +180,38 @@ export async function POST(req: Request) {
       }
     }
 
-    // Preparar lista de imágenes
-    const sanitizedImages: string[] = Array.isArray(images)
+    // Preparar lista de imágenes y subir Base64 a Storage para respuestas ultrarrápidas
+    const rawImagesList: string[] = Array.isArray(images)
       ? images.filter((img) => typeof img === 'string' && img.trim().length > 0)
       : []
 
+    if (rawImagesList.length === 0 && typeof image_url === 'string' && image_url.trim()) {
+      rawImagesList.push(image_url.trim())
+    }
+
+    const sanitizedImages: string[] = await Promise.all(
+      rawImagesList.map((img, idx) => uploadBase64ToStorage(img.trim(), idx))
+    )
+
     // Imagen principal de portada
-    const primaryImage = sanitizedImages[0] || (typeof image_url === 'string' && image_url.trim() ? image_url.trim() : null)
+    const primaryImage = sanitizedImages[0] || null
 
     const cleanBarcode = typeof barcode === 'string' && barcode.trim() ? barcode.trim() : null
+    let finalDescription = description?.trim() || null
+    if (cleanBarcode && (!finalDescription || !finalDescription.includes('<!--BARCODE:'))) {
+      finalDescription = finalDescription
+        ? `<!--BARCODE:${cleanBarcode}-->\n${finalDescription}`
+        : `<!--BARCODE:${cleanBarcode}-->`
+    }
 
     const payloadWithImages: Record<string, any> = {
       tenant_id,
       name: name.trim(),
-      description: description?.trim() || null,
+      description: finalDescription,
       sku: sku?.trim() || null,
-      barcode: cleanBarcode,
       base_price_usd: Number(base_price_usd) || 0,
-      cost_usd: cost_usd ? Number(cost_usd) : null,
-      stock: parseInt(stock, 10) || 0,
+      cost_usd: cost_usd !== undefined && cost_usd !== null && cost_usd !== '' ? Number(cost_usd) : null,
+      stock: parseInt(String(stock ?? 0), 10) || 0,
       is_active: is_active ?? true,
       image_url: primaryImage,
       images: sanitizedImages,
@@ -183,7 +219,7 @@ export async function POST(req: Request) {
 
     let savedProduct = null
 
-    // Función auxiliar resiliente para ejecutar update/insert manejando columnas que puedan no existir
+    // Función auxiliar resiliente para ejecutar update/insert manejando columnas o colisiones de SKU
     async function executeSave(payload: Record<string, any>) {
       let current = { ...payload }
       let query = id
@@ -192,18 +228,24 @@ export async function POST(req: Request) {
 
       let res = await query
 
-      // Si falla por columna barcode inexistente
-      if (res.error && (res.error.message?.includes('barcode') || res.error.code === 'PGRST204')) {
-        delete current.barcode
+      // Si falla por columna images inexistente
+      if (res.error && (res.error.message?.includes('images') || res.error.code === 'PGRST204' || res.error.code === '42703')) {
+        delete current.images
         query = id
           ? supabase.from('products').update(current).eq('id', id).select().single()
           : supabase.from('products').insert(current).select().single()
         res = await query
       }
 
-      // Si falla por columna images inexistente
-      if (res.error && (res.error.message?.includes('images') || res.error.code === 'PGRST204')) {
-        delete current.images
+      // Si falla por colisión de SKU único dentro de la misma tienda, sufijar automáticamente
+      if (
+        res.error &&
+        current.sku &&
+        (res.error.code === '23505' ||
+          res.error.message?.toLowerCase().includes('duplicate key') ||
+          res.error.message?.toLowerCase().includes('unique'))
+      ) {
+        current.sku = `${current.sku}-${Math.floor(100 + Math.random() * 900)}`
         query = id
           ? supabase.from('products').update(current).eq('id', id).select().single()
           : supabase.from('products').insert(current).select().single()
@@ -233,7 +275,7 @@ export async function DELETE(req: Request) {
   try {
     // 1. Validar autenticación
     const { auth, errorResponse } = await authenticateApiRequest({
-      requiredRoles: ['superadmin', 'owner', 'admin'],
+      requiredRoles: ['superadmin', 'owner', 'admin', 'almacen'],
     })
     if (errorResponse || !auth) {
       return errorResponse!

@@ -56,6 +56,11 @@ interface GuidedProductWizardProps {
   onSwitchToTraditional: (draftData: Partial<GuidedProductWizardPayload>) => void
   onCancel: () => void
   isSubmitting?: boolean
+  externalError?: string | null
+  isSuperAdmin?: boolean
+  allTenants?: { id: string; name: string; slug: string }[]
+  selectedTenantId?: string
+  onSelectTenantId?: (tenantId: string) => void
 }
 
 // Opciones de configuración guiada
@@ -140,6 +145,11 @@ export function GuidedProductWizard({
   onSwitchToTraditional,
   onCancel,
   isSubmitting = false,
+  externalError = null,
+  isSuperAdmin = false,
+  allTenants = [],
+  selectedTenantId,
+  onSelectTenantId,
 }: GuidedProductWizardProps) {
   // Paso actual (1 a 5)
   const [currentStep, setCurrentStep] = useState<number>(1)
@@ -282,21 +292,73 @@ export function GuidedProductWizard({
     })
   }
 
-  // Subida de imagen
+  // Subida de imagen con compresión automática en Canvas para evitar cargas pesadas
+  const compressWizardImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new window.Image()
+        img.src = event.target?.result as string
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          const MAX_WIDTH = 850
+          const MAX_HEIGHT = 850
+          let width = img.width
+          let height = img.height
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width
+              width = MAX_WIDTH
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height
+              height = MAX_HEIGHT
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return reject(new Error('No se pudo obtener contexto de canvas'))
+          ctx.drawImage(img, 0, 0, width, height)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.78)
+          resolve(dataUrl)
+        }
+        img.onerror = (err) => reject(err)
+      }
+      reader.onerror = (err) => reject(err)
+    })
+  }
+
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
-    const file = files[0]
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const result = event.target?.result as string
-      if (result) {
-        setImages(prev => (prev.includes(result) ? prev : [...prev, result]))
+    try {
+      const compressedList: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        if (!file.type.startsWith('image/')) continue
+        const compressed = await compressWizardImage(file)
+        compressedList.push(compressed)
       }
+      if (compressedList.length > 0) {
+        setImages((prev) => {
+          const next = [...prev]
+          for (const c of compressedList) {
+            if (!next.includes(c)) next.push(c)
+          }
+          return next
+        })
+      }
+    } catch {
+      setError('Error al procesar la imagen seleccionada.')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
-    reader.readAsDataURL(file)
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleAddImageUrl = () => {
@@ -424,9 +486,28 @@ export function GuidedProductWizard({
                 Paso {currentStep} de 5
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              {tenantName ? `Para: ${tenantName}` : 'Carga rápida de inventario'}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              {isSuperAdmin && allTenants.length > 0 && onSelectTenantId ? (
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                  <span>Tienda destino:</span>
+                  <select
+                    value={selectedTenantId || ''}
+                    onChange={(e) => onSelectTenantId(e.target.value)}
+                    className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold text-[11px] cursor-pointer focus:outline-none"
+                  >
+                    {allTenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.slug})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  {tenantName ? `Para: ${tenantName}` : 'Carga rápida de inventario'}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -484,10 +565,10 @@ export function GuidedProductWizard({
 
       {/* Contenido Dinámico del Paso */}
       <div className="flex-1 overflow-y-auto p-6">
-        {error && (
+        {(error || externalError) && (
           <div className="mb-4 flex items-center gap-2 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold animate-in fade-in">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+            <span>{error || externalError}</span>
           </div>
         )}
 

@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 async function getStorefrontData(slug: string) {
-  const supabase = await createClient()
+  const supabase = createPublicClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
 
   // Fetch tenant info
   const { data: tenantRaw, error: tenantError } = await supabase

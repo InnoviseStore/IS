@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import type { Tenant, Product as DBProduct } from '@/types/database'
 import type { Product } from '@/components/storefront/ProductGrid'
@@ -6,7 +6,7 @@ import { ProductDetailClient } from '@/components/storefront/ProductDetailClient
 import CartDrawer from '@/components/storefront/CartDrawer'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
 
-export const revalidate = 1800 // 30 minutes ISR
+export const dynamic = 'force-dynamic'; export const revalidate = 0
 
 interface PageProps {
   params: Promise<{
@@ -17,7 +17,7 @@ interface PageProps {
 
 export default async function ProductDetailPage({ params }: PageProps) {
   const { tenant: slug, id: productId } = await params
-  const supabase = await createClient()
+  const supabase = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
 
   // 1. Get tenant
   const { data: tenantRaw, error: tenantError } = await supabase

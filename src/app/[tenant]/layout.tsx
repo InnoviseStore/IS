@@ -1,12 +1,20 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Tenant } from '@/types/database'
 import { detectCategory, slugifyCategory } from '@/lib/categories'
 import StorefrontLayoutClient, { type StoreData, type StoreCategory } from './StorefrontLayoutClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+
+function getStorefrontClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
 interface StorefrontLayoutProps {
   children: React.ReactNode
@@ -19,11 +27,11 @@ export async function generateMetadata({
   params: Promise<{ tenant: string }>
 }): Promise<Metadata> {
   const { tenant: slug } = await params
-  const supabase = await createClient()
+  const supabase = getStorefrontClient()
 
   const { data } = await supabase
     .from('tenants')
-    .select('name, logo_url, settings')
+    .select('name, settings')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -38,7 +46,6 @@ export async function generateMetadata({
   const storeIcon =
     (settings.isotype_url as string) ||
     (settings.logo_url as string) ||
-    data?.logo_url ||
     '/favicon.ico'
 
   return {
@@ -57,7 +64,7 @@ export default async function StorefrontLayout({
   params,
 }: StorefrontLayoutProps) {
   const { tenant: slug } = await params
-  const supabase = await createClient()
+  const supabase = getStorefrontClient()
 
   const { data, error } = await supabase
     .from('tenants')

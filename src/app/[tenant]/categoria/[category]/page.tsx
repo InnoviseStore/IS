@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Tenant, Product as DBProduct } from '@/types/database'
 import { detectCategory, slugifyCategory } from '@/lib/categories'
 import ProductGrid, { type Product } from '@/components/storefront/ProductGrid'
@@ -8,7 +8,16 @@ import CartDrawer from '@/components/storefront/CartDrawer'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
 import { ArrowLeft, Layers, ShoppingBag } from 'lucide-react'
 
-export const revalidate = 1800
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+function getStorefrontClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
 interface CategoryPageProps {
   params: Promise<{ tenant: string; category: string }>
@@ -16,7 +25,7 @@ interface CategoryPageProps {
 
 export default async function CategoryPage({ params }: CategoryPageProps) {
   const { tenant: slug, category: categorySlug } = await params
-  const supabase = await createClient()
+  const supabase = getStorefrontClient()
 
   // 1. Fetch Tenant
   const { data: tenantRaw, error: tenantErr } = await supabase
@@ -34,7 +43,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   // 2. Fetch Active Products
   const { data: productsRaw } = await supabase
     .from('products')
-    .select('id, tenant_id, name, sku, description, base_price_usd, stock, image_url, images, is_active')
+    .select('*')
     .eq('tenant_id', tenant.id)
     .eq('is_active', true)
     .order('name', { ascending: true })

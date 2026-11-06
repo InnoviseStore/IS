@@ -101,7 +101,8 @@ async function compressImage(file: File): Promise<string> {
 }
 
 export function ProductModal({ product, onClose, onSaved, onDeleted, currentProductCount }: Props) {
-  const { tenant, exchangeRate, currencyType, currencySymbol } = useTenant()
+  const { tenant, profile, allTenants, switchTenantById, exchangeRate, currencyType, currencySymbol } = useTenant()
+  const isSuperAdmin = profile?.role === 'superadmin'
   const isEditing = product !== null
   const features = getTenantFeatures(tenant)
   const isOverProductLimit = !isEditing && features.maxProducts !== Infinity && (currentProductCount ?? 0) >= features.maxProducts
@@ -623,28 +624,10 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
       return
     }
 
-    const features = getTenantFeatures(tenant)
-    if (!product && features.maxProducts !== Infinity) {
-      // Validar si el tenant ya tiene 150 productos
-      try {
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const { count } = await supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id)
-          .eq('is_active', true)
-        if ((count ?? 0) >= features.maxProducts) {
-          setError(`Has alcanzado el límite de ${features.maxProducts} productos del ${features.name}. Para agregar más productos solicita la actualización a Plan Pro al administrador.`)
-          return
-        }
-      } catch (err) {
-        console.warn('Could not check product limit:', err)
-      }
-    }
-
     setLoading(true)
     setError(null)
+
+    const targetTenantId = isEditing && product?.tenant_id ? product.tenant_id : tenant.id
 
     // Combinar imágenes de variantes y fotos generales
     const allImages = [...images]
@@ -692,7 +675,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, barcode)
 
     const payload = {
-      tenant_id: tenant.id,
+      tenant_id: targetTenantId,
       name: name.trim(),
       description: finalDescriptionWithBarcode || null,
       sku: sku.trim() || null,
@@ -737,27 +720,10 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
       return
     }
 
-    const features = getTenantFeatures(tenant)
-    if (!product && features.maxProducts !== Infinity) {
-      try {
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const { count } = await supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id)
-          .eq('is_active', true)
-        if ((count ?? 0) >= features.maxProducts) {
-          setError(`Has alcanzado el límite de ${features.maxProducts} productos del ${features.name}. Para agregar más productos solicita la actualización a Plan Pro al administrador.`)
-          return
-        }
-      } catch (err) {
-        console.warn('Could not check product limit:', err)
-      }
-    }
-
     setLoading(true)
     setError(null)
+
+    const targetTenantId = isEditing && product?.tenant_id ? product.tenant_id : tenant.id
 
     const allImages = [...payload.images]
     payload.colors.forEach((c) => {
@@ -789,7 +755,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, payload.barcode)
 
     const apiPayload = {
-      tenant_id: tenant.id,
+      tenant_id: targetTenantId,
       name: payload.name.trim(),
       description: finalDescriptionWithBarcode || null,
       sku: payload.sku.trim() || null,
@@ -928,6 +894,11 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
             onSwitchToTraditional={handleSwitchToTraditional}
             onCancel={handleRequestClose}
             isSubmitting={loading}
+            externalError={error}
+            isSuperAdmin={isSuperAdmin}
+            allTenants={allTenants}
+            selectedTenantId={tenant?.id}
+            onSelectTenantId={switchTenantById}
           />
         </div>
       ) : (
@@ -946,9 +917,26 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
                   Modo Tradicional ⚡
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tienda: <span className="font-semibold text-blue-600 dark:text-blue-400">{tenant?.name}</span>
-              </p>
+              {isSuperAdmin && allTenants.length > 0 && !isEditing ? (
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                  <span>Tienda destino:</span>
+                  <select
+                    value={tenant?.id || ''}
+                    onChange={(e) => switchTenantById(e.target.value)}
+                    className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold text-xs cursor-pointer focus:outline-none"
+                  >
+                    {allTenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.slug})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Tienda: <span className="font-semibold text-blue-600 dark:text-blue-400">{tenant?.name}</span>
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
