@@ -30,8 +30,10 @@ import {
   Footprints,
   Shirt,
   Store,
-  Globe
+  Globe,
+  Crop
 } from 'lucide-react'
+import { ImageCropRotateModal } from '@/components/admin/inventory/ImageCropRotateModal'
 import { formatDateTime } from '@/lib/formatters'
 import { getProductBarcode } from '@/lib/barcodeUtils'
 import { getTenantFeatures } from '@/lib/planLimits'
@@ -62,6 +64,7 @@ function InventoryContent() {
   const [stockRegisterOpen, setStockRegisterOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [colorStockProduct, setColorStockProduct] = useState<Product | null>(null)
+  const [quickCropProduct, setQuickCropProduct] = useState<Product | null>(null)
 
   useEffect(() => {
     if (isRegisterParam) {
@@ -475,6 +478,16 @@ function InventoryContent() {
                   <div className="flex flex-col items-end justify-between self-stretch flex-shrink-0">
                     <StockBadge stock={p.stock} />
                     <div className="flex items-center gap-1 mt-2">
+                      {p.image_url && (
+                        <button
+                          onClick={() => setQuickCropProduct(p)}
+                          className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition cursor-pointer"
+                          title="Recortar y girar imagen del producto"
+                          aria-label={`Recortar o girar imagen de ${p.name}`}
+                        >
+                          <Crop className="w-4 h-4" />
+                        </button>
+                      )}
                       <button 
                         onClick={() => openEdit(p)} 
                         className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
@@ -620,6 +633,15 @@ function InventoryContent() {
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            {p.image_url && (
+                              <button
+                                onClick={() => setQuickCropProduct(p)}
+                                className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
+                                title="Recortar y girar imagen del producto"
+                              >
+                                <Crop className="w-4 h-4" />
+                              </button>
+                            )}
                             <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition cursor-pointer" title="Editar producto">
                               <Pencil className="w-4 h-4" />
                             </button>
@@ -695,6 +717,53 @@ function InventoryContent() {
         onSuccess={() => { setImportModalOpen(false); load() }}
         existingProducts={products}
       />
+
+      {/* Modal Rápido para Recortar y Girar Imagen directamente desde la lista de Inventario */}
+      {quickCropProduct && quickCropProduct.image_url && (
+        <ImageCropRotateModal
+          isOpen={true}
+          imageSrc={quickCropProduct.image_url}
+          title={`Recortar y Girar: ${quickCropProduct.name}`}
+          onClose={() => setQuickCropProduct(null)}
+          onApply={async (editedDataUrl) => {
+            const oldPrimary = quickCropProduct.image_url
+            const currentImages = Array.isArray(quickCropProduct.images) && quickCropProduct.images.length > 0
+              ? quickCropProduct.images.map((img, idx) => (idx === 0 || img === oldPrimary ? editedDataUrl : img))
+              : [editedDataUrl]
+
+            let updatedDescription = quickCropProduct.description
+            if (oldPrimary && updatedDescription && updatedDescription.includes(oldPrimary)) {
+              updatedDescription = updatedDescription.split(oldPrimary).join(editedDataUrl)
+            }
+
+            const res = await fetch('/api/admin/products', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: quickCropProduct.id,
+                tenant_id: quickCropProduct.tenant_id || tenant?.id,
+                name: quickCropProduct.name,
+                description: updatedDescription,
+                sku: quickCropProduct.sku,
+                base_price_usd: quickCropProduct.base_price_usd,
+                cost_usd: quickCropProduct.cost_usd,
+                stock: quickCropProduct.stock,
+                is_active: quickCropProduct.is_active,
+                image_url: editedDataUrl,
+                images: currentImages,
+              }),
+            })
+            const json = await res.json()
+            if (!res.ok || json.error) {
+              throw new Error(json.error || 'No se pudo respaldar la imagen recortada.')
+            }
+            setQuickCropProduct(null)
+            setDeleteSuccess(`Imagen de "${quickCropProduct.name}" recortada y respaldada correctamente.`)
+            setTimeout(() => setDeleteSuccess(null), 4000)
+            await load()
+          }}
+        />
+      )}
 
       {/* Modal de Confirmación para Eliminar Producto */}
       {productToDelete && (

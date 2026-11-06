@@ -17,46 +17,67 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  Palette
+  Palette,
+  Ruler
 } from 'lucide-react'
 import { useCart } from '@/contexts/CartContext'
 import type { Product } from '@/components/storefront/ProductGrid'
+import {
+  cleanProductDescription,
+  extractBrand,
+  extractCategory,
+  extractSubcategory,
+} from '@/lib/categories'
 
 export interface ColorVariant {
   name: string
   hex?: string
   image_url?: string
+  stock?: number
 }
 
 export function parseColorVariants(description?: string | null): { cleanDescription: string; colors: ColorVariant[] } {
   if (!description) return { cleanDescription: '', colors: [] }
-  const match = description.match(/<!--COLOR_VARIANTS:(.*?)-->/)
-  if (!match) return { cleanDescription: description, colors: [] }
+  const cleanedText = cleanProductDescription(description)
+  const match = description.match(/<!--COLOR_VARIANTS:([\s\S]*?)-->/)
+  if (!match) return { cleanDescription: cleanedText, colors: [] }
   try {
     const colors = JSON.parse(match[1]) as ColorVariant[]
-    const cleanDescription = description.replace(/<!--COLOR_VARIANTS:(.*?)-->/, '').trim()
-    return { cleanDescription, colors: Array.isArray(colors) ? colors : [] }
+    return { cleanDescription: cleanedText, colors: Array.isArray(colors) ? colors : [] }
   } catch {
-    return { cleanDescription: description, colors: [] }
+    return { cleanDescription: cleanedText, colors: [] }
   }
+}
+
+interface SizeStockItem {
+  size: string
+  stock: number
 }
 
 interface ApparelAttributes {
   garmentType?: string
   gender?: string
   sizes: string[]
+  sizeStock?: SizeStockItem[]
 }
 
 function parseApparel(desc?: string | null): ApparelAttributes | null {
   if (!desc) return null
-  const match = desc.match(/<!--APPAREL_ATTRIBUTES:(.*?)-->/)
+  const match = desc.match(/<!--APPAREL_ATTRIBUTES:([\s\S]*?)-->/)
   if (match) {
     try {
       const data = JSON.parse(match[1])
+      const rawSizeStock: SizeStockItem[] = Array.isArray(data.sizeStock)
+        ? data.sizeStock.map((s: any) => ({ size: String(s.size), stock: Number(s.stock) || 0 }))
+        : []
+      const rawSizes: string[] = Array.isArray(data.sizes)
+        ? data.sizes.map(String)
+        : rawSizeStock.map((s) => s.size)
       return {
         garmentType: data.garmentType,
         gender: data.gender,
-        sizes: Array.isArray(data.sizes) ? data.sizes : [],
+        sizes: rawSizes,
+        sizeStock: rawSizeStock.length > 0 ? rawSizeStock : undefined,
       }
     } catch {}
   }
@@ -87,14 +108,25 @@ export function ProductDetailClient({
   const { addItem, openCart } = useCart()
 
   const apparel = parseApparel(product.description)
-  const [selectedSize, setSelectedSize] = useState<string>(apparel?.sizes?.[0] || '')
+  const initialAvailableSize =
+    apparel?.sizeStock && apparel.sizeStock.length > 0
+      ? (apparel.sizeStock.find((s) => s.stock > 0)?.size || apparel.sizeStock[0]?.size || '')
+      : (apparel?.sizes?.[0] || '')
+  const [selectedSize, setSelectedSize] = useState<string>(initialAvailableSize)
 
   const { cleanDescription, colors } = parseColorVariants(product.description)
   const [selectedColor, setSelectedColor] = useState<string>(colors[0]?.name || '')
 
+  const productBrand = extractBrand(product.description)
+  const productCategory = extractCategory(product.description)
+  const productSubcategory = extractSubcategory(product.description)
+
   const priceVes = product.unit_price_usd * exchangeRate
   const outOfStock = product.stock_quantity === 0
-  const maxStock = product.stock_quantity ?? 99
+  const selectedSizeStockObj = apparel?.sizeStock?.find((s) => s.size === selectedSize)
+  const maxStock = selectedSizeStockObj && selectedSizeStockObj.stock > 0
+    ? selectedSizeStockObj.stock
+    : (product.stock_quantity ?? 99)
 
   // Consolidar fotos del producto y de las variantes de forma segura
   const baseImages = (product.images && product.images.length > 0)
@@ -335,7 +367,7 @@ export function ProductDetailClient({
             </div>
           )}
 
-          {/* SELECTOR DE COLORES JUSTO DEBAJO DE LAS IMÁGENES (Para cambiar color y ver la imagen al instante sin desplazarse) */}
+          {/* SELECTOR DE COLORES JUSTO DEBAJO DE LAS IMÁGENES */}
           {colors.length > 0 && (
             <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-blue-100 dark:border-blue-900/60 shadow-sm space-y-3">
               <div className="flex items-center justify-between">
@@ -383,9 +415,53 @@ export function ProductDetailClient({
             </div>
           )}
 
-          {/* DESCRIPCIÓN DEL PRODUCTO COLOCADA ABAJO DE LAS IMÁGENES */}
-          {cleanDescription && (
-            <div className="p-4 sm:p-7 rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2.5 sm:space-y-3">
+          {/* SELECTOR DE TALLAS JUSTO DEBAJO DEL CAMPO DE COLOR */}
+          {apparel && apparel.sizes && apparel.sizes.length > 0 && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-100 dark:border-indigo-900/60 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm font-extrabold text-slate-900 dark:text-white">
+                  <Ruler className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  Talla Disponible:
+                </span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800">
+                  {selectedSize || 'Selecciona una talla'}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {apparel.sizes.map((s) => {
+                  const isSelected = selectedSize === s
+                  const sizeStockEntry = apparel.sizeStock?.find((item) => item.size === s)
+                  const isSizeOut = sizeStockEntry !== undefined && sizeStockEntry.stock <= 0
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      disabled={isSizeOut}
+                      onClick={() => {
+                        setSelectedSize(s)
+                        if (sizeStockEntry && sizeStockEntry.stock > 0 && quantity > sizeStockEntry.stock) {
+                          setQuantity(sizeStockEntry.stock)
+                        }
+                      }}
+                      className={`min-w-10 h-9 sm:min-w-11 sm:h-10 px-3 rounded-xl sm:rounded-2xl text-xs font-extrabold transition-all cursor-pointer border-2 flex items-center justify-center gap-1 ${
+                        isSizeOut
+                          ? 'bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800 line-through cursor-not-allowed opacity-60'
+                          : isSelected
+                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white shadow-md scale-105'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:bg-indigo-50/30'
+                      }`}
+                    >
+                      <span>{s}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* DESCRIPCIÓN DEL PRODUCTO COLOCADA ABAJO DE COLOR Y TALLA */}
+          {(cleanDescription || productBrand || productCategory || productSubcategory || (apparel && (apparel.garmentType || apparel.gender || apparel.sizes.length > 0))) && (
+            <div className="p-4 sm:p-7 rounded-2xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white">
                 <div className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
                   <FileText className="w-4 h-4" />
@@ -394,10 +470,49 @@ export function ProductDetailClient({
                   Descripción y Detalles del Producto
                 </h2>
               </div>
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal whitespace-pre-line">
-                  {cleanDescription}
-                </p>
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-3">
+                {cleanDescription && (
+                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal whitespace-pre-line">
+                    {cleanDescription}
+                  </p>
+                )}
+
+                {(productBrand || productCategory || productSubcategory || apparel?.garmentType || apparel?.gender || (apparel?.sizes && apparel.sizes.length > 0) || colors.length > 0) && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+                    {productBrand && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Marca</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{productBrand}</span>
+                      </div>
+                    )}
+                    {(productSubcategory || apparel?.garmentType || productCategory) && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Categoría / Tipo</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {productSubcategory || apparel?.garmentType || productCategory}
+                        </span>
+                      </div>
+                    )}
+                    {apparel?.gender && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Público</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{apparel.gender}</span>
+                      </div>
+                    )}
+                    {colors.length > 0 && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Colores</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{colors.map((c) => c.name).join(', ')}</span>
+                      </div>
+                    )}
+                    {apparel?.sizes && apparel.sizes.length > 0 && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Tallas</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{apparel.sizes.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -449,35 +564,6 @@ export function ProductDetailClient({
               Calculado a Tasa Oficial BCV: Bs. {exchangeRate.toFixed(2)}/USD.
             </p>
           </div>
-
-          {/* Selector de Tallas (si el producto tiene tallas configuradas) */}
-          {apparel && apparel.sizes && apparel.sizes.length > 0 && (
-            <div className="space-y-2 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                <span>Talla Disponible:</span>
-                <span className="text-blue-600 dark:text-blue-400 font-extrabold">{selectedSize || 'Selecciona una talla'}</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {apparel.sizes.map((s) => {
-                  const isSelected = selectedSize === s
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSelectedSize(s)}
-                      className={`min-w-9 h-7 sm:min-w-10 sm:h-8 px-2 sm:px-2.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                        isSelected
-                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white shadow-xs scale-105'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Selector de Cantidad y Botones de Compra */}
           <div className="space-y-2.5 sm:space-y-3 pt-1">

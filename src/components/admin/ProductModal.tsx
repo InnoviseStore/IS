@@ -23,6 +23,7 @@ import {
   Check,
   Layers,
   Coins,
+  Crop,
 } from 'lucide-react'
 import {
   detectCategory,
@@ -48,6 +49,7 @@ import {
   GuidedProductWizard,
   type GuidedProductWizardPayload,
 } from './inventory/GuidedProductWizard'
+import { ImageCropRotateModal } from './inventory/ImageCropRotateModal'
 
 interface Props {
   product: Product | null
@@ -112,6 +114,7 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletingProduct, setDeletingProduct] = useState(false)
   const [modalDeleteError, setModalDeleteError] = useState<string | null>(null)
+  const [cropTargetIndex, setCropTargetIndex] = useState<number | null>(null)
 
   async function handleDeleteFromModal() {
     if (!product?.id) return
@@ -1894,47 +1897,62 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
               {/* Tira / Galería de fotos añadidas */}
               {images.length > 0 && (
                 <div className="space-y-2 pt-2">
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                     {images.map((imgSrc, index) => (
-                      <div 
-                        key={index}
-                        className="group relative aspect-square rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs"
-                      >
-                        <img 
-                          src={imgSrc} 
-                          alt={`Foto ${index + 1}`} 
-                          className="w-full h-full object-cover"
-                        />
-                        
-                        {/* Badge Principal */}
-                        {index === 0 && (
-                          <div className="absolute top-1 left-1 flex items-center gap-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-xs">
-                            <Star className="w-2.5 h-2.5 fill-current" />
-                            Principal
-                          </div>
-                        )}
+                      <div key={index} className="flex flex-col gap-1">
+                        <div className="group relative aspect-square rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs">
+                          <img 
+                            src={imgSrc} 
+                            alt={`Foto ${index + 1}`} 
+                            className="w-full h-full object-cover"
+                          />
+                          
+                          {/* Badge Principal */}
+                          {index === 0 && (
+                            <div className="absolute top-1 left-1 flex items-center gap-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-xs">
+                              <Star className="w-2.5 h-2.5 fill-current" />
+                              Principal
+                            </div>
+                          )}
 
-                        {/* Overlay de acciones */}
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
-                          {index !== 0 && (
+                          {/* Overlay de acciones */}
+                          <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
                             <button
                               type="button"
-                              onClick={() => handleSetPrimary(index)}
-                              title="Hacer foto principal"
-                              className="p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer shadow-xs"
+                              onClick={() => setCropTargetIndex(index)}
+                              title="Recortar y girar imagen"
+                              className="p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition cursor-pointer shadow-xs"
                             >
-                              <Star className="w-3.5 h-3.5" />
+                              <Crop className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveImage(index)}
-                            title="Eliminar foto"
-                            className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition cursor-pointer shadow-xs"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            {index !== 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimary(index)}
+                                title="Hacer foto principal"
+                                className="p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer shadow-xs"
+                              >
+                                <Star className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(index)}
+                              title="Eliminar foto"
+                              className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition cursor-pointer shadow-xs"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setCropTargetIndex(index)}
+                          className="w-full inline-flex items-center justify-center gap-1 py-1 px-2 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-[10px] font-bold hover:bg-blue-100 transition cursor-pointer"
+                        >
+                          <Crop className="w-3 h-3" />
+                          <span>Recortar / Girar</span>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -2250,6 +2268,26 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Recorte y Giro de Imagen */}
+      {cropTargetIndex !== null && images[cropTargetIndex] && (
+        <ImageCropRotateModal
+          isOpen={true}
+          imageSrc={images[cropTargetIndex]}
+          title={`Recortar y Girar Foto #${cropTargetIndex + 1}`}
+          onClose={() => setCropTargetIndex(null)}
+          onApply={(editedDataUrl) => {
+            const oldUrl = images[cropTargetIndex]
+            setImages((prev) =>
+              prev.map((img, i) => (i === cropTargetIndex ? editedDataUrl : img))
+            )
+            setColors((prev) =>
+              prev.map((c) => (c.image_url === oldUrl ? { ...c, image_url: editedDataUrl } : c))
+            )
+            setCropTargetIndex(null)
+          }}
+        />
       )}
     </div>
   )

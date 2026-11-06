@@ -110,7 +110,7 @@ const ProductCard = React.memo(function ProductCard({
   const outOfStock = product.stock_quantity === 0;
   const apparel = parseApparelBadge(product.description);
   const cleanDescription = product.description
-    ? product.description.replace(/<!--.*?-->/g, '').replace(/^🏷️[^\n]+\n\n?/, '').trim()
+    ? product.description.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--[\s\S]*$/g, '').replace(/🏷️[^\n]*/g, '').trim()
     : null;
 
   function handleAdd() {

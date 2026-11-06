@@ -135,8 +135,11 @@ export async function POST(req: Request) {
     const supabase = getAdminClient()
 
     // Función auxiliar para subir imágenes Base64 pesadas al bucket público 'product-images'
+    const uploadedCache = new Map<string, string>()
     async function uploadBase64ToStorage(rawImg: string, idx: number): Promise<string> {
       if (!rawImg || !rawImg.startsWith('data:image/')) return rawImg
+      const cached = uploadedCache.get(rawImg)
+      if (cached) return cached
       try {
         const match = rawImg.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/)
         if (!match) return rawImg
@@ -149,7 +152,10 @@ export async function POST(req: Request) {
           .upload(fileName, buffer, { contentType: mime, upsert: true })
         if (!upErr) {
           const { data: pub } = supabase.storage.from('product-images').getPublicUrl(fileName)
-          if (pub?.publicUrl) return pub.publicUrl
+          if (pub?.publicUrl) {
+            uploadedCache.set(rawImg, pub.publicUrl)
+            return pub.publicUrl
+          }
         }
       } catch (e) {
         console.warn('Fallback to inline image after storage upload notice:', e)
@@ -198,6 +204,34 @@ export async function POST(req: Request) {
 
     const cleanBarcode = typeof barcode === 'string' && barcode.trim() ? barcode.trim() : null
     let finalDescription = description?.trim() || null
+
+    // Si hay COLOR_VARIANTS con imágenes en Base64 en la descripción, respaldarlas también en Storage
+    if (finalDescription && finalDescription.includes('<!--COLOR_VARIANTS:')) {
+      const colorMatch = finalDescription.match(/<!--COLOR_VARIANTS:([\s\S]*?)-->/)
+      if (colorMatch && colorMatch[1]) {
+        try {
+          const parsedColors = JSON.parse(colorMatch[1])
+          if (Array.isArray(parsedColors)) {
+            const sanitizedColors = await Promise.all(
+              parsedColors.map(async (c: any, idx: number) => {
+                if (c && typeof c.image_url === 'string' && c.image_url.startsWith('data:image/')) {
+                  const uploadedUrl = await uploadBase64ToStorage(c.image_url.trim(), 100 + idx)
+                  return { ...c, image_url: uploadedUrl }
+                }
+                return c
+              })
+            )
+            finalDescription = finalDescription.replace(
+              /<!--COLOR_VARIANTS:[\s\S]*?-->/,
+              `<!--COLOR_VARIANTS:${JSON.stringify(sanitizedColors)}-->`
+            )
+          }
+        } catch {
+          // Mantener descripción intacta si falla el parseo de variantes
+        }
+      }
+    }
+
     if (cleanBarcode && (!finalDescription || !finalDescription.includes('<!--BARCODE:'))) {
       finalDescription = finalDescription
         ? `<!--BARCODE:${cleanBarcode}-->\n${finalDescription}`
@@ -215,6 +249,7 @@ export async function POST(req: Request) {
       is_active: is_active ?? true,
       image_url: primaryImage,
       images: sanitizedImages,
+      ...(id ? { updated_at: new Date().toISOString() } : {}),
     }
 
     let savedProduct = null
@@ -223,16 +258,23 @@ export async function POST(req: Request) {
     async function executeSave(payload: Record<string, any>) {
       let current = { ...payload }
       let query = id
-        ? supabase.from('products').update(current).eq('id', id).select().single()
+        ? supabase.from('products').update(current).eq('id', id).eq('tenant_id', tenant_id).select().single()
         : supabase.from('products').insert(current).select().single()
 
       let res = await query
 
-      // Si falla por columna images inexistente
-      if (res.error && (res.error.message?.includes('images') || res.error.code === 'PGRST204' || res.error.code === '42703')) {
-        delete current.images
+      // Si falla por columna images o updated_at inexistente
+      if (
+        res.error &&
+        (res.error.message?.includes('images') ||
+          res.error.message?.includes('updated_at') ||
+          res.error.code === 'PGRST204' ||
+          res.error.code === '42703')
+      ) {
+        if (res.error.message?.includes('images')) delete current.images
+        if (res.error.message?.includes('updated_at')) delete current.updated_at
         query = id
-          ? supabase.from('products').update(current).eq('id', id).select().single()
+          ? supabase.from('products').update(current).eq('id', id).eq('tenant_id', tenant_id).select().single()
           : supabase.from('products').insert(current).select().single()
         res = await query
       }
@@ -247,7 +289,7 @@ export async function POST(req: Request) {
       ) {
         current.sku = `${current.sku}-${Math.floor(100 + Math.random() * 900)}`
         query = id
-          ? supabase.from('products').update(current).eq('id', id).select().single()
+          ? supabase.from('products').update(current).eq('id', id).eq('tenant_id', tenant_id).select().single()
           : supabase.from('products').insert(current).select().single()
         res = await query
       }

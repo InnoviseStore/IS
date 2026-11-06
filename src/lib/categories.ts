@@ -238,6 +238,7 @@ export function cleanProductDescription(description?: string | null): string {
   if (!description) return ''
   return description
     .replace(/<!--[\s\S]*?-->/g, '') // elimina cualquier tag técnico HTML o metadata
+    .replace(/<!--[\s\S]*$/g, '')    // elimina cualquier comentario técnico sin cierre
     .replace(/🏷️[^\n]*/g, '')         // elimina cualquier etiqueta de badge
     .replace(/^\s+|\s+$/g, '')        // trim
     .replace(/\n{3,}/g, '\n\n')       // normalizar saltos de línea

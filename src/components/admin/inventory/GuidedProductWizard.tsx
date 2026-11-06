@@ -24,10 +24,13 @@ import {
   Box,
   Coins,
   Check,
-  AlertCircle
+  AlertCircle,
+  Crop,
+  RotateCw
 } from 'lucide-react'
 import type { ColorVariantItem } from '@/lib/colorVariants'
 import type { ApparelAttributes, SizeStockItem } from '@/lib/apparelAttributes'
+import { ImageCropRotateModal } from './ImageCropRotateModal'
 
 export interface GuidedProductWizardPayload {
   name: string
@@ -199,6 +202,7 @@ export function GuidedProductWizard({
   const [barcode, setBarcode] = useState<string>(initialData?.barcode || '')
   const [images, setImages] = useState<string[]>(initialData?.images || [])
   const [imageUrlInput, setImageUrlInput] = useState('')
+  const [cropTargetIndex, setCropTargetIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 5. Precios & Ganancia
@@ -979,21 +983,42 @@ export function GuidedProductWizard({
                 <span className="text-[10px] text-slate-400">La primera será la foto principal</span>
               </div>
 
-              {/* Galería de fotos actuales */}
+              {/* Galería de fotos actuales con botón de Recortar y Girar */}
               {images.length > 0 && (
-                <div className="flex flex-wrap gap-2.5 pt-1">
+                <div className="flex flex-wrap gap-3 pt-1">
                   {images.map((imgUrl, idx) => (
                     <div
                       key={idx}
-                      className="relative w-16 h-16 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group shadow-2xs"
+                      className="flex flex-col items-center gap-1"
                     >
-                      <img src={imgUrl} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                      <div className="relative w-20 h-20 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group shadow-2xs bg-slate-100 dark:bg-slate-800">
+                        <img src={imgUrl} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-slate-950/65 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setCropTargetIndex(idx)}
+                            title="Recortar o girar imagen"
+                            className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer"
+                          >
+                            <Crop className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            title="Eliminar imagen"
+                            className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => handleRemoveImage(idx)}
-                        className="absolute inset-0 bg-rose-900/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                        onClick={() => setCropTargetIndex(idx)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-[10px] font-bold hover:bg-blue-100 transition cursor-pointer"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Crop className="w-2.5 h-2.5" />
+                        <span>Recortar / Girar</span>
                       </button>
                     </div>
                   ))}
@@ -1006,6 +1031,7 @@ export function GuidedProductWizard({
                   type="file"
                   ref={fileInputRef}
                   accept="image/*"
+                  multiple
                   onChange={handleImageFileChange}
                   className="hidden"
                 />
@@ -1217,6 +1243,26 @@ export function GuidedProductWizard({
           )}
         </div>
       </div>
+
+      {/* Modal de Recorte y Giro de Imagen en el Asistente */}
+      {cropTargetIndex !== null && images[cropTargetIndex] && (
+        <ImageCropRotateModal
+          isOpen={true}
+          imageSrc={images[cropTargetIndex]}
+          title={`Recortar y Girar Foto #${cropTargetIndex + 1}`}
+          onClose={() => setCropTargetIndex(null)}
+          onApply={(editedDataUrl) => {
+            const oldUrl = images[cropTargetIndex]
+            setImages((prev) =>
+              prev.map((img, i) => (i === cropTargetIndex ? editedDataUrl : img))
+            )
+            setColors((prev) =>
+              prev.map((c) => (c.image_url === oldUrl ? { ...c, image_url: editedDataUrl } : c))
+            )
+            setCropTargetIndex(null)
+          }}
+        />
+      )}
     </div>
   )
 }
