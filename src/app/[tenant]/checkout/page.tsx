@@ -280,6 +280,11 @@ function CheckoutInner() {
   }
 
   const validateStep3 = () => {
+    const enabledAccounts = tenantData?.settings?.payment_accounts?.filter(a => a.enabled) || []
+    if (enabledAccounts.length === 0 || checkoutMode === 'whatsapp_only') {
+      setErrorsPayment({})
+      return true
+    }
     const errors: Record<string, string> = {}
     if (!payment.method) {
       errors.method = 'Selecciona un método de pago'
@@ -932,8 +937,11 @@ function CheckoutInner() {
                 )}
 
                 {paymentAccounts.length === 0 ? (
-                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 rounded-xl text-sm">
-                    No hay métodos de pago configurados. Contacta al vendedor.
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 rounded-xl text-sm flex items-start gap-2.5">
+                    <MessageCircle className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      Tu pedido quedará registrado en el sistema y coordinarás el pago directamente por WhatsApp con el vendedor al confirmar tu orden.
+                    </span>
                   </div>
                 ) : (
                   <div className="grid gap-4">

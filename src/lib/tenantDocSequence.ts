@@ -60,16 +60,37 @@ export async function generateNextOrderNumber(
   }
 
   const prefix = getTenantDocPrefix(tenant)
+  const searchPrefix = `${prefix}-${year}-`
 
-  // Contar órdenes existentes de esta tienda en el año actual o en general
-  const { count, error } = await supabase
-    .from('orders')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId)
+  // Contar órdenes de la tienda y consultar las más recientes con el mismo prefijo para hallar el máximo correlativo
+  const [{ count }, { data: recentMatching }] = await Promise.all([
+    supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId),
+    supabase
+      .from('orders')
+      .select('order_number')
+      .ilike('order_number', `${searchPrefix}%`)
+      .order('created_at', { ascending: false })
+      .limit(100),
+  ])
 
-  let nextSeq = (count ?? 0) + 1
+  let maxFoundSeq = count ?? 0
+  if (Array.isArray(recentMatching)) {
+    for (const row of recentMatching) {
+      const numStr = String(row.order_number || '')
+      const tail = numStr.slice(searchPrefix.length)
+      const parsed = parseInt(tail, 10)
+      if (!isNaN(parsed) && parsed > maxFoundSeq) {
+        maxFoundSeq = parsed
+      }
+    }
+  }
 
-  // Asegurar que el número no exista (en caso de órdenes eliminadas o saltos)
+  let nextSeq = maxFoundSeq + 1
+
+  // Asegurar unicidad global en orders.order_number (constraint UNIQUE global en tabla orders)
   let candidate = `${prefix}-${year}-${String(nextSeq).padStart(4, '0')}`
   let exists = true
   let attempts = 0
@@ -78,7 +99,6 @@ export async function generateNextOrderNumber(
     const { data: existing } = await supabase
       .from('orders')
       .select('id')
-      .eq('tenant_id', tenantId)
       .eq('order_number', candidate)
       .maybeSingle()
 

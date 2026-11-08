@@ -253,6 +253,7 @@ export default function CartDrawer({
   // Submission & Confirmation state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<string | null>(null);
   const [whatsAppUrl, setWhatsAppUrl] = useState<string | null>(null);
   const [autoSent, setAutoSent] = useState(false);
@@ -326,6 +327,7 @@ export default function CartDrawer({
     if (!validate()) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
 
     // Guardar datos en localStorage para compras futuras del cliente
     const cleanCustomerPhone = normalizeWhatsAppPhone(phone.trim(), countryCode || '58');
@@ -349,43 +351,72 @@ export default function CartDrawer({
     try {
       let orderNumber: string | undefined = undefined;
       let wasAutoSent = false;
+      let lastServerErr = '';
 
-      // 1. Registrar la orden en la base de datos de la tienda
-      try {
-        const res = await fetch('/api/storefront/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantSlug,
-            customer: {
-              fullName: fullName.trim(),
-              phone: cleanCustomerPhone,
-              idNumber: idNumber.trim(),
-              address: address.trim(),
-              notes: notes.trim(),
-              deliveryMethod,
-              shippingAgency: deliveryMethod === 'envio_nacional' ? shippingAgency : undefined,
-              agencyAddress: deliveryMethod === 'envio_nacional' ? agencyAddress.trim() : undefined,
-              deliveryCoords: deliveryMethod === 'delivery_bqto' && deliveryCoords ? deliveryCoords : undefined,
-            },
-            items,
-            totalUsd,
-            totalVes,
-            exchangeRate,
-          }),
-        });
+      // Enviar solo los campos esenciales de cada ítem (sin image_url) para mantener el payload ultraligero (<1 KB)
+      const cleanItemsForApi = items.map((item) => ({
+        id: item.id,
+        product_id: item.product_id || item.id,
+        name: item.name,
+        sku: item.sku || null,
+        unit_price_usd: Number(item.unit_price_usd) || 0,
+        quantity: Math.max(1, Number(item.quantity) || 1),
+      }));
 
-        const data = await res.json();
-        if (res.ok && data.order_number) {
-          orderNumber = data.order_number;
-          setConfirmedOrderNumber(data.order_number);
-          if (data.auto_whatsapp_sent) {
-            wasAutoSent = true;
-            setAutoSent(true);
+      const orderPayloadStr = JSON.stringify({
+        tenantSlug,
+        customer: {
+          fullName: fullName.trim(),
+          phone: cleanCustomerPhone,
+          idNumber: idNumber.trim(),
+          address: address.trim(),
+          notes: notes.trim(),
+          deliveryMethod,
+          shippingAgency: deliveryMethod === 'envio_nacional' ? shippingAgency : undefined,
+          agencyAddress: deliveryMethod === 'envio_nacional' ? agencyAddress.trim() : undefined,
+          deliveryCoords: deliveryMethod === 'delivery_bqto' && deliveryCoords ? deliveryCoords : undefined,
+        },
+        items: cleanItemsForApi,
+        totalUsd,
+        totalVes,
+        exchangeRate,
+      });
+
+      // 1. Registrar la orden en la base de datos de la tienda (con hasta 3 intentos ante micro-cortes de red móvil)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise((r) => setTimeout(r, 700));
           }
+          const res = await fetch('/api/storefront/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: orderPayloadStr,
+          });
+
+          const data = await res.json();
+          if (res.ok && data.order_number) {
+            orderNumber = data.order_number;
+            setConfirmedOrderNumber(data.order_number);
+            if (data.auto_whatsapp_sent) {
+              wasAutoSent = true;
+              setAutoSent(true);
+            }
+            break;
+          } else {
+            lastServerErr = data?.error || 'No se pudo registrar el pedido.';
+          }
+        } catch (dbErr) {
+          lastServerErr = dbErr instanceof Error ? dbErr.message : 'Error de conexión';
+          console.warn(`Intento ${attempt + 1} al registrar pedido web:`, dbErr);
         }
-      } catch (dbErr) {
-        console.warn('Advertencia al registrar en BD, continuando por WhatsApp:', dbErr);
+      }
+
+      if (!orderNumber) {
+        setSubmitError(
+          `No pudimos registrar tu pedido por una falla momentánea de conexión (${lastServerErr || 'Red inestable'}). Por favor toca nuevamente "Enviar Pedido por WhatsApp".`
+        );
+        return;
       }
 
       // 2. Generar el enlace de WhatsApp con el número de orden oficial y método de entrega
@@ -1041,6 +1072,13 @@ export default function CartDrawer({
                   Calculado a Tasa Oficial BCV: Bs. {formatVes(exchangeRate)}/USD
                 </p>
               </div>
+
+              {submitError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300 font-semibold">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-500" />
+                  <span>{submitError}</span>
+                </div>
+              )}
 
               {/* Submit CTA */}
               <button

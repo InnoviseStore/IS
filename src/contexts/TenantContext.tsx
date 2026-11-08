@@ -289,6 +289,84 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   const [allTenants, setAllTenants] = useState<Tenant[]>([])
 
+  // Interceptor global de fetch en el panel administrativo:
+  // Adjunta automáticamente Authorization Bearer token + x-auth-user-id a todas las llamadas /api/admin/* y /api/ai/*
+  // y reintenta automáticamente ante micro-cortes de red móvil ("Load failed" en iOS Safari / WebView).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const supabase = createClient()
+    let cachedToken: string | null = null
+    let cachedUserId: string | null = null
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) cachedToken = session.access_token
+      if (session?.user?.id) cachedUserId = session.user.id
+    }).catch(() => {})
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      cachedToken = session?.access_token || null
+      cachedUserId = session?.user?.id || null
+    })
+
+    const originalFetch = window.fetch.bind(window)
+    const patchedFetch: typeof window.fetch = async (input, init) => {
+      const urlStr =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+          ? input.toString()
+          : input instanceof Request
+          ? input.url
+          : ''
+
+      const isInternalApi =
+        urlStr.startsWith('/api/admin') ||
+        urlStr.startsWith('/api/ai') ||
+        urlStr.includes('/api/admin/') ||
+        urlStr.includes('/api/ai/')
+
+      let nextInit = init
+      if (isInternalApi) {
+        if (!cachedToken || !cachedUserId) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (session?.access_token) cachedToken = session.access_token
+            if (session?.user?.id) cachedUserId = session.user.id
+          } catch {}
+        }
+
+        const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined))
+        if (cachedToken && !headers.has('Authorization') && !headers.has('authorization')) {
+          headers.set('Authorization', `Bearer ${cachedToken}`)
+        }
+        if (cachedUserId && !headers.has('x-auth-user-id')) {
+          headers.set('x-auth-user-id', cachedUserId)
+        }
+        nextInit = { ...init, headers, credentials: 'same-origin' }
+      }
+
+      try {
+        return await originalFetch(input, nextInit)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (
+          isInternalApi &&
+          (msg.includes('Load failed') || msg.includes('Failed to fetch') || msg.includes('NetworkError'))
+        ) {
+          await new Promise((r) => setTimeout(r, 600))
+          return await originalFetch(input, nextInit)
+        }
+        throw err
+      }
+    }
+
+    window.fetch = patchedFetch
+    return () => {
+      window.fetch = originalFetch
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
+
   const refreshTenants = useCallback(async () => {
     try {
       const supabase = createClient()
@@ -304,7 +382,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function load() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      let { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        const { data: { session } } = await supabase.auth.getSession()
+        user = session?.user ?? null
+      }
       if (!user) { setIsLoading(false); return }
 
       const { data: profileData } = await supabase

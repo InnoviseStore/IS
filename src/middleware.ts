@@ -2,6 +2,15 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Las rutas /api/* gestionan su propia autenticación y autorización en el servidor (authenticateApiRequest).
+  // No interceptarlas en Edge evita truncamiento de cuerpos POST grandes ("Load failed" al guardar productos con fotos)
+  // y falsos errores 401 por desincronización de cookies en navegadores móviles (Safari ITP / PWA).
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -29,39 +38,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-
-  // 1. Protección perimetral para endpoints de administración (/api/admin/*)
-  if (pathname.startsWith('/api/admin') && !user) {
-    return NextResponse.json(
-      { error: 'No autorizado: se requiere autenticación para acceder a los recursos administrativos.' },
-      {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Frame-Options': 'DENY',
-          'X-Content-Type-Options': 'nosniff',
-        },
-      }
-    )
-  }
-
-  // 2. Protección perimetral para el copiloto financiero con IA (/api/ai/assistant)
-  if (pathname.startsWith('/api/ai/assistant') && !user) {
-    return NextResponse.json(
-      { error: 'No autorizado: el asistente IA requiere una sesión activa.' },
-      {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Frame-Options': 'DENY',
-          'X-Content-Type-Options': 'nosniff',
-        },
-      }
-    )
-  }
-
-  // 3. Redirección de rutas de interfaz gráfica administrativa (/admin)
+  // 1. Redirección de rutas de interfaz gráfica administrativa (/admin)
   if (pathname.startsWith('/admin') && !user) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
@@ -69,14 +46,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // 4. Redirección de usuario autenticado fuera del login
+  // 2. Redirección de usuario autenticado fuera del login
   if (pathname === '/login' && user) {
     const adminUrl = request.nextUrl.clone()
     adminUrl.pathname = '/admin'
     return NextResponse.redirect(adminUrl)
   }
 
-  // 5. Inyección de Cabeceras de Ciberseguridad Estrictas (OWASP ASVS & PCI-DSS)
+  // 3. Inyección de Cabeceras de Ciberseguridad Estrictas (OWASP ASVS & PCI-DSS)
   const csp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com",
@@ -98,10 +75,6 @@ export async function middleware(request: NextRequest) {
     'Permissions-Policy',
     'camera=(self), microphone=(), geolocation=(self), payment=(self)'
   )
-  supabaseResponse.headers.set(
-    'Strict-Transport-Security',
-    'max-age=63072000; includeSubDomains; preload'
-  )
   supabaseResponse.headers.set('X-XSS-Protection', '1; mode=block')
 
   return supabaseResponse
@@ -109,6 +82,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

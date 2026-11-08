@@ -620,6 +620,66 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
     }
   }
 
+  // Sube cada imagen Base64 individualmente a Supabase Storage antes de guardar el producto
+  // para mantener cada petición HTTP liviana (<150 KB) y evitar "Error inesperado: Load failed" en móviles.
+  async function uploadBase64ImagesIndividually(
+    targetTenantId: string,
+    rawImages: string[],
+    rawColors: ColorVariantItem[]
+  ): Promise<{ cleanImages: string[]; cleanColors: ColorVariantItem[] }> {
+    const cache = new Map<string, string>()
+
+    async function uploadOne(imgStr: string): Promise<string> {
+      if (!imgStr || !imgStr.startsWith('data:image/')) return imgStr
+      const existing = cache.get(imgStr)
+      if (existing) return existing
+      try {
+        const res = await fetch('/api/admin/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'upload_image',
+            tenant_id: targetTenantId,
+            image_base64: imgStr,
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.url && typeof data.url === 'string') {
+            cache.set(imgStr, data.url)
+            return data.url
+          }
+        }
+      } catch {
+        // Si falla la pre-subida individual, el endpoint principal lo procesará en el servidor
+      }
+      return imgStr
+    }
+
+    const cleanImages: string[] = []
+    for (const img of rawImages) {
+      const uploaded = await uploadOne(img)
+      if (uploaded && !cleanImages.includes(uploaded)) {
+        cleanImages.push(uploaded)
+      }
+    }
+
+    const cleanColors: ColorVariantItem[] = []
+    for (const col of rawColors) {
+      if (col.image_url) {
+        const uploadedUrl = await uploadOne(col.image_url)
+        cleanColors.push({ ...col, image_url: uploadedUrl })
+        if (uploadedUrl && !cleanImages.includes(uploadedUrl)) {
+          cleanImages.push(uploadedUrl)
+        }
+      } else {
+        cleanColors.push(col)
+      }
+    }
+
+    return { cleanImages, cleanColors }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!tenant) {
@@ -632,66 +692,65 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
 
     const targetTenantId = isEditing && product?.tenant_id ? product.tenant_id : tenant.id
 
-    // Combinar imágenes de variantes y fotos generales
-    const allImages = [...images]
-    colors.forEach((c) => {
-      if (c.image_url && !allImages.includes(c.image_url)) {
-        allImages.push(c.image_url)
-      }
-    })
-
-    const primaryImage = allImages[0] || null
-
-    // Serializar categoría, subcategoría, atributos de moda y variantes dentro de description
-    let baseDesc = cleanProductDescription(description)
-
-    // Si tiene marca asignada
-    if (brand.trim()) {
-      baseDesc = injectBrandIntoDescription(baseDesc, brand.trim())
-    }
-
-    // Si tiene subcategoría explícita asignada
-    if (subcategory.trim()) {
-      baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(subcategory)}-->\n${baseDesc}`
-    }
-
-    // Si tiene categoría explícita asignada
-    if (category.trim()) {
-      baseDesc = `<!--CATEGORY:${cleanCategoryName(category)}-->\n${baseDesc}`
-    }
-
-    // Si tiene atributos de ropa/calzado
-    if (apparelGarmentType || apparelGender || apparelSizes.length > 0 || apparelSizeStock.length > 0) {
-      const apparelData: ApparelAttributes = {
-        garmentType: apparelGarmentType || undefined,
-        gender: apparelGender || undefined,
-        sizes: apparelSizes,
-        sizeStock: apparelSizeStock.length > 0 ? apparelSizeStock : undefined,
-      }
-      baseDesc = serializeApparelAttributes(baseDesc, apparelData)
-    }
-
-    const finalDescription = colors.length > 0
-      ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(colors)}-->`
-      : baseDesc
-
-    const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, barcode)
-
-    const payload = {
-      tenant_id: targetTenantId,
-      name: name.trim(),
-      description: finalDescriptionWithBarcode || null,
-      sku: sku.trim() || null,
-      barcode: barcode.trim() || null,
-      base_price_usd: price,
-      cost_usd: cost || null,
-      stock: parseInt(stock) || 0,
-      is_active: isActive,
-      image_url: primaryImage,
-      images: allImages,
-    }
-
     try {
+      // Subir fotos Base64 una por una para evitar payloads pesados y "Load failed"
+      const { cleanImages: allImages, cleanColors } = await uploadBase64ImagesIndividually(
+        targetTenantId,
+        images,
+        colors
+      )
+
+      const primaryImage = allImages[0] || null
+
+      // Serializar categoría, subcategoría, atributos de moda y variantes dentro de description
+      let baseDesc = cleanProductDescription(description)
+
+      // Si tiene marca asignada
+      if (brand.trim()) {
+        baseDesc = injectBrandIntoDescription(baseDesc, brand.trim())
+      }
+
+      // Si tiene subcategoría explícita asignada
+      if (subcategory.trim()) {
+        baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(subcategory)}-->\n${baseDesc}`
+      }
+
+      // Si tiene categoría explícita asignada
+      if (category.trim()) {
+        baseDesc = `<!--CATEGORY:${cleanCategoryName(category)}-->\n${baseDesc}`
+      }
+
+      // Si tiene atributos de ropa/calzado
+      if (apparelGarmentType || apparelGender || apparelSizes.length > 0 || apparelSizeStock.length > 0) {
+        const apparelData: ApparelAttributes = {
+          garmentType: apparelGarmentType || undefined,
+          gender: apparelGender || undefined,
+          sizes: apparelSizes,
+          sizeStock: apparelSizeStock.length > 0 ? apparelSizeStock : undefined,
+        }
+        baseDesc = serializeApparelAttributes(baseDesc, apparelData)
+      }
+
+      const finalDescription = cleanColors.length > 0
+        ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(cleanColors)}-->`
+        : baseDesc
+
+      const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, barcode)
+
+      const payload = {
+        tenant_id: targetTenantId,
+        name: name.trim(),
+        description: finalDescriptionWithBarcode || null,
+        sku: sku.trim() || null,
+        barcode: barcode.trim() || null,
+        base_price_usd: price,
+        cost_usd: cost || null,
+        stock: parseInt(stock) || 0,
+        is_active: isActive,
+        image_url: primaryImage,
+        images: allImages,
+      }
+
       const response = await fetch('/api/admin/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -728,50 +787,50 @@ export function ProductModal({ product, onClose, onSaved, onDeleted, currentProd
 
     const targetTenantId = isEditing && product?.tenant_id ? product.tenant_id : tenant.id
 
-    const allImages = [...payload.images]
-    payload.colors.forEach((c) => {
-      if (c.image_url && !allImages.includes(c.image_url)) {
-        allImages.push(c.image_url)
-      }
-    })
-    const primaryImage = allImages[0] || null
-
-    let baseDesc = cleanProductDescription(payload.description || '')
-    if (payload.brand.trim()) {
-      baseDesc = injectBrandIntoDescription(baseDesc, payload.brand.trim())
-    }
-    if (payload.subcategory.trim()) {
-      baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(payload.subcategory)}-->\n${baseDesc}`
-    }
-    if (payload.category.trim()) {
-      baseDesc = `<!--CATEGORY:${cleanCategoryName(payload.category)}-->\n${baseDesc}`
-    }
-
-    if (payload.apparel && (payload.apparel.garmentType || payload.apparel.gender || (payload.apparel.sizes && payload.apparel.sizes.length > 0) || (payload.apparel.sizeStock && payload.apparel.sizeStock.length > 0))) {
-      baseDesc = serializeApparelAttributes(baseDesc, payload.apparel)
-    }
-
-    const finalDescription = payload.colors.length > 0
-      ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(payload.colors)}-->`
-      : baseDesc
-
-    const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, payload.barcode)
-
-    const apiPayload = {
-      tenant_id: targetTenantId,
-      name: payload.name.trim(),
-      description: finalDescriptionWithBarcode || null,
-      sku: payload.sku.trim() || null,
-      barcode: payload.barcode.trim() || null,
-      base_price_usd: payload.priceUsd,
-      cost_usd: payload.costUsd || null,
-      stock: payload.stock,
-      is_active: payload.isActive,
-      image_url: primaryImage,
-      images: allImages,
-    }
-
     try {
+      // Subir fotos Base64 una por una para evitar payloads pesados y "Load failed"
+      const { cleanImages: allImages, cleanColors } = await uploadBase64ImagesIndividually(
+        targetTenantId,
+        payload.images,
+        payload.colors
+      )
+      const primaryImage = allImages[0] || null
+
+      let baseDesc = cleanProductDescription(payload.description || '')
+      if (payload.brand.trim()) {
+        baseDesc = injectBrandIntoDescription(baseDesc, payload.brand.trim())
+      }
+      if (payload.subcategory.trim()) {
+        baseDesc = `<!--SUBCATEGORY:${cleanSubcategoryName(payload.subcategory)}-->\n${baseDesc}`
+      }
+      if (payload.category.trim()) {
+        baseDesc = `<!--CATEGORY:${cleanCategoryName(payload.category)}-->\n${baseDesc}`
+      }
+
+      if (payload.apparel && (payload.apparel.garmentType || payload.apparel.gender || (payload.apparel.sizes && payload.apparel.sizes.length > 0) || (payload.apparel.sizeStock && payload.apparel.sizeStock.length > 0))) {
+        baseDesc = serializeApparelAttributes(baseDesc, payload.apparel)
+      }
+
+      const finalDescription = cleanColors.length > 0
+        ? `${baseDesc}\n\n<!--COLOR_VARIANTS:${JSON.stringify(cleanColors)}-->`
+        : baseDesc
+
+      const finalDescriptionWithBarcode = injectBarcodeIntoDescription(finalDescription, payload.barcode)
+
+      const apiPayload = {
+        tenant_id: targetTenantId,
+        name: payload.name.trim(),
+        description: finalDescriptionWithBarcode || null,
+        sku: payload.sku.trim() || null,
+        barcode: payload.barcode.trim() || null,
+        base_price_usd: payload.priceUsd,
+        cost_usd: payload.costUsd || null,
+        stock: payload.stock,
+        is_active: payload.isActive,
+        image_url: primaryImage,
+        images: allImages,
+      }
+
       const response = await fetch('/api/admin/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

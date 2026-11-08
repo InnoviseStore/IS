@@ -17,13 +17,13 @@ function getAdminClient() {
   })
 }
 
-// Rate Limiter en memoria para prevenir inundación de pedidos / DoS (10 pedidos cada 5 minutos por IP)
+// Rate Limiter en memoria para prevenir inundación de pedidos / DoS (120 pedidos cada 5 minutos por IP para soportar CGNAT móvil en Venezuela)
 const ipRateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now()
   const windowMs = 5 * 60 * 1000 // 5 minutos
-  const maxRequests = 10
+  const maxRequests = 120
 
   const entry = ipRateLimitMap.get(ip)
   if (!entry || now > entry.resetAt) {
@@ -83,9 +83,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Falta el identificador de la tienda (slug).' }, { status: 400 })
     }
 
-    const customerFullName = customer?.fullName || customer?.full_name
-    const customerPhone = customer?.phone
-    const customerIdNumber = customer?.idNumber || customer?.id_number
+    const customerFullName = customer?.fullName || customer?.full_name || body.customer_name
+    const customerPhone = customer?.phone || body.customer_phone
+    const customerIdNumber = customer?.idNumber || customer?.id_number || body.customer_id_number
 
     if (!customerFullName || !customerPhone) {
       return NextResponse.json({ error: 'Nombre y teléfono son requeridos.' }, { status: 400 })
@@ -113,12 +113,14 @@ export async function POST(req: Request) {
     const cleanFullName = sanitizeText(customerFullName)
     const cleanPhone = String(customerPhone).replace(/\D/g, '')
     const cleanIdNumber = customerIdNumber ? sanitizeText(customerIdNumber).toUpperCase() : null
-    const cleanAddress = customer.address ? sanitizeText(customer.address) : null
-    const cleanCustomerNotes = customer.notes ? sanitizeText(customer.notes) : ''
-    const deliveryMethod = body.delivery_method || customer.deliveryMethod || customer.delivery_method || 'delivery_bqto'
-    const shippingAgency = body.shipping_agency ? sanitizeText(body.shipping_agency) : (customer.shippingAgency ? sanitizeText(customer.shippingAgency) : null)
-    const cleanAgencyAddress = body.agency_address ? sanitizeText(body.agency_address) : (customer.agencyAddress ? sanitizeText(customer.agencyAddress) : null)
-    const rawCoords = body.delivery_coords || body.deliveryCoords || customer.delivery_coords || customer.deliveryCoords
+    const rawAddr = customer?.address ?? body.address
+    const cleanAddress = rawAddr ? sanitizeText(rawAddr) : null
+    const rawNotes = customer?.notes ?? body.notes
+    const cleanCustomerNotes = rawNotes ? sanitizeText(rawNotes) : ''
+    const deliveryMethod = body.delivery_method || customer?.deliveryMethod || customer?.delivery_method || 'delivery_bqto'
+    const shippingAgency = body.shipping_agency ? sanitizeText(body.shipping_agency) : (customer?.shippingAgency ? sanitizeText(customer.shippingAgency) : null)
+    const cleanAgencyAddress = body.agency_address ? sanitizeText(body.agency_address) : (customer?.agencyAddress ? sanitizeText(customer.agencyAddress) : null)
+    const rawCoords = body.delivery_coords || body.deliveryCoords || customer?.delivery_coords || customer?.deliveryCoords
     const deliveryCoords = rawCoords && typeof rawCoords.lat === 'number' && typeof rawCoords.lng === 'number'
       ? { lat: rawCoords.lat, lng: rawCoords.lng }
       : null
@@ -130,111 +132,112 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nombre y teléfono válidos son requeridos.' }, { status: 400 })
     }
 
-    // 2. Buscar o crear cliente en la tabla customers (con normalización de cédula y teléfono)
+    // 2. Buscar o crear cliente en la tabla customers (con normalización de cédula y teléfono, resiliente a errores)
     const idInfo = normalizeIdNumber(cleanIdNumber)
     const normalizedPhone = normalizePhoneDigits(cleanPhone)
 
     let customerId: string | null = null
-    let existingCustomer: any = null
+    try {
+      let existingCustomer: any = null
 
-    if (idInfo.digits && idInfo.digits.length >= 4) {
-      // Búsqueda flexible por variantes (con/sin guion, con/sin letra)
-      const { data: matches } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .in('id_number', idInfo.variants)
-        .limit(1)
-
-      if (matches && matches.length > 0) {
-        existingCustomer = matches[0]
-      } else {
-        // Búsqueda por coincidencia de dígitos si está guardado con formato alternativo
-        const { data: partials } = await supabase
+      if (idInfo.digits && idInfo.digits.length >= 4) {
+        const { data: matches } = await supabase
           .from('customers')
           .select('*')
           .eq('tenant_id', tenantId)
-          .ilike('id_number', `%${idInfo.digits}%`)
-          .limit(5)
+          .in('id_number', idInfo.variants)
+          .limit(1)
 
-        if (partials && partials.length > 0) {
-          const exactDigitMatch = partials.find(
-            (c: any) => c.id_number?.replace(/\D/g, '') === idInfo.digits
-          )
-          if (exactDigitMatch) existingCustomer = exactDigitMatch
+        if (matches && matches.length > 0) {
+          existingCustomer = matches[0]
+        } else {
+          const { data: partials } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .ilike('id_number', `%${idInfo.digits}%`)
+            .limit(5)
+
+          if (partials && partials.length > 0) {
+            const exactDigitMatch = partials.find(
+              (c: any) => c.id_number?.replace(/\D/g, '') === idInfo.digits
+            )
+            if (exactDigitMatch) existingCustomer = exactDigitMatch
+          }
         }
       }
-    }
 
-    if (!existingCustomer && (normalizedPhone || cleanPhone)) {
-      const phoneQueries = [normalizedPhone, cleanPhone].filter(Boolean)
-      const { data: byPhone } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .in('phone', phoneQueries)
-        .limit(1)
-        .maybeSingle()
-      existingCustomer = byPhone
-    }
+      if (!existingCustomer && (normalizedPhone || cleanPhone)) {
+        const phoneQueries = [normalizedPhone, cleanPhone].filter(Boolean)
+        const { data: byPhone } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .in('phone', phoneQueries)
+          .limit(1)
+          .maybeSingle()
+        existingCustomer = byPhone
+      }
 
-    if (existingCustomer) {
-      customerId = existingCustomer.id
-      // Actualizar datos si es necesario sin duplicar el cliente
-      const updateFields: Record<string, any> = {}
-      if (idInfo.canonical && (!existingCustomer.id_number || existingCustomer.id_number.replace(/\D/g, '') === idInfo.digits)) {
-        if (existingCustomer.id_number !== idInfo.canonical && existingCustomer.id_number !== cleanIdNumber) {
-          updateFields.id_number = idInfo.canonical
+      if (existingCustomer) {
+        customerId = existingCustomer.id
+        const updateFields: Record<string, any> = {}
+        if (idInfo.canonical && (!existingCustomer.id_number || existingCustomer.id_number.replace(/\D/g, '') === idInfo.digits)) {
+          if (existingCustomer.id_number !== idInfo.canonical && existingCustomer.id_number !== cleanIdNumber) {
+            updateFields.id_number = idInfo.canonical
+          }
+        }
+        if (cleanAddress && !existingCustomer.address) updateFields.address = cleanAddress
+        if (cleanFullName && (!existingCustomer.full_name || existingCustomer.full_name === 'Cliente')) {
+          updateFields.full_name = cleanFullName
+        }
+        if (Object.keys(updateFields).length > 0) {
+          await supabase.from('customers').update(updateFields).eq('id', customerId)
+        }
+      } else {
+        const { data: newCustomer } = await supabase
+          .from('customers')
+          .insert({
+            tenant_id: tenantId,
+            full_name: cleanFullName,
+            id_number: idInfo.canonical || cleanIdNumber,
+            phone: normalizedPhone || cleanPhone,
+            address: cleanAddress,
+            notes: cleanCustomerNotes ? `Pedido web: ${cleanCustomerNotes}` : 'Registrado desde Vitrina Web',
+          })
+          .select('id')
+          .single()
+
+        if (newCustomer) {
+          customerId = newCustomer.id
         }
       }
-      if (cleanAddress && !existingCustomer.address) updateFields.address = cleanAddress
-      if (cleanFullName && (!existingCustomer.full_name || existingCustomer.full_name === 'Cliente')) {
-        updateFields.full_name = cleanFullName
-      }
-      if (Object.keys(updateFields).length > 0) {
-        await supabase.from('customers').update(updateFields).eq('id', customerId)
-      }
-    } else {
-      const { data: newCustomer } = await supabase
-        .from('customers')
-        .insert({
-          tenant_id: tenantId,
-          full_name: cleanFullName,
-          id_number: idInfo.canonical || cleanIdNumber,
-          phone: normalizedPhone || cleanPhone,
-          address: cleanAddress,
-          notes: cleanCustomerNotes ? `Pedido web: ${cleanCustomerNotes}` : 'Registrado desde Vitrina Web',
-        })
-        .select('id')
-        .single()
-
-      if (newCustomer) {
-        customerId = newCustomer.id
-      }
+    } catch (custErr) {
+      console.warn('Customer lookup/insert notice (continuing order creation):', custErr)
     }
 
     // 3. Generar número de orden correlativo asociado a la tienda
-    const orderNumber = await generateNextOrderNumber(supabase, tenantId, tenant)
+    let orderNumber = await generateNextOrderNumber(supabase, tenantId, tenant)
 
     // Sumar subtotales de los items directamente como fallback infalible
     const computedItemsTotalUsd = items.reduce((acc: number, item: any) => {
-      const price = Number(item.unit_price_usd) || 0
+      const price = Number(item.unit_price_usd ?? item.price_usd) || 0
       const qty = parseInt(item.quantity, 10) || 1
       return acc + (price * qty)
     }, 0)
 
     const rawTotalUsd = totalUsd !== undefined ? totalUsd : total_usd
-    const finalTotalUsd = (rawTotalUsd !== undefined && Number(rawTotalUsd) > 0)
+    const finalTotalUsd = Number(((rawTotalUsd !== undefined && Number(rawTotalUsd) > 0)
       ? Number(rawTotalUsd)
-      : computedItemsTotalUsd
+      : computedItemsTotalUsd).toFixed(2))
 
     const rawTotalVes = totalVes !== undefined ? totalVes : total_ves
-    const finalTotalVes = (rawTotalVes !== undefined && Number(rawTotalVes) > 0)
+    const finalTotalVes = Number(((rawTotalVes !== undefined && Number(rawTotalVes) > 0)
       ? Number(rawTotalVes)
-      : (finalTotalUsd * rate)
+      : (finalTotalUsd * rate)).toFixed(2))
 
     let deliverySummary = 'Entrega: Retiro en Sitio'
-    if (deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local') {
+    if (deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local' || deliveryMethod === 'delivery') {
       deliverySummary = `Entrega: Delivery Local | Dirección: ${cleanAddress || 'No especificada'}${deliveryCoords ? ` | GPS: https://maps.google.com/?q=${deliveryCoords.lat},${deliveryCoords.lng}` : ''}`
     } else if (deliveryMethod === 'envio_nacional') {
       deliverySummary = `Entrega: Envío Nacional (Cobro Destino) | Agencia: ${shippingAgency || 'No especificada'} | Dirección Agencia: ${cleanAgencyAddress || 'No especificada'}`
@@ -253,9 +256,9 @@ export async function POST(req: Request) {
       .filter(Boolean)
       .join(' | ')
 
-    const incomingDeliveryUsd = Number(body.delivery_amount_usd || customer?.deliveryAmountUsd || 0)
+    const incomingDeliveryUsd = Number(body.delivery_amount_usd || body.delivery_fee_usd || customer?.deliveryAmountUsd || 0)
     const incomingDeliveryVes = Number(body.delivery_amount_ves || customer?.deliveryAmountVes || (incomingDeliveryUsd * rate))
-    const isLocalDelivery = deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local'
+    const isLocalDelivery = deliveryMethod === 'delivery_bqto' || deliveryMethod === 'delivery_local' || deliveryMethod === 'delivery'
     const deliveryAddr = cleanAddress || ''
 
     const deliveryTag = (isLocalDelivery || incomingDeliveryUsd > 0 || deliveryAddr)
@@ -279,44 +282,67 @@ export async function POST(req: Request) {
       }
     ] : []
 
-    // 4. Crear orden con estado 'pending' o 'pending_review'
-    const { data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
-        tenant_id: tenantId,
-        customer_id: customerId,
-        order_number: orderNumber,
-        status: paymentReference ? 'pending' : 'pending',
-        payment_condition: 'immediate',
-        exchange_rate_at_sale: rate,
-        subtotal_usd: finalTotalUsd,
-        total_usd: finalTotalUsd,
-        total_ves: finalTotalVes,
-        payment_breakdown: paymentBreakdown,
-        notes: finalOrderNotes,
-      })
-      .select()
-      .single()
+    // 4. Crear orden con reintento automático ante colisión concurrente de order_number
+    let order: any = null
+    let lastOrderErr: any = null
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) {
+        orderNumber = await generateNextOrderNumber(supabase, tenantId, tenant)
+        if (attempt >= 2) {
+          orderNumber = `${orderNumber}-${Math.floor(10 + Math.random() * 89)}`
+        }
+      }
+      const { data: insertedOrder, error: orderErr } = await supabase
+        .from('orders')
+        .insert({
+          tenant_id: tenantId,
+          customer_id: customerId,
+          order_number: orderNumber,
+          status: 'pending',
+          payment_condition: 'immediate',
+          exchange_rate_at_sale: rate,
+          subtotal_usd: finalTotalUsd,
+          total_usd: finalTotalUsd,
+          total_ves: finalTotalVes,
+          payment_breakdown: paymentBreakdown,
+          notes: finalOrderNotes,
+        })
+        .select()
+        .single()
 
-    if (orderErr || !order) {
-      console.error('Error creating web order:', orderErr)
-      throw new Error(orderErr?.message || 'No se pudo registrar la orden en la base de datos.')
+      if (!orderErr && insertedOrder) {
+        order = insertedOrder
+        lastOrderErr = null
+        break
+      }
+      lastOrderErr = orderErr
     }
 
-    // 5. Insertar order_items
-    const orderItemsPayload = items.map((item: any) => ({
-      order_id: order.id,
-      product_id: item.product_id || item.id || null,
-      tenant_id: tenantId,
-      product_name: item.name || 'Producto',
-      product_sku: item.sku || null,
-      unit_price_usd: Number(item.unit_price_usd) || 0,
-      quantity: parseInt(item.quantity, 10) || 1,
-    }))
+    if (lastOrderErr || !order) {
+      console.error('Error creating web order:', lastOrderErr)
+      throw new Error(lastOrderErr?.message || 'No se pudo registrar la orden en la base de datos.')
+    }
+
+    // 5. Insertar order_items validando UUID de product_id y reintentando sin FK si un producto fue recreado
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const orderItemsPayload = items.map((item: any) => {
+      const candidatePid = String(item.product_id || item.id || '').trim()
+      return {
+        order_id: order.id,
+        product_id: uuidRegex.test(candidatePid) ? candidatePid : null,
+        tenant_id: tenantId,
+        product_name: item.name || 'Producto',
+        product_sku: item.sku || null,
+        unit_price_usd: Number(item.unit_price_usd ?? item.price_usd) || 0,
+        quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
+      }
+    })
 
     const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload)
     if (itemsErr) {
-      console.warn('Warning inserting order_items for web order:', itemsErr.message)
+      console.warn('Retrying order_items insert without product_id FK after warning:', itemsErr.message)
+      const fallbackItemsPayload = orderItemsPayload.map((it) => ({ ...it, product_id: null }))
+      await supabase.from('order_items').insert(fallbackItemsPayload)
     }
 
     // 6. Envío Automático de WhatsApp en Plan Enterprise

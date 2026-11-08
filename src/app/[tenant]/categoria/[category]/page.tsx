@@ -4,7 +4,6 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Tenant, Product as DBProduct } from '@/types/database'
 import { detectCategory, slugifyCategory } from '@/lib/categories'
 import ProductGrid, { type Product } from '@/components/storefront/ProductGrid'
-import CartDrawer from '@/components/storefront/CartDrawer'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
 import { ArrowLeft, Layers, ShoppingBag } from 'lucide-react'
 
@@ -164,14 +163,6 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           </div>
         )}
       </section>
-
-      {/* Cart Drawer */}
-      <CartDrawer
-        tenantSlug={tenant.slug}
-        exchangeRate={exchangeRate}
-        storePhone={tenant.phone_whatsapp || '584121234567'}
-        storeName={tenant.name}
-      />
     </main>
   )
 }

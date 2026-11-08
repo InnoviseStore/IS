@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation'
 import type { Tenant, Product as DBProduct } from '@/types/database'
 import type { Product } from '@/components/storefront/ProductGrid'
 import { ProductDetailClient } from '@/components/storefront/ProductDetailClient'
-import CartDrawer from '@/components/storefront/CartDrawer'
 import ExchangeRateBanner from '@/components/storefront/ExchangeRateBanner'
 
 export const dynamic = 'force-dynamic'; export const revalidate = 0
@@ -122,14 +121,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
         tenantPhone={tenant.phone_whatsapp || '584121234567'}
         exchangeRate={exchangeRate}
         relatedProducts={relatedProducts}
-      />
-
-      {/* Cart Drawer */}
-      <CartDrawer
-        tenantSlug={tenant.slug}
-        exchangeRate={exchangeRate}
-        storePhone={tenant.phone_whatsapp || '584121234567'}
-        storeName={tenant.name}
       />
     </main>
   )

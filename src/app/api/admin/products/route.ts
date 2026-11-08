@@ -102,6 +102,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const {
+      action,
+      image_base64,
       id,
       tenant_id,
       name,
@@ -115,6 +117,40 @@ export async function POST(req: Request) {
       image_url,
       images,
     } = body
+
+    // Subida individual de imagen a Supabase Storage (previene payloads gigantes y "Load failed" en móviles)
+    if (action === 'upload_image') {
+      if (!tenant_id || !image_base64 || typeof image_base64 !== 'string') {
+        return NextResponse.json({ error: 'Faltan datos de imagen.' }, { status: 400 })
+      }
+      const { auth, errorResponse } = await authenticateApiRequest({
+        requiredRoles: ['superadmin', 'owner', 'admin', 'almacen', 'vendedor', 'cajero', 'cashier'],
+        targetTenantId: tenant_id,
+      })
+      if (errorResponse || !auth) {
+        return errorResponse!
+      }
+      if (!image_base64.startsWith('data:image/')) {
+        return NextResponse.json({ success: true, url: image_base64 })
+      }
+      const supabase = getAdminClient()
+      const match = image_base64.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/)
+      if (!match) {
+        return NextResponse.json({ success: true, url: image_base64 })
+      }
+      const mime = match[1]
+      const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
+      const buffer = Buffer.from(match[2], 'base64')
+      const fileName = `${tenant_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, buffer, { contentType: mime, upsert: true })
+      if (upErr) {
+        return NextResponse.json({ error: upErr.message }, { status: 500 })
+      }
+      const { data: pub } = supabase.storage.from('product-images').getPublicUrl(fileName)
+      return NextResponse.json({ success: true, url: pub?.publicUrl || image_base64 })
+    }
 
     if (!tenant_id || !name) {
       return NextResponse.json(
